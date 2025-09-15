@@ -187,6 +187,10 @@ class AgenticBot(discord.Client):
         self.unprompted_messages = set()  # Track our own provocations to avoid self-responses
         self.last_provocation = {}  # Channel -> timestamp of last provocation
         self.chaos_channels = set()  # Channels we're allowed to provoke
+
+        # Global provocation targeting - track latest message across all servers
+        self.latest_message_channel = None  # Channel with globally most recent message
+        self.latest_message_time = datetime(2020, 1, 1, tzinfo=timezone.utc)  # Time of globally latest message
         
         # Cost control for web search
         self.daily_search_count = defaultdict(int)  # date -> search count
@@ -874,9 +878,19 @@ class AgenticBot(discord.Client):
             self.memory.add_message(message.channel.id, message)
         else:
             print(f"  🔇 Skipping memory storage for our own provocation: {message.id}")
-        
+
         if message.author == self.user:
             return
+
+        # Update globally latest message tracking for provocation targeting
+        message_time = message.created_at
+        if message_time.tzinfo is None:
+            message_time = message_time.replace(tzinfo=timezone.utc)
+
+        if message_time > self.latest_message_time:
+            self.latest_message_time = message_time
+            self.latest_message_channel = message.channel
+            print(f"  🎯 Updated latest message tracker: #{message.channel.name} ({message_time.strftime('%H:%M:%S')})")
             
         # Add to pending channels for next check cycle
         self.pending_channels.add(message.channel.id)
@@ -1296,56 +1310,6 @@ Return JSON:
             print(f"  📊 Reaction engagement: {user.name} reacted {reaction.emoji}")
             self.rate_limiter.record_engagement(reaction.message.channel.id)
 
-    def _find_engagement_target(self, guild):
-        """Find the best channel for a provocation"""
-        eligible_channels = []
-        
-        for channel in guild.text_channels:
-            # Skip if no permission to send messages
-            if not channel.permissions_for(guild.me).send_messages:
-                continue
-            
-            # Skip channels with very recent provocations (< 1 hour, adjusted for 1.5h cycle)
-            last_provocation = self.last_provocation.get(channel.id)
-            if last_provocation and (datetime.now(timezone.utc) - last_provocation).total_seconds() < 3600:
-                continue
-            
-            # Get recent activity level
-            recent_messages = self.memory.get_context(channel.id, limit=50)
-            if not recent_messages:
-                continue
-            
-            # Calculate activity score using UTC to match Discord timestamps
-            now = datetime.now(timezone.utc)
-            recent_activity = 0
-            for msg in recent_messages:
-                msg_time = msg['timestamp']
-                # Ensure both are timezone-aware for comparison
-                if msg_time.tzinfo is None:
-                    msg_time = msg_time.replace(tzinfo=timezone.utc)
-                if (now - msg_time).total_seconds() < 86400:  # Last 24 hours
-                    recent_activity += 1
-            
-            # Prefer channels with some activity but not currently active
-            if recent_messages:
-                last_message_time = recent_messages[-1]['timestamp']
-                # Ensure timezone consistency
-                if last_message_time.tzinfo is None:
-                    last_message_time = last_message_time.replace(tzinfo=timezone.utc)
-                hours_since_last = (now - last_message_time).total_seconds() / 3600
-            else:
-                hours_since_last = 999  # Very old, no messages
-            
-            # Sweet spot: 1-8 hours since last message, some recent activity (adjusted for 1.5h provocation cycle)
-            if 1 <= hours_since_last <= 8 and recent_activity >= 3:
-                eligible_channels.append((channel, recent_activity, hours_since_last))
-        
-        if not eligible_channels:
-            return None
-        
-        # Sort by recent activity (more = better) then by time since last message (longer = better for provocation)
-        eligible_channels.sort(key=lambda x: (x[1], x[2]), reverse=True)
-        return eligible_channels[0][0]
 
     async def _generate_provocation(self, channel):
         """Generate a contextual conversation starter"""
@@ -1427,62 +1391,71 @@ You're not asking permission - you're starting shit because you want to."""
 
     @tasks.loop(hours=1.5, reconnect=True)  # Compromise: keeps server warm without being naggy
     async def scheduled_provocation(self):
-        """Stir up conversations with daily limit"""
+        """Stir up conversations targeting the channel with the latest message"""
         try:
             # Check daily provocation limit
             today = datetime.now(timezone.utc).date()
             if self.daily_provocation_count[today] >= self.MAX_DAILY_PROVOCATIONS:
                 print(f"\n🔇 SCHEDULED PROVOCATION: Daily limit reached ({self.daily_provocation_count[today]}/{self.MAX_DAILY_PROVOCATIONS})")
                 return
-            
-            if not self.guilds:
-                print(f"🔇 No guilds available for provocation")
+
+            if not self.latest_message_channel:
+                print(f"🔇 No latest message channel tracked yet")
                 return
-            
-            print(f"\n🔥 SCHEDULED PROVOCATION: Looking for conversation opportunities...")
-            
-            total_provocations = 0
-            for guild in self.guilds:
-                try:
-                    target_channel = self._find_engagement_target(guild)
-                    if not target_channel:
-                        print(f"  └─ {guild.name}: No suitable channels for provocation")
-                        continue
-                    
-                    # Generate contextual provocation
-                    provocation = await self._generate_provocation(target_channel)
-                    
-                    # Add some natural typing delay
-                    async with target_channel.typing():
-                        typing_time = min(len(provocation) / 25, 3)
-                        await asyncio.sleep(typing_time)
-                    
-                    # Send the provocation
-                    sent_message = await target_channel.send(provocation)
-                    
-                    # Track it so we don't respond to ourselves
-                    self.unprompted_messages.add(sent_message.id)
-                    self.last_provocation[target_channel.id] = datetime.now(timezone.utc)
-                    
-                    provocation_preview = provocation[:60] + "..." if len(provocation) > 60 else provocation
-                    print(f"  🔥 #{target_channel.name}: \"{provocation_preview}\"")
-                    total_provocations += 1
-                    
-                    # Small delay between servers if multiple
-                    if len(self.guilds) > 1:
-                        await asyncio.sleep(5)
-                        
-                except Exception as e:
-                    print(f"  ❌ Failed to provoke {guild.name}: {e}")
-                    continue
-            
-            if total_provocations > 0:
+
+            print(f"\n🔥 SCHEDULED PROVOCATION: Targeting latest message channel...")
+
+            target_channel = self.latest_message_channel
+
+            # Check if we can send messages to this channel
+            if not target_channel.permissions_for(target_channel.guild.me).send_messages:
+                print(f"  🔇 No permission to send messages in #{target_channel.name}")
+                return
+
+            # Check if we recently provoked this channel (< 1 hour)
+            last_provocation = self.last_provocation.get(target_channel.id)
+            if last_provocation and (datetime.now(timezone.utc) - last_provocation).total_seconds() < 3600:
+                hours_since = (datetime.now(timezone.utc) - last_provocation).total_seconds() / 3600
+                print(f"  🔇 Recently provoked #{target_channel.name} ({hours_since:.1f}h ago)")
+                return
+
+            # Check if the channel is too recently active (< 1 hour since latest message)
+            hours_since_message = (datetime.now(timezone.utc) - self.latest_message_time).total_seconds() / 3600
+            if hours_since_message < 1:
+                print(f"  🔇 Channel #{target_channel.name} too recently active ({hours_since_message:.1f}h ago)")
+                return
+
+            # Check if the channel is too old (> 8 hours since latest message)
+            if hours_since_message > 8:
+                print(f"  🔇 Channel #{target_channel.name} too old for provocation ({hours_since_message:.1f}h ago)")
+                return
+
+            try:
+                # Generate contextual provocation
+                provocation = await self._generate_provocation(target_channel)
+
+                # Add some natural typing delay
+                async with target_channel.typing():
+                    typing_time = min(len(provocation) / 25, 3)
+                    await asyncio.sleep(typing_time)
+
+                # Send the provocation
+                sent_message = await target_channel.send(provocation)
+
+                # Track it so we don't respond to ourselves
+                self.unprompted_messages.add(sent_message.id)
+                self.last_provocation[target_channel.id] = datetime.now(timezone.utc)
+
                 # Update daily provocation count
-                self.daily_provocation_count[today] += total_provocations
-                print(f"🔥 Sent {total_provocations} provocation(s). Daily total: {self.daily_provocation_count[today]}/{self.MAX_DAILY_PROVOCATIONS}")
-            else:
-                print(f"🔇 No provocations sent - all channels recently active or unsuitable")
-                
+                self.daily_provocation_count[today] += 1
+
+                provocation_preview = provocation[:60] + "..." if len(provocation) > 60 else provocation
+                print(f"  🔥 #{target_channel.name}: \"{provocation_preview}\"")
+                print(f"🔥 Sent provocation to latest channel. Daily total: {self.daily_provocation_count[today]}/{self.MAX_DAILY_PROVOCATIONS}")
+
+            except Exception as e:
+                print(f"  ❌ Failed to provoke #{target_channel.name}: {e}")
+
         except Exception as e:
             print(f"❌ Critical error in scheduled provocation: {e}")
             # Don't let the task loop die on errors

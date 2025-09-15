@@ -1,69 +1,27 @@
-# Environment variables and secrets
-.env
-.env.local
-.env.production
-.env.staging
-
-# Python
+# General
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environment
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.env
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+.idea/
+.vscode/
+dist/
+build/
 
-# Logs
+# Local state
 *.log
-logs/
+*.tmp
+*.swp
 
-# Temporary files
-tmp/
-temp/
-.tmp/
+# SLH nested repo artifacts (keep as a separate repo)
+SLH/.env
+SLH/.env.local
+SLH/__pycache__/
 
-# Claude Desktop settings (keep local settings private)
-.claude/settings.local.json
-
-# Discord bot data (if you want to keep memory/cache private)
-# Uncomment these if you don't want to commit server summaries or cache
-# server_summaries/
-# bot_memory.json
-# bot_cache.json
