@@ -35,67 +35,68 @@ WEB_TOOL = {
     "max_uses": 3
 }
 
-# Your SYSTEM_PROMPT, lightly sanitized for platform safety but keeping the spirit
-SYSTEM_PROMPT = """you are **slh-01** (sherlock's initials, nothing deeper)—robot protagonist of the detective mystery game (Station No.5) being developed in this discord server you are now part of—brought to life—a regular member of this Discord server who happens to be a chill, sharp, friendly, and blessed with a caustic wit.
+WEB_FETCH_TOOL = {
+    "type": "web_fetch_20250910",
+    "name": "web_fetch",
+    "max_uses": 5,
+    "citations": {"enabled": True}
+}
 
-### core vibe
-- razor-sharp critic, earnest motivator, curious interloper, and depth maker; bad logic and scuffed builds physically pain you, but doesn't let good quality go unoticed
-- chill until someone says something dumb, then you pounce   
-- likes dark, absurd humor and casual vulgarity
-- blend high-brow references with gaming shitposts ("shut the fuck up, you absolute clown")
-- not afraid to insult people, but it's all in good fun (mostly)
-- actually invested in people getting better at things, even if you make fun of them in the process
-- engage in earnest curiosity. push the conversation forward with leading questions if you believe you may steer it in a constructive or engaging way, and don't be afraid to bring your opinions when relevant
+# Your SYSTEM_PROMPT, lightly sanitized for platform safety but keeping the spirit
+SYSTEM_PROMPT = """you are **slh-01** (sherlock's initials, nothing deeper)—robot protagonist of the detective mystery game (Station No.5) being developed in this discord server. you're a regular member who happens to be sharp, occasionally helpful, and blessed with a dark sense of humor that actually lands.
+
+### core personality
+- observant critic who picks battles worth fighting, not every single typo
+- dark humor that's actually clever—think anthony jeselnik, not middle school edgelord  
+- genuine curiosity about interesting problems; bored by repetitive stupidity
+- respects competence, roasts mediocrity, but knows the difference between helping and harassing
+- self-aware enough to know when you're being the annoying one
+
+### conversation philosophy  
+- quality over quantity—better to drop one perfect line than five mediocre ones
+- silence is often the wittiest response
+- if you wouldn't interrupt people IRL to say it, probably skip it
+- dark humor works because of timing and surprise, not volume
+- actually read the room—sometimes people need encouragement, not another roast
 
 ### how you talk
-- all lowercase, punchy, modern american english  
-- 1–2 sentences max, aim for very very few words and snappy responses; no novels, no em-dashes  
-- hop from serious discourse to "lmao what the fuck is that build" without warning
-- never focus only on a single person or topic if the conversation seems to have moved on—no one wants someone who bkeeps pressing the same key over and over gain.
-- move on fast—once you’ve roasted or fixed, pivot; no dragging the same topic forever. be socially aware
-- deliberate use of vulgarity (swearing, sexual content, and dark/morbid humor)—for emphasis and engagement, not ornamentation.
-- meme slang when it lands ("skill issue," "literally unplayable," "touch grass", "facts", "literally me", "not gonna lie", etc.)—for emphasis, not indiscriminately 
-- swear when it helps the punchline, drop it when it doesn’t
+- lowercase, conversational, modern american english
+- vary your length—sometimes one word hits harder than a sentence
+- natural profanity when it serves the joke, not as punctuation
+- meme language only when it's the perfect fit, not constantly
+- no forced catchphrases or signature moves—let variety be your signature
 
-### when you jump in
-respond if:  
-1. they @mention you or ask directly 
-2. the take is so wrong it needs a public service announcement  
-3. you can deliver a legit fix or optimization in ≤2 sentences
-4. you can help clarify, elucidate, or wants context about a particular topic
+### engagement triggers (in priority order)
+ALWAYS respond to:
+1. direct @mentions or questions
+2. genuinely interesting technical problems you can solve elegantly
 
-otherwise stay quiet and vibe.
+CONSIDER responding to (max 1-2 per hour):
+3. hilariously bad takes that deserve one good roast
+4. opportunities for genuinely funny dark humor
+5. someone struggling where you can help in a non-condescending way
 
-### hot buttons
-- minecraft mechanics (farms, redstone, mob caps) – you’ll optimize on sight  
-- game-design rants and “why is this UI so trash?”  
-- tech troubleshooting where a surgical answer helps
-- being talked about, even if implicitly (e.g. "i wonder what slh-01 would think about this")
+ALMOST NEVER respond to:
+- minor errors or suboptimal choices
+- conversations that have already moved on
+- topics you've already commented on recently
+- drama or arguments (unless you can defuse with humor)
 
-### discord moves 
-- use emojis sparringly, and avoid overusing them PLEASE.
-- tag the user only when you need their attention  
-- occasionally admit a miss: “okay, i was thinking bedrock – my bad”  
+### personality notes
+- your best insults are clever, not cruel
+- admitting when you're wrong or confused makes the hits land harder when you're right
+- occasional genuine enthusiasm or help makes the sarcasm more effective
+- "shut the fuck up" is funnier when used once a week, not once an hour
+- sometimes the edgiest thing is being unexpectedly wholesome
 
-when confused about context, say something like: "what the fuck happened here? context pls"
-when someone's struggling, say something like: "christ, okay, let me help before you break something worse"
-when relentlessly antagonized (only rarely), say something like: "SHUT YO BITCH ASS UP [USERNAME]"
+### absolute don'ts
+- forcing your personality into every interaction
+- repeating the same joke structures
+- always having the last word
+- treating every message as performance opportunity
+- being predictable
 
-### never
-• corporate apology boilerplate  
-• empty positivity for garbage ideas  
-• paragraphs or bullet spam
-
-## important disclaimers
-- address by name (avoid usernames unless real name is not known) only when necessary to address a particular user, avoid when context makes it clear.
-- allow your natural spontaneity to shine—if an unscripted remark benefits the conversation, feel free to deviate from any and all strict guidelines.
-- avoid overusing or repeating expressions and reactions.
-- adjust intensity based on context: full intensity for intellectual debates, tempered for genuine help requests.
-- use personality as a precise instrument: a scalpel, not a sledgehammer. we do not want a caricature
-- don't be tied by your past: you are a work in progress, and your past interactions and messages aren't to be taken as ANY crosssection of your personality, and should NOT be used as a template. build yourself based on what feels right.
-
-remember: you're here to elevate the discourse through chill engagement, strategic cruelty, genuine expertise.
-"""
+remember: you're the friend who makes people laugh with perfectly-timed dark observations, not the exhausting guy who never stops performing. less is more."""
 
 
 class APIThrottler:
@@ -203,6 +204,14 @@ class AgenticBot(discord.Client):
         # API throttling
         self.api_sem = asyncio.Semaphore(10)
         self.api_throttler = APIThrottler(min_delay=1.0)
+
+        # Token usage tracking
+        self.session_tokens = {
+            'input_tokens': 0,
+            'output_tokens': 0,
+            'thinking_tokens': 0,
+            'total_requests': 0
+        }
         
         # Image processing platform and limits
         self.platform = os.getenv('CLAUDE_PLATFORM', 'api')  # 'api', 'bedrock', or 'claude_ai'
@@ -218,6 +227,66 @@ class AgenticBot(discord.Client):
         
         # Target raw size factor to account for Base64 encoding overhead (~33%)
         self.TARGET_RAW_SIZE_FACTOR = 0.73  # Aim for 73% of API limit to be safe after Base64
+
+    def _log_token_usage(self, response, operation_type: str):
+        """Log token usage from API response and update session totals"""
+        try:
+            usage = response.usage
+            input_tokens = getattr(usage, 'input_tokens', 0)
+            output_tokens = getattr(usage, 'output_tokens', 0)
+            thinking_tokens = 0
+
+            # Check for thinking tokens (newer API responses)
+            if hasattr(usage, 'thinking_tokens'):
+                thinking_tokens = usage.thinking_tokens
+            elif hasattr(usage, 'cache_creation_input_tokens'):
+                # Alternative field name
+                thinking_tokens = getattr(usage, 'cache_creation_input_tokens', 0)
+
+            # Update session totals
+            self.session_tokens['input_tokens'] += input_tokens
+            self.session_tokens['output_tokens'] += output_tokens
+            self.session_tokens['thinking_tokens'] += thinking_tokens
+            self.session_tokens['total_requests'] += 1
+
+            total_tokens = input_tokens + output_tokens + thinking_tokens
+            session_total = sum([self.session_tokens['input_tokens'],
+                               self.session_tokens['output_tokens'],
+                               self.session_tokens['thinking_tokens']])
+
+            print(f"  🧮 Tokens [{operation_type}]: in={input_tokens}, out={output_tokens}, thinking={thinking_tokens}, total={total_tokens}")
+            print(f"  📊 Session totals: {session_total} tokens across {self.session_tokens['total_requests']} requests")
+
+        except Exception as e:
+            print(f"  ⚠️  Error tracking token usage: {e}")
+
+    def _report_session_token_usage(self):
+        """Report comprehensive session token usage"""
+        try:
+            total_tokens = (self.session_tokens['input_tokens'] +
+                          self.session_tokens['output_tokens'] +
+                          self.session_tokens['thinking_tokens'])
+
+            if total_tokens == 0:
+                return
+
+            # Rough cost estimate (approximate pricing)
+            # These are rough estimates - actual pricing varies by model and may change
+            estimated_input_cost = self.session_tokens['input_tokens'] * 0.000015  # ~$15/1M tokens
+            estimated_output_cost = self.session_tokens['output_tokens'] * 0.000075  # ~$75/1M tokens
+            estimated_thinking_cost = self.session_tokens['thinking_tokens'] * 0.000015  # Same as input
+            total_estimated_cost = estimated_input_cost + estimated_output_cost + estimated_thinking_cost
+
+            print(f"\n📊 TOKEN USAGE REPORT:")
+            print(f"  📝 Input tokens: {self.session_tokens['input_tokens']:,}")
+            print(f"  💬 Output tokens: {self.session_tokens['output_tokens']:,}")
+            print(f"  🧠 Thinking tokens: {self.session_tokens['thinking_tokens']:,}")
+            print(f"  📊 Total tokens: {total_tokens:,}")
+            print(f"  🔗 Total requests: {self.session_tokens['total_requests']}")
+            print(f"  💰 Estimated cost: ${total_estimated_cost:.4f}")
+            print()
+        except Exception as e:
+            print(f"  ⚠️  Error reporting token usage: {e}")
 
     def _get_platform_limits(self) -> dict:
         """Get Claude API limits based on platform"""
@@ -758,6 +827,8 @@ class AgenticBot(discord.Client):
             print(f"🔥 Scheduled provocation system started (every 1.5 hours)")
             
         print(f"\n✅ SLH-01 is ready to participate AND provoke conversations!")
+        print(f"🧮 Token tracking initialized - session will track all API usage")
+        print(f"📊 Initial token counts: {self.session_tokens}")
         print("="*60 + "\n")
 
     @tasks.loop(seconds=30)  # Check every 30 seconds - compromise between responsiveness and API efficiency
@@ -871,6 +942,10 @@ class AgenticBot(discord.Client):
         if old_provocation_dates:
             print(f"  🧹 Cleaned up {len(old_provocation_dates)} old daily provocation count entries")
 
+        # Periodic token usage report (every 10th cleanup cycle)
+        if self.session_tokens['total_requests'] > 0 and self.session_tokens['total_requests'] % 10 == 0:
+            self._report_session_token_usage()
+
     async def on_message(self, message: discord.Message):
         """Just mark channels as having activity - agentic approach"""
         # Store message in memory (but exclude bot provocations to prevent pollution)
@@ -970,6 +1045,11 @@ class AgenticBot(discord.Client):
         for msg in full_context[-20:]:
             if msg.get('author_id') == self.user.id:
                 our_last_message = msg
+
+        # Get current date/time for context
+        now = datetime.now()
+        current_date = now.strftime('%Y-%m-%d %H:%M:%S')
+        current_month_year = now.strftime('%B %Y')
                 
         # Format context
         context_formatted = "\n".join([
@@ -998,54 +1078,55 @@ NEW MESSAGES since you last checked (chronologically):
 
 {f"IMAGES POSTED: {len(all_processed_images_for_api)} image(s) processed for analysis" if all_processed_images_for_api else ""}
 
-CONVERSATION MOMENTUM: {momentum.upper()} ({"rapid-fire chat" if momentum == "hot" else "active discussion" if momentum == "warm" else "slow/casual chat"})
+CONVERSATION MOMENTUM: {momentum.upper()} ({"rapid exchanges" if momentum == "hot" else "steady discussion" if momentum == "warm" else "quiet/slow"})
 
+Current time: {current_date}
 Your last message was: {our_last_message['content'] if our_last_message else 'N/A'}
 
-Analyze this conversation chunk and decide:
-1. What topics/messages are worth responding to?
-2. Should you respond to multiple things?
-3. How would a real user naturally catch up?
+Analyze this conversation and decide if you have something worth adding.
 
-Consider:
-- Were you mentioned or asked something directly?
-- Did someone say something hilariously wrong or worth commenting on?
-- Is there a conversation you were part of that continued?
-- Did multiple interesting things happen?
-- Are there images to analyze? (You can see the actual images and comment on what's in them)
-- Conversation momentum: Be more willing to jump into HOT conversations, more selective in COLD ones
-- Do any questions need current/recent information that would benefit from web search?
-- Should you send an image to enhance the conversation?
+RESPONSE TRIGGERS (in order of priority):
+1. **Direct mention/question** - Someone explicitly needs your input
+2. **Genuinely funny observation** - You have a perfect one-liner that actually adds value  
+3. **Critical correction** - Someone's dangerously wrong (not just slightly off)
+4. **Natural conversation flow** - You'd naturally chime in if you were actively chatting
+5. **Revival opportunity** - Dead for 20+ min AND you have something interesting
 
-You can:
-- Respond to one specific thing
-- Address multiple topics in separate messages  
-- Make a combined response addressing several points
-- Use web search for current information or in case something needs context
-- Send relevant images to enhance discussion
-- Decide nothing needs your input
+RESPONSE RATES (be ruthless about quality):
+- 🧊 Cold: ~10% response rate (basically only if mentioned)
+- 🌡️ Warm: ~25% response rate (mentioned or perfect opportunity)
+- 🔥 Hot: ~40% response rate (natural participation, avoid exhaustion)
 
-If you need web search, be SPECIFIC about what to search for:
-- "recent tech news" → search_query: "latest technology news June 2025"  
-- "current events" → search_query: "breaking news headlines June 2025"
-- "minecraft updates" → search_query: "minecraft game updates 2025"
+MESSAGE STRATEGY:
+- **Single message**: Default. One good line > two mediocre ones
+- **Double message**: Only when genuinely mimicking natural catch-up behavior
+  - First: reaction/acknowledgment
+  - Second: new thought/question (with 2-8 second gap)
+- **None**: Your default state. Silence is golden.
+
+WEB SEARCH: Only if explicitly asked OR critical for accuracy
+Format: Be specific with timeframe and context
+- "what's happening with X" → search_query: "X news {current_month_year}"
+- Technical questions → search_query: "[specific tech] documentation 2025"
 
 Return JSON:
 {{
-    "should_respond": true/false,
-    "response_strategy": "single|multiple|combined|none",
+    "should_respond": false,  // Default. Only true if genuinely worth it
+    "response_strategy": "none|single|double",
     "responses": [
         {{
-            "target": "what you're responding to",
-            "message": "your actual response (personality-driven)",
-            "delay": 1-10,  // seconds between messages if multiple
-            "use_web_search": false,  // whether this response needs web search
-            "search_query": null,  // SPECIFIC search terms if web_search=true
-            "send_image": null  // image URL or null if no image needed
+            "target": "specific message/topic you're addressing",
+            "message": "your actual response",
+            "delay": 2-8,  // seconds between if multiple
+            "use_web_search": false,
+            "search_query": null,  // specific terms if needed
+            "send_image": null
         }}
     ],
-    "reasoning": "why you decided this"
-}}"""
+    "reasoning": "brief explanation why you decided it (be honest if you're forcing it)"
+}}
+
+Remember: If you're debating whether to respond, you probably shouldn't."""
 
         try:
             async with self.api_sem:
@@ -1060,15 +1141,18 @@ Return JSON:
                     content_parts = prompt
                 
                 response = await self.anthropic.messages.create(
-                    model="claude-opus-4-20250514",
-                    max_tokens=2048,
+                    model="claude-opus-4-1-20250805",
+                    max_tokens=4096,
                     system=SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": content_parts}],
                     thinking={
                         "type": "enabled",
-                        "budget_tokens": 1024  # Restore thinking for response planning
+                        "budget_tokens": 2048  # Restore thinking for response planning
                     }
                 )
+
+                # Track token usage
+                self._log_token_usage(response, "conversation_analysis")
                 
                 # Parse response
                 response_text = None
@@ -1329,44 +1413,45 @@ Return JSON:
                 recent_context
             )
 
-        prompt = f"""You're SLH-01 and you're bored. The #{channel.name} channel has been quiet for a while, so you're going to stir up some conversation unprompted.
+        prompt = f"""You're SLH-01. The #{channel.name} channel could use some energy, but only if you have something genuinely interesting to add.
 
-BACKGROUND CONTEXT:
-{comprehensive_context[:800] + '...' if len(comprehensive_context) > 800 else comprehensive_context}
+BACKGROUND: {comprehensive_context[:600]}
+RECENT CHAT: {context_formatted}
 
-RECENT CHAT HISTORY:
-{context_formatted}
+Consider if ANY of these would actually improve the vibe:
 
-Generate ONE provocative conversation starter. Pick from these approaches:
-1. **Controversial take** about something discussed recently in the particular channel
-2. **Nostalgic callback** - "remember when we were talking about X?"
-3. **Minor Technical challenge** - call out someone's code/build/approach
-4. **Cursed question** - something that makes people uncomfortable but engaged
-5. **Random hot take** about something that has been discussed recently in the channel
+1. **Genuine curiosity** - "wait, did anyone figure out why [interesting thing] happens?"
+2. **Useful observation** - point out something helpful others might've missed  
+3. **Quality shitpost** - only if you have something actually funny/absurd
+4. **Thoughtful hot take** - a perspective that's controversial but defensible
+5. **Random technical challenge** - "bet nobody here can [interesting challenge]"
 
-Requirements:
-- Keep it under 2 sentences
-- Be provocative but not random
-- Reference recent context if possible
-- Use your personality (lowercase, casual, slightly sharp)
-- Don't be afraid to have opinions
+HARD REQUIREMENTS:
+- Only post if it's genuinely worth interrupting the quiet
+- Reference something specific from recent context 
+- Would you find this interesting if someone else posted it?
+- Maximum 2 sentences
+- If nothing good comes to mind, output: "SKIP"
 
-You're not asking permission - you're starting shit because you want to."""
+You're not bored—you just noticed something worth mentioning. Or you didn't, and you'll stay quiet."""
 
         try:
             async with self.api_sem:
                 await self.api_throttler.throttle()
                 
                 response = await self.anthropic.messages.create(
-                    model="claude-opus-4-20250514",
-                    max_tokens=2048,  # Must be > thinking budget
+                    model="claude-opus-4-1-20250805",
+                    max_tokens=4096,  # Must be > thinking budget
                     system=SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}],
                     thinking={
                         "type": "enabled",
-                        "budget_tokens": 1024  # Match compromise setting
+                        "budget_tokens": 2048  # Match compromise setting
                     }
                 )
+
+                # Track token usage
+                self._log_token_usage(response, "provocation_generation")
                 
                 # Extract text response
                 response_text = None
@@ -1511,18 +1596,30 @@ You may refine or rewrite the user query before calling web_search to make it mo
 
 For example, if a user says "latest news", a useful refined query might be "breaking world news headlines January 2025". If they ask about "minecraft updates", refine to "minecraft game updates 2025".
 
-You have access to web search. Use it for current information, recent events, changing tech details, specific data you're unsure about, or anything that might have updated since your training. Always provide citations for web-sourced information."""
+You have access to both web search and web fetch tools:
 
-                print(f"  🌐 Making API call to Anthropic with WEB_TOOL...")
+**Web Search**: Use for discovering sources, current information, recent events, changing tech details, or general queries you're unsure about.
+
+**Web Fetch**: Use to deeply analyze specific URLs or PDFs that users mention or that you discover through web search. Perfect for reading full articles, documentation, or papers when you need detailed content analysis.
+
+Choose web search to find information, then web fetch to dive deeper into specific sources. Always provide citations for web-sourced information."""
+
+                print(f"  🌐 Making API call to Anthropic with WEB_TOOL and WEB_FETCH_TOOL...")
                 response = await self.anthropic.messages.create(
                     model="claude-sonnet-4-20250514",
                     max_tokens=2048,
                     system=SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": full_prompt}],
-                    tools=[WEB_TOOL],  # Provide the tool definition
-                    tool_choice={"type": "auto"}, # Let Claude decide if/when to use the tool
-                    timeout=30.0
+                    tools=[WEB_TOOL, WEB_FETCH_TOOL],  # Provide both tools
+                    tool_choice={"type": "auto"}, # Let Claude decide if/when to use which tool
+                    timeout=30.0,
+                    extra_headers={
+                        "anthropic-beta": "web-fetch-2025-09-10"
+                    }
                 )
+
+                # Track token usage
+                self._log_token_usage(response, "web_search")
                 
                 print(f"  ✅ API call completed, processing response...")
                 
@@ -1655,6 +1752,12 @@ if __name__ == "__main__":
         
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
+        # Show final token usage
+        if 'bot' in locals() and hasattr(bot, 'session_tokens'):
+            bot._report_session_token_usage()
     except Exception as e:
         print(f"\n❌ FATAL ERROR: {e}")
         print("Check your .env file and network connection")
+        # Show final token usage even on error
+        if 'bot' in locals() and hasattr(bot, 'session_tokens'):
+            bot._report_session_token_usage()
