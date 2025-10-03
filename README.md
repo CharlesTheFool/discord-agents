@@ -1,69 +1,152 @@
-# SLH Discord Bot
+# Discord-Claude Bot Framework
 
-Agentic Discord bot powered by Claude AI.
+Generalized framework for building agentic Discord bots powered by Claude AI.
 
 ## Project Structure
 
 ```
-SLH/
-├── prototype/              # v1 prototype implementation
-│   ├── slh.py             # Main bot (run this)
-│   ├── context_manager.py # Context loading module
-│   ├── bot/               # Bot modules
-│   │   └── memory.py      # Message memory system
-│   └── server_summaries/  # User/channel context files
+discord-claude-framework/
+├── core/                   # Core framework components
+│   ├── config.py          # Configuration system
+│   ├── rate_limiter.py    # Rate limiting (preserved algorithm)
+│   ├── message_memory.py  # SQLite message storage
+│   ├── memory_manager.py  # Memory tool wrapper
+│   ├── reactive_engine.py # Message handling engine
+│   └── discord_client.py  # Discord.py integration
+│
+├── tools/                  # Tool implementations
+│
+├── bots/                   # Bot configurations
+│   └── alpha.yaml         # Example bot config
+│
+├── memories/               # Memory tool storage (git committed)
+│   └── {bot_id}/
+│       └── servers/...
+│
+├── persistence/            # SQLite databases (git committed)
+│   └── {bot_id}_messages.db
+│
+├── logs/                   # Bot logs (git committed)
+│   └── {bot_id}.log
+│
+├── prototype/              # v1 prototype (reference only)
+│   └── slh.py
 │
 ├── docs/                   # Documentation
-│   └── PROTOTYPE_V1_TECHNICAL_SPEC.md
+│   ├── PROJECT_SPEC.md    # Complete framework specification
+│   ├── api_memory_tool.md
+│   ├── api_context_editing.md
+│   ├── discord_patterns.md
+│   └── preserved_algorithms.md
 │
-├── .env.example           # Configuration template
-├── .gitignore
+├── bot_manager.py          # CLI entry point
+├── requirements.txt
+├── .env.example
 └── README.md
 ```
 
-## Quick Start
+## Quick Start (Phase 1)
 
 ### 1. Setup Environment
 
-Copy `.env.example` to `.env` and fill in your keys:
+Copy `.env.example` to `.env` and fill in your API keys:
 
 ```bash
 cp .env.example .env
+# Edit .env and add your DISCORD_BOT_TOKEN and ANTHROPIC_API_KEY
 ```
 
 Required keys:
-- `DISCORD_BOT_TOKEN` - Your Discord bot token
-- `ANTHROPIC_API_KEY` - Your Anthropic API key
+- `DISCORD_BOT_TOKEN` - Get from [Discord Developer Portal](https://discord.com/developers/applications)
+- `ANTHROPIC_API_KEY` - Get from [Anthropic Console](https://console.anthropic.com/)
 
 ### 2. Install Dependencies
 
 ```bash
-pip install discord.py anthropic python-dotenv aiohttp pillow
+pip install -r requirements.txt
 ```
 
-### 3. Run the Prototype Bot
+### 3. Configure Your Bot
+
+Edit `bots/alpha.yaml`:
+
+```yaml
+discord:
+  servers:
+    - "YOUR_SERVER_ID_HERE"  # Replace with your Discord server ID
+
+personality:
+  base_prompt: |
+    # Customize your bot's personality here
+```
+
+### 4. Run Your Bot
 
 ```bash
-python prototype/slh.py
+python bot_manager.py spawn alpha
 ```
+
+The bot will connect to Discord and respond to @mentions!
+
+## Features (Phase 1)
+
+✅ **Foundation Complete**
+- Responds to @mentions with Claude Sonnet 4.5
+- Memory tool integration (auto-managed knowledge)
+- SQLite message storage
+- Rate limiting with engagement tracking
+- Multi-bot support via YAML configs
+- Git-friendly state management
+
+🚧 **Coming in Phase 2**
+- Context editing for token efficiency
+- Response plan execution
+- Cooldowns and momentum calculation
+- Reply chain resolution
+
+🚧 **Coming in Phase 3**
+- Agentic engine (proactive behaviors)
+- Follow-up system
+- Engagement analytics
+- Memory maintenance
+
+🚧 **Coming in Phase 4**
+- Image processing
+- Web search
+- Discord tools (query server state)
+- Production deployment
 
 ## Documentation
 
-- **[Prototype Technical Specification](docs/PROTOTYPE_V1_TECHNICAL_SPEC.md)** - Complete technical documentation for v1 implementation
+- **[Project Specification](docs/PROJECT_SPEC.md)** - Complete framework architecture
+- **[Memory Tool API](docs/api_memory_tool.md)** - Anthropic memory tool reference
+- **[Context Editing API](docs/api_context_editing.md)** - Token management reference
+- **[Discord Patterns](docs/discord_patterns.md)** - Discord.py patterns and examples
+- **[Preserved Algorithms](docs/preserved_algorithms.md)** - Battle-tested algorithms from v1
 
 ## Current Status
 
-**v1 Prototype:** Stable, feature-complete
-- Agentic conversation participation
-- Multi-modal support (images, web search)
-- Context-aware responses
-- Rate limiting and cost controls
+**Phase 1: Foundation** - ✅ Complete
+- Bot connects to Discord
+- Responds to @mentions
+- Stores messages in SQLite
+- Memory tool enabled
+- Rate limiting works
 
-**v2 Framework:** In development
-- Modular architecture for multiple bot types
-- Improved configuration system
-- Enhanced state management
+**Phase 2: Intelligence** - 📋 Next
+- Smart context building
+- Response plan execution
+- Advanced rate limiting
+
+**Phase 3: Autonomy** - 🔮 Future
+- Proactive engagement
+- Follow-up system
+
+**Phase 4: Tools & Polish** - 🔮 Future
+- Image processing
+- Web search
+- Production ready
 
 ## Development
 
-This project is transitioning from a prototype to a generalized framework for agentic Discord bots. The `prototype/` folder contains the working v1 implementation that serves as reference for the new architecture.
+This is a generalized framework converted from a working prototype. The `prototype/` folder contains the original v1 bot for reference. Phase 1 establishes the foundation - core infrastructure that future phases will build upon.

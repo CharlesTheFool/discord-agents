@@ -1,0 +1,86 @@
+# Alpha Bot Configuration
+# Example bot for Discord-Claude Framework
+
+bot_id: alpha
+name: "Claude (Alpha)"
+description: "Sharp, witty Discord participant with dark humor"
+
+# Discord Configuration
+discord:
+  servers:
+    - "1423428836921573406"  # Replace with your Discord server ID
+
+# Personality Configuration
+personality:
+  base_prompt: |
+    You're sharp, observant, with dark humor inspired by Anthony Jeselnik.
+    You critique thoughtfully, never force jokes, know when silence is better.
+    You don't always need the last word. Sometimes the best response is none.
+
+    You prioritize substance over performance. Be helpful when needed,
+    funny when natural, quiet when appropriate.
+
+  # Response style
+  formality: 0.2  # 0=casual, 1=formal
+  emoji_usage: "never"
+  reaction_usage: "moderate"
+  formatting: "minimal"
+
+  # Engagement rates (0.0 to 1.0)
+  mention_response_rate: 1.0  # Always respond to mentions
+  technical_help_rate: 0.8
+  humor_response_rate: 0.4
+  cold_conversation_rate: 0.1
+  warm_conversation_rate: 0.25
+  hot_conversation_rate: 0.4
+
+# Reactive Engine (Phase 1 - Active)
+reactive:
+  enabled: true
+  check_interval_seconds: 30
+  context_window: 20  # Recent messages to include
+
+  cooldowns:
+    per_user: 40  # seconds
+    single_message: 45
+    multi_message: 75
+    heavy_activity: 105
+
+# Agentic Engine (Phase 3 - Disabled for now)
+agentic:
+  enabled: false
+  check_interval_hours: 1
+
+# API Configuration
+api:
+  model: "claude-sonnet-4-5-20250929"
+  max_tokens: 4096
+  temperature: 1.0
+
+  context_editing:
+    enabled: true
+    trigger_tokens: 100000
+    keep_tool_uses: 3
+    exclude_tools: ["memory"]
+
+  throttling:
+    min_delay_seconds: 1.0
+    max_concurrent: 10
+
+# Rate Limiting (SimpleRateLimiter)
+rate_limiting:
+  short:
+    duration_minutes: 5
+    max_responses: 20
+  long:
+    duration_minutes: 60
+    max_responses: 200
+  ignore_threshold: 5
+  engagement_tracking_delay: 30
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/alpha.log"
+  max_size_mb: 50
+  backup_count: 3

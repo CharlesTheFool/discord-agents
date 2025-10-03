@@ -1,27 +1,36 @@
-# General
+# Secrets - NEVER commit these
+.env
+
+# Python cache
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
 .Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
-.env
-.DS_Store
-.idea/
-.vscode/
+htmlcov/
+
+# Temporary files
+*.tmp
+*.log.tmp
+
+# Build artifacts
 dist/
 build/
-
-# Local state
-*.log
-*.tmp
-*.swp
-
-# SLH nested repo artifacts (keep as a separate repo)
-SLH/.env
-SLH/.env.local
-SLH/__pycache__/
 

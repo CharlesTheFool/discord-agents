@@ -110,7 +110,7 @@ These need architectural rework:
 - **User Profiles:** Bot manages via memory tool, no manual editing
 - **Configuration:** Centralize in YAML, eliminate hardcoding
 - **State Persistence:** SQLite + JSON, not in-memory only
-- **Multi-Bot Support:** Framework-level, not per-script
+- **Multi-Bot Support:** Framework-level, not per-script. Each bot has its own Discord application and token
 
 ---
 
@@ -174,19 +174,30 @@ aiosqlite>=0.19.0
 
 **.env file (not committed):**
 ```bash
-# Required
-DISCORD_BOT_TOKEN=your_bot_token_here
+# Required: Anthropic API (shared across all bots)
 ANTHROPIC_API_KEY=your_api_key_here
+
+# Required: Discord bot tokens (one per bot identity)
+ALPHA_BOT_TOKEN=your_alpha_bot_token_here
+BETA_BOT_TOKEN=your_beta_bot_token_here
 
 # Optional overrides (defaults in bot configs)
 LOG_LEVEL=INFO
 ```
 
+**Note:** Each bot requires its own Discord application and token. Bot configs reference their token via `token_env_var` field (e.g., `token_env_var: "ALPHA_BOT_TOKEN"`). For Phase 1 testing, one bot/token is sufficient.
+
 **.env.example (committed):**
 ```bash
 # Copy to .env and fill in your keys
-DISCORD_BOT_TOKEN=
+
+# Anthropic API (shared)
 ANTHROPIC_API_KEY=
+
+# Discord bot tokens (one per bot identity)
+# Create separate Discord applications for each bot at:
+# https://discord.com/developers/applications
+ALPHA_BOT_TOKEN=
 
 # Optional
 LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
@@ -205,11 +216,12 @@ pip install -r requirements.txt
 
 # Configure secrets
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env: Add ANTHROPIC_API_KEY and ALPHA_BOT_TOKEN
+# (Get Discord token from https://discord.com/developers/applications)
 
 # Create your first bot config
 cp bots/alpha.yaml bots/mybot.yaml
-# Edit bots/mybot.yaml
+# Edit bots/mybot.yaml (ensure token_env_var matches your .env)
 
 # Spawn bot
 python bot_manager.py spawn mybot
@@ -942,6 +954,7 @@ description: "Sharp, witty Discord participant with dark humor"
 
 # Discord Configuration
 discord:
+  token_env_var: "ALPHA_BOT_TOKEN"  # Environment variable containing Discord bot token
   servers:
     - "123456789012345678"  # Server IDs bot will join
     - "987654321098765432"
