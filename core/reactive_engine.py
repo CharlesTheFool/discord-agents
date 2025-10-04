@@ -10,12 +10,17 @@ import asyncio
 import logging
 from anthropic import Anthropic, AsyncAnthropic
 from typing import Optional, TYPE_CHECKING
+from pathlib import Path
 
 if TYPE_CHECKING:
     from .config import BotConfig
     from .rate_limiter import RateLimiter
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
+    from .conversation_logger import ConversationLogger
+
+from .memory_tool_executor import MemoryToolExecutor
+from .context_builder import ContextBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +65,19 @@ class ReactiveEngine:
 
         # Initialize Anthropic client
         self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
+
+        # Initialize memory tool executor
+        self.memory_tool_executor = MemoryToolExecutor(
+            memory_base_path=Path("memories"),
+            bot_id=config.bot_id
+        )
+
+        # Initialize context builder
+        self.context_builder = ContextBuilder(
+            config=config,
+            message_memory=message_memory,
+            memory_manager=memory_manager
+        )
 
         # Track background tasks for clean shutdown
         self._background_tasks = set()
@@ -107,7 +125,14 @@ class ReactiveEngine:
             return
 
         # Build context
-        context = await self._build_context(message)
+        context = await self.context_builder.build_context(message)
+
+        # Log context building stats
+        if context.get("stats"):
+            self.conversation_logger.log_context_building(**context["stats"])
+
+        # Log cache status
+        self.conversation_logger.log_cache_status(enabled=self.config.api.context_editing.enabled)
 
         # Call Claude API
         logger.info(f"Calling Claude API for @mention from {message.author.name}")
@@ -124,9 +149,24 @@ class ReactiveEngine:
                     api_params = {
                         "model": self.config.api.model,
                         "max_tokens": self.config.api.max_tokens,
-                        "system": context["system_prompt"],
-                        "messages": context["messages"]
+                        "tools": [{"type": "memory_20250818", "name": "memory"}],
+                        "extra_headers": {"anthropic-beta": "context-management-2025-06-27,prompt-caching-2024-07-31"}
                     }
+
+                    # Add system prompt with cache control if context editing enabled
+                    if self.config.api.context_editing.enabled:
+                        api_params["system"] = [
+                            {
+                                "type": "text",
+                                "text": context["system_prompt"],
+                                "cache_control": {"type": "ephemeral"}
+                            }
+                        ]
+                    else:
+                        api_params["system"] = context["system_prompt"]
+
+                    # Add messages
+                    api_params["messages"] = context["messages"]
 
                     # Add extended thinking if enabled
                     if self.config.api.extended_thinking.enabled:
@@ -135,21 +175,80 @@ class ReactiveEngine:
                             "budget_tokens": self.config.api.extended_thinking.budget_tokens
                         }
 
-                    # Call Claude API
-                    response = await self.anthropic.messages.create(**api_params)
+                    # Tool use loop - continue until end_turn
+                    thinking_text = ""
+                    response_text = ""
+                    loop_iteration = 0
 
-                # Extract thinking and text response
-                thinking_text = ""
-                response_text = ""
+                    while True:
+                        loop_iteration += 1
 
-                for block in response.content:
-                    if block.type == "thinking":
-                        thinking_text = block.thinking
-                    elif block.type == "text":
-                        response_text += block.text
+                        # Call Claude API
+                        response = await self.anthropic.messages.create(**api_params)
 
-                if not response_text:
-                    response_text = "I'm not sure how to respond to that."
+                        # Log tool use loop iteration
+                        self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
+
+                        # Extract thinking if present
+                        for block in response.content:
+                            if block.type == "thinking":
+                                thinking_text += block.thinking
+
+                        # Check stop reason
+                        if response.stop_reason == "tool_use":
+                            # Execute tool calls
+                            tool_results = []
+
+                            for block in response.content:
+                                if block.type == "tool_use":
+                                    command = block.input.get('command', 'unknown')
+                                    path = block.input.get('path', 'unknown')
+                                    logger.debug(f"Executing memory tool: {command} {path}")
+
+                                    # Execute memory command
+                                    result = self.memory_tool_executor.execute(block.input)
+
+                                    # Log memory tool operation
+                                    self.conversation_logger.log_memory_tool(command, path, result)
+
+                                    tool_results.append({
+                                        "type": "tool_result",
+                                        "tool_use_id": block.id,
+                                        "content": result
+                                    })
+
+                            # Add assistant message with tool use to conversation
+                            api_params["messages"].append({
+                                "role": "assistant",
+                                "content": response.content
+                            })
+
+                            # Add tool results as user message
+                            api_params["messages"].append({
+                                "role": "user",
+                                "content": tool_results
+                            })
+
+                            # Continue loop for next API call
+                            continue
+
+                        elif response.stop_reason == "end_turn":
+                            # Extract final text response
+                            for block in response.content:
+                                if block.type == "text":
+                                    response_text += block.text
+
+                            if not response_text:
+                                response_text = "I'm not sure how to respond to that."
+
+                            # Exit loop
+                            break
+
+                        else:
+                            # Unexpected stop reason
+                            logger.warning(f"Unexpected stop_reason: {response.stop_reason}")
+                            response_text = "I'm not sure how to respond to that."
+                            break
 
             # Send response (outside semaphore to allow concurrent API calls while sending)
             try:
@@ -177,6 +276,7 @@ class ReactiveEngine:
                 self._track_engagement(
                     sent_message.id,
                     message.channel,
+                    original_author_id=message.author.id,
                     delay=self.config.rate_limiting.engagement_tracking_delay,
                 )
             )
@@ -195,86 +295,8 @@ class ReactiveEngine:
                 f"{message.author.mention} Sorry, I encountered an error processing your request."
             )
 
-    async def _build_context(self, message: discord.Message) -> dict:
-        """
-        Build context for Claude API call.
-
-        Phase 1: Simple context with system prompt and recent messages.
-
-        Args:
-            message: Discord message to build context for
-
-        Returns:
-            Dictionary with system_prompt and messages
-        """
-        # Get system prompt
-        base_prompt = (
-            self.config.personality.base_prompt
-            if self.config.personality
-            else "You are a helpful Discord bot assistant."
-        )
-
-        # Add clarification about conversation history
-        system_prompt = f"""{base_prompt}
-
-IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation."""
-
-        # Get recent messages
-        channel_id = str(message.channel.id)
-        recent_messages = await self.message_memory.get_recent(
-            channel_id, limit=self.config.reactive.context_window
-        )
-
-        # Build messages array for Claude
-        messages = []
-
-        # Add recent message history as context
-        if recent_messages:
-            history_parts = []
-            history_parts.append("# Recent Conversation History")
-            history_parts.append("")
-
-            for msg in recent_messages:
-                # Clarify bot's own messages vs user messages
-                if msg.is_bot:
-                    author_display = "Assistant (you)"
-                else:
-                    author_display = msg.author_name
-                history_parts.append(f"**{author_display}**: {msg.content}")
-
-            history_parts.append("")
-            history_parts.append(f"**{message.author.display_name}**: {message.content}")
-
-            # Add memory context paths
-            if message.guild:
-                server_id = str(message.guild.id)
-                user_ids = [str(message.author.id)]
-
-                # Add unique user IDs from recent messages
-                for msg in recent_messages[-5:]:  # Last 5 messages
-                    if msg.author_id not in user_ids:
-                        user_ids.append(msg.author_id)
-
-                memory_context = self.memory_manager.build_memory_context(
-                    server_id, channel_id, user_ids
-                )
-                history_parts.append("")
-                history_parts.append(memory_context)
-
-            messages.append(
-                {"role": "user", "content": "\n".join(history_parts)}
-            )
-
-        else:
-            # No history, just current message
-            messages.append(
-                {"role": "user", "content": f"{message.author.display_name}: {message.content}"}
-            )
-
-        return {"system_prompt": system_prompt, "messages": messages}
-
     async def _track_engagement(
-        self, message_id: int, channel: discord.TextChannel, delay: int
+        self, message_id: int, channel: discord.TextChannel, original_author_id: int, delay: int
     ):
         """
         Track engagement on bot message.
@@ -284,6 +306,7 @@ IMPORTANT: In the conversation history below, messages marked "Assistant (you)" 
         Args:
             message_id: Discord message ID to track
             channel: Channel where message was sent
+            original_author_id: User ID who originally triggered the bot
             delay: Seconds to wait before checking
         """
         await asyncio.sleep(delay)
@@ -305,45 +328,72 @@ IMPORTANT: In the conversation history below, messages marked "Assistant (you)" 
 
         # Check for reactions
         has_reactions = len(message.reactions) > 0
+        reaction_details = []
+        total_reaction_count = 0
 
-        # Check for replies
-        has_replies = await self._check_for_replies(message, channel)
+        if has_reactions:
+            for reaction in message.reactions:
+                emoji_str = str(reaction.emoji)
+                count = reaction.count
+                total_reaction_count += count
+                reaction_details.append(f"{emoji_str}×{count}")
+
+        # Check for replies or any messages from original user
+        has_replies = await self._check_for_replies(message, channel, original_author_id)
 
         # Record result
         engaged = has_reactions or has_replies
 
         if engaged:
             self.rate_limiter.record_engagement(channel_id)
-            method = "reactions" if has_reactions else "replies"
+
+            # Build detailed method string
+            if has_reactions and has_replies:
+                method = f"reactions ({', '.join(reaction_details)}) + replies"
+            elif has_reactions:
+                method = f"reactions ({', '.join(reaction_details)})"
+            else:
+                method = "replies"
+
             self.conversation_logger.log_engagement_result(engaged=True, method=method)
-            logger.debug(f"Message {message_id}: ENGAGED ({method})")
+            logger.debug(f"Message {message_id}: ENGAGED - {method}")
         else:
             self.rate_limiter.record_ignored(channel_id)
             self.conversation_logger.log_engagement_result(engaged=False)
-            logger.debug(f"Message {message_id}: IGNORED")
+            logger.debug(f"Message {message_id}: IGNORED (no reactions or replies)")
 
     async def _check_for_replies(
-        self, message: discord.Message, channel: discord.TextChannel
+        self, message: discord.Message, channel: discord.TextChannel, original_author_id: int
     ) -> bool:
         """
-        Check if any recent messages reply to this message.
+        Check if user engaged after bot's message.
+
+        Detects engagement via:
+        - Formal Discord replies to bot's message
+        - ANY message from original user in channel (loose engagement)
 
         Args:
-            message: Message to check replies for
+            message: Bot's message to check engagement for
             channel: Channel to search
+            original_author_id: User ID who originally triggered the bot
 
         Returns:
-            True if any replies found
+            True if engagement detected (reply or any message from user)
         """
         try:
-            # Get messages after this one
+            # Get messages after bot's message
             recent = []
             async for msg in channel.history(after=message.created_at, limit=10):
                 recent.append(msg)
 
-            # Check if any reference this message
+            # Check for engagement
             for msg in recent:
+                # Formal reply to bot's message
                 if msg.reference and msg.reference.message_id == message.id:
+                    return True
+
+                # Any message from original user (loose engagement)
+                if msg.author.id == original_author_id:
                     return True
 
             return False

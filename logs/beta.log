@@ -1,0 +1,54 @@
+2025-10-04 15:44:51,188 [INFO] __main__: Initializing bot 'beta'...
+2025-10-04 15:44:51,200 [INFO] __main__: Loaded config for bot 'Claude (Beta)'
+2025-10-04 15:44:51,207 [INFO] core.message_memory: Message memory initialized: persistence\beta_messages.db
+2025-10-04 15:44:51,208 [INFO] __main__: Message memory initialized
+2025-10-04 15:44:51,208 [INFO] core.memory_manager: MemoryManager initialized for bot 'beta' at memories\beta
+2025-10-04 15:44:51,208 [INFO] __main__: Memory manager initialized
+2025-10-04 15:44:51,209 [INFO] core.conversation_logger: ConversationLogger initialized: logs\beta_conversations.log
+2025-10-04 15:44:51,209 [INFO] __main__: Conversation logger initialized
+2025-10-04 15:44:51,210 [INFO] __main__: Rate limiter initialized
+2025-10-04 15:44:51,445 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\beta
+2025-10-04 15:44:51,445 [INFO] core.context_builder: ContextBuilder initialized for bot 'beta'
+2025-10-04 15:44:51,445 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'beta'
+2025-10-04 15:44:51,446 [INFO] __main__: Reactive engine initialized
+2025-10-04 15:44:51,446 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
+2025-10-04 15:44:51,446 [INFO] core.discord_client: Discord client initialized for bot 'beta'
+2025-10-04 15:44:51,447 [INFO] __main__: Discord client initialized
+2025-10-04 15:44:51,447 [INFO] __main__: Bot initialization complete!
+2025-10-04 15:44:51,447 [INFO] __main__: Connecting to Discord...
+2025-10-04 15:44:54,769 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
+2025-10-04 15:44:54,770 [INFO] core.discord_client: Logged into 3 servers
+2025-10-04 15:44:54,770 [INFO] core.discord_client:   - Group No.5 (ID: 1328908030812753980, Members: 8)
+2025-10-04 15:44:54,770 [INFO] core.discord_client:   - Group No.5 GAMIN' (ID: 1416545475485499454, Members: 10)
+2025-10-04 15:44:54,770 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
+2025-10-04 15:44:54,771 [INFO] core.discord_client: Bot is ready!
+2025-10-04 15:45:42,671 [INFO] core.discord_client: @mention from charlesthefool in #phase2-test5: <@1375338513939173406> what's your name?...
+2025-10-04 15:45:43,146 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-04 15:45:48,956 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:45:51,327 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:45:51,644 [INFO] core.reactive_engine: Response sent to charlesthefool (96 chars)
+2025-10-04 15:46:10,805 [INFO] core.discord_client: @mention from charlesthefool in #phase2-test5: What time is it now?...
+2025-10-04 15:46:13,235 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-04 15:46:18,701 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:46:21,275 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:46:21,515 [INFO] core.reactive_engine: Response sent to charlesthefool (144 chars)
+2025-10-04 15:46:28,834 [INFO] core.discord_client: @mention from charlesthefool in #phase2-test4: What time was this message sent? <@137533851393917...
+2025-10-04 15:46:31,579 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-04 15:46:37,998 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:46:42,639 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:46:42,982 [INFO] core.reactive_engine: Response sent to charlesthefool (517 chars)
+2025-10-04 15:46:57,469 [INFO] core.discord_client: @mention from charlesthefool in #phase2-test4_1: <@1375338513939173406> What message am I replying ...
+2025-10-04 15:46:59,463 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-04 15:47:05,356 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:47:08,379 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:47:08,700 [INFO] core.reactive_engine: Response sent to charlesthefool (230 chars)
+2025-10-04 15:47:56,979 [INFO] core.discord_client: @mention from charlesthefool in #phase2-test4_1: No no, I want you to give me the gist of the full ...
+2025-10-04 15:48:00,158 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-04 15:48:07,512 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:48:13,905 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-10-04 15:48:14,137 [INFO] core.reactive_engine: Response sent to charlesthefool (857 chars)
+2025-10-04 15:48:40,270 [INFO] __main__: Shutting down bot...
+2025-10-04 15:48:40,271 [INFO] core.reactive_engine: Cancelling 1 background tasks...
+2025-10-04 15:48:40,271 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
+2025-10-04 15:48:40,273 [INFO] core.message_memory: Message memory closed
+2025-10-04 15:48:40,273 [INFO] __main__: Shutdown complete

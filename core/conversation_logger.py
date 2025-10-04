@@ -168,6 +168,75 @@ class ConversationLogger:
         entry = f"\n[ERROR] {error}\n"
         self._write(entry)
 
+    def log_memory_tool(self, command: str, path: str, result_preview: str):
+        """
+        Log memory tool operation.
+
+        Args:
+            command: Memory command (view/create/str_replace/delete)
+            path: Memory path
+            result_preview: Brief preview of result (truncated)
+        """
+        entry = f"\n[MEMORY_TOOL] {command.upper()} {path}\n"
+        entry += f"  Result: {result_preview[:100]}"
+        if len(result_preview) > 100:
+            entry += "..."
+        entry += "\n"
+        self._write(entry)
+
+    def log_tool_use_loop(self, iteration: int, stop_reason: str):
+        """
+        Log tool use loop iteration.
+
+        Args:
+            iteration: Loop iteration number
+            stop_reason: API stop reason
+        """
+        entry = f"\n[TOOL_LOOP] Iteration {iteration}: {stop_reason}\n"
+        self._write(entry)
+
+    def log_context_building(
+        self,
+        mentions_resolved: int = 0,
+        reply_chain_length: int = 0,
+        recent_messages: int = 0,
+        reactions_found: int = 0
+    ):
+        """
+        Log context building details.
+
+        Args:
+            mentions_resolved: Number of mentions resolved
+            reply_chain_length: Length of reply chain
+            recent_messages: Number of recent messages included
+            reactions_found: Number of messages with reactions
+        """
+        entry = "\n[CONTEXT] Building context:\n"
+        if mentions_resolved > 0:
+            entry += f"  - Resolved {mentions_resolved} @mention(s)\n"
+        if reply_chain_length > 0:
+            entry += f"  - Reply chain: {reply_chain_length} message(s)\n"
+        if recent_messages > 0:
+            entry += f"  - Recent history: {recent_messages} message(s)\n"
+        if reactions_found > 0:
+            entry += f"  - Found reactions on {reactions_found} message(s)\n"
+        self._write(entry)
+
+    def log_cache_status(self, enabled: bool, cache_hit: bool = False):
+        """
+        Log prompt caching status.
+
+        Args:
+            enabled: Whether caching is enabled
+            cache_hit: Whether cache was hit (if known)
+        """
+        if enabled:
+            status = "HIT" if cache_hit else "ENABLED"
+            entry = f"\n[CACHE] Prompt caching: {status}\n"
+        else:
+            entry = "\n[CACHE] Prompt caching: DISABLED\n"
+        self._write(entry)
+
     def log_separator(self):
         """Log conversation separator"""
         entry = f"{'='*60}\n"

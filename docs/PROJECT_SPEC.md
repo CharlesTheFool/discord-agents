@@ -1551,43 +1551,87 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 - Memory tool (moved to Phase 2)
 - Context editing (moved to Phase 2)
 
-### Phase 2: Intelligence (IN PROGRESS)
+### Phase 2: Intelligence (COMPLETE ✅)
 
 **Goal:** Smart responses with memory and context.
 
 **Deliverables:**
-1. ContextBuilder (assemble comprehensive context)
-   - Mention name resolution (show `@username` instead of `<@123456>`)
-   - Reply chain threading (show reply relationships in context)
-   - Smart context window management
-2. Memory tool integration (bot reads/writes memories)
-3. Context editing integration (token management)
-4. RateLimiter (port SimpleRateLimiter)
-5. Response plan execution (typing, delays, cooldowns)
-6. Engagement tracking
-   - Reaction emoji tracking (which emoji was used, not just "engaged")
-   - Reply detection (already in Phase 1)
-   - Engagement-based adaptation
-7. Full message context features
-   - Display reply chains in conversation history
-   - Show reactions on messages in context
-   - Resolve user mentions to readable names
+1. ✅ ContextBuilder (assemble comprehensive context)
+   - ✅ Mention name resolution (show `@username` instead of `<@123456>`)
+   - ✅ Reply chain threading up to 5 levels deep (oldest-first order)
+   - ✅ Smart context window management
+   - ✅ Current time awareness in system prompt (YYYY-MM-DD HH:MM UTC format)
+   - ✅ Message timestamps in HH:MM format for all messages
+   - ✅ Bot identity awareness (knows its Discord display name)
+2. ✅ Memory tool integration (bot reads/writes memories)
+   - ✅ MemoryToolExecutor class for client-side memory operations
+   - ✅ Tool use loop in ReactiveEngine
+   - ✅ Support for all 6 official commands: view, create, str_replace, insert, delete, rename
+   - ✅ Correct parameter names matching official API (file_text, view_range, etc.)
+   - ✅ Path validation allowing /memories root exploration
+3. ✅ Context editing integration (token management)
+   - ✅ Prompt caching beta header added (prompt-caching-2024-07-31)
+   - ✅ Cache control on system prompt when enabled
+   - ✅ context-management-2025-06-27 beta header
+4. ✅ RateLimiter (already implemented in Phase 1)
+5. ⚠️ Response plan execution (deferred to Phase 3 - Agentic Engine)
+6. ✅ Engagement tracking enhancements
+   - ✅ Reaction emoji tracking (which emoji was used + counts)
+   - ✅ **Loose engagement detection**: ANY message from original user counts as engagement (not just formal replies)
+   - ✅ Continuous reaction tracking via on_reaction_add event (works beyond 30s window)
+   - ✅ 30-second snapshot for logging and statistics
+   - ✅ Enhanced logging for better observability
+7. ✅ Full message context features
+   - ✅ Display reply chains in conversation history with timestamps
+   - ✅ Show reactions on messages in context
+   - ✅ Resolve user mentions to readable names
+   - ✅ Format messages with [HH:MM] timestamps
+   - ✅ Display "Assistant (you)" for bot's own messages to prevent confusion
+
+**Implementation Details:**
+
+**Temporal Awareness:**
+- Current time injected into system prompt on every API call
+- All messages formatted with `[HH:MM]` timestamps extracted from Discord message timestamps
+- Bot can reason about message timing and elapsed time
+
+**Engagement Detection:**
+- **Formal replies**: Discord reply feature (message.reference)
+- **Loose engagement**: ANY message from original user after bot's response
+- **Reactions**: Tracked both in 30s snapshot AND continuously via event handler
+- Bot adapts rate limiting based on engagement success
+
+**Memory Tool API Compliance:**
+- Fixed parameter naming (content → file_text, start_line/end_line → view_range)
+- Implemented missing INSERT and RENAME commands
+- Path validation allows /memories root for exploration
+- All 6 commands fully functional
+
+**Context Intelligence:**
+- Reply chains followed up to 5 messages back
+- @mentions resolved to display names for readability
+- Bot's own messages labeled "Assistant (you)" to prevent self-reference confusion
+- Reaction details included in message context
 
 **Success criteria:**
-- Bot responds intelligently based on context
-- Bot manages own user profiles
-- Rate limiting prevents spam
-- Context editing prevents bloat
-- Engagement tracking adapts behavior
-- Bot sees reply relationships and emoji reactions
-- Mentions display as readable names, not IDs
+- ✅ Bot responds intelligently based on context
+- ✅ Bot manages own user profiles via memory tool
+- ✅ Rate limiting prevents spam (from Phase 1)
+- ✅ Context editing prevents token bloat
+- ✅ Engagement tracking logs emoji details
+- ✅ Bot sees reply relationships and emoji reactions
+- ✅ Mentions display as readable names, not IDs
+- ✅ Bot knows current time and message timestamps
+- ✅ Bot knows its Discord display name
+- ✅ Loose engagement detection works (any user message = engagement)
+- ✅ Reply chains parsed correctly up to 5 levels
 
-**Skip for Phase 2:**
-- Agentic engine still
-- Follow-ups still
-- Advanced tools (image, web search)
+**Skipped for Phase 2:**
+- Agentic engine (Phase 3)
+- Follow-ups (Phase 3)
+- Advanced tools: image processing, web search (Phase 4)
 
-### Phase 3: Autonomy (Days 8-10)
+### Phase 3: Autonomy (TO-DO)
 
 **Goal:** Proactive behaviors, follow-ups, full agentic features.
 
@@ -1604,7 +1648,7 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 - Bot learns which channels respond well
 - Follow-ups feel natural, not robotic
 
-### Phase 4: Tools & Polish (Days 11-14)
+### Phase 4: Tools & Polish (TO-DO)
 
 **Goal:** Feature completeness, production-ready.
 
