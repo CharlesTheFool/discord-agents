@@ -1541,12 +1541,21 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 
 **Deliverables:**
 1. ContextBuilder (assemble comprehensive context)
+   - Mention name resolution (show `@username` instead of `<@123456>`)
+   - Reply chain threading (show reply relationships in context)
+   - Smart context window management
 2. Memory tool integration (bot reads/writes memories)
 3. Context editing integration (token management)
 4. RateLimiter (port SimpleRateLimiter)
 5. Response plan execution (typing, delays, cooldowns)
 6. Engagement tracking
-7. Reply chain resolution
+   - Reaction emoji tracking (which emoji was used, not just "engaged")
+   - Reply detection (already in Phase 1)
+   - Engagement-based adaptation
+7. Full message context features
+   - Display reply chains in conversation history
+   - Show reactions on messages in context
+   - Resolve user mentions to readable names
 
 **Success criteria:**
 - Bot responds intelligently based on context
@@ -1554,6 +1563,8 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 - Rate limiting prevents spam
 - Context editing prevents bloat
 - Engagement tracking adapts behavior
+- Bot sees reply relationships and emoji reactions
+- Mentions display as readable names, not IDs
 
 **Skip for Phase 2:**
 - Agentic engine still

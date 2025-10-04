@@ -71,21 +71,22 @@ client = Anthropic(api_key="your-api-key")
 
 response = client.messages.create(
     model="claude-sonnet-4-5-20250929",
-    betas=["context-management-2025-06-27"],  # Required beta header
     context_management={
         "clear_tool_uses_20250919": {}  # Use all defaults
     },
     messages=[...],
-    max_tokens=4096
+    max_tokens=4096,
+    extra_headers={"anthropic-beta": "context-management-2025-06-27"}  # Required
 )
 ```
+
+**Note:** SDK version 0.69.0+ uses `extra_headers` for beta features (not `betas=`).
 
 ### With Custom Threshold
 
 ```python
 response = client.messages.create(
     model="claude-sonnet-4-5-20250929",
-    betas=["context-management-2025-06-27"],
     context_management={
         "clear_tool_uses_20250919": {
             "trigger": {

@@ -39,6 +39,7 @@ class ReactiveEngine:
         message_memory: "MessageMemory",
         memory_manager: "MemoryManager",
         anthropic_api_key: str,
+        conversation_logger: "ConversationLogger",
     ):
         """
         Initialize reactive engine.
@@ -49,14 +50,22 @@ class ReactiveEngine:
             message_memory: Message storage
             memory_manager: Memory tool manager
             anthropic_api_key: Anthropic API key
+            conversation_logger: Conversation logger
         """
         self.config = config
         self.rate_limiter = rate_limiter
         self.message_memory = message_memory
         self.memory_manager = memory_manager
+        self.conversation_logger = conversation_logger
 
         # Initialize Anthropic client
         self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
+
+        # Track background tasks for clean shutdown
+        self._background_tasks = set()
+
+        # Prevent concurrent responses (fixes multiple responses to single mention)
+        self._response_semaphore = asyncio.Semaphore(1)
 
         logger.info(f"ReactiveEngine initialized for bot '{config.bot_id}'")
 
@@ -69,8 +78,24 @@ class ReactiveEngine:
         """
         channel_id = str(message.channel.id)
 
+        # Log incoming message
+        self.conversation_logger.log_user_message(
+            author=message.author.display_name,
+            channel=message.channel.name,
+            content=message.content,
+            is_mention=True
+        )
+
         # Check rate limits
         can_respond, reason = self.rate_limiter.can_respond(channel_id)
+        rate_limit_stats = self.rate_limiter.get_stats(channel_id)
+
+        # Log decision
+        self.conversation_logger.log_decision(
+            should_respond=can_respond,
+            reason="mention detected" if can_respond else reason,
+            rate_limit_stats=rate_limit_stats
+        )
 
         if not can_respond:
             logger.info(f"Cannot respond to @mention: {reason}")
@@ -78,6 +103,7 @@ class ReactiveEngine:
             await message.channel.send(
                 f"{message.author.mention} I'm currently rate-limited. Please try again in a few minutes."
             )
+            self.conversation_logger.log_separator()
             return
 
         # Build context
@@ -87,44 +113,75 @@ class ReactiveEngine:
         logger.info(f"Calling Claude API for @mention from {message.author.name}")
 
         try:
-            # Show typing indicator
-            async with message.channel.typing():
-                # Small delay for more natural feel
-                await asyncio.sleep(1.5)
+            # Acquire semaphore to prevent concurrent API calls
+            async with self._response_semaphore:
+                # Show typing indicator
+                async with message.channel.typing():
+                    # Small delay for more natural feel
+                    await asyncio.sleep(1.5)
 
-                # Call Claude API
-                response = await self.anthropic.messages.create(
-                    model=self.config.api.model,
-                    max_tokens=self.config.api.max_tokens,
-                    temperature=self.config.api.temperature,
-                    betas=["context-management-2025-06-27"],  # Enable context editing
-                    tools=[{"type": "memory"}],  # Enable memory tool
-                    system=context["system_prompt"],
-                    messages=context["messages"],
-                )
+                    # Build API request parameters
+                    api_params = {
+                        "model": self.config.api.model,
+                        "max_tokens": self.config.api.max_tokens,
+                        "system": context["system_prompt"],
+                        "messages": context["messages"]
+                    }
 
-            # Extract text response
-            response_text = ""
-            for block in response.content:
-                if block.type == "text":
-                    response_text += block.text
+                    # Add extended thinking if enabled
+                    if self.config.api.extended_thinking.enabled:
+                        api_params["thinking"] = {
+                            "type": "enabled",
+                            "budget_tokens": self.config.api.extended_thinking.budget_tokens
+                        }
 
-            if not response_text:
-                response_text = "I'm not sure how to respond to that."
+                    # Call Claude API
+                    response = await self.anthropic.messages.create(**api_params)
 
-            # Send response
-            sent_message = await message.channel.send(response_text)
+                # Extract thinking and text response
+                thinking_text = ""
+                response_text = ""
+
+                for block in response.content:
+                    if block.type == "thinking":
+                        thinking_text = block.thinking
+                    elif block.type == "text":
+                        response_text += block.text
+
+                if not response_text:
+                    response_text = "I'm not sure how to respond to that."
+
+            # Send response (outside semaphore to allow concurrent API calls while sending)
+            try:
+                sent_message = await message.channel.send(response_text)
+            except discord.HTTPException as e:
+                logger.error(f"Failed to send response to Discord: {e}")
+                self.conversation_logger.log_error(f"Discord send failed: {str(e)}")
+                self.conversation_logger.log_separator()
+                return
+
+            # Log thinking trace (if present) and bot response
+            if thinking_text:
+                self.conversation_logger.log_thinking(thinking_text, len(thinking_text))
+            self.conversation_logger.log_bot_response(response_text, len(response_text))
 
             # Record response and start engagement tracking
             self.rate_limiter.record_response(channel_id)
 
-            asyncio.create_task(
+            # Log engagement tracking start
+            self.conversation_logger.log_engagement_tracking(started=True)
+            self.conversation_logger.log_separator()
+
+            # Create and track background task
+            task = asyncio.create_task(
                 self._track_engagement(
                     sent_message.id,
                     message.channel,
                     delay=self.config.rate_limiting.engagement_tracking_delay,
                 )
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
             logger.info(
                 f"Response sent to {message.author.name} ({len(response_text)} chars)"
@@ -132,6 +189,8 @@ class ReactiveEngine:
 
         except Exception as e:
             logger.error(f"Error calling Claude API: {e}", exc_info=True)
+            self.conversation_logger.log_error(f"Claude API error: {str(e)}")
+            self.conversation_logger.log_separator()
             await message.channel.send(
                 f"{message.author.mention} Sorry, I encountered an error processing your request."
             )
@@ -149,11 +208,16 @@ class ReactiveEngine:
             Dictionary with system_prompt and messages
         """
         # Get system prompt
-        system_prompt = (
+        base_prompt = (
             self.config.personality.base_prompt
             if self.config.personality
             else "You are a helpful Discord bot assistant."
         )
+
+        # Add clarification about conversation history
+        system_prompt = f"""{base_prompt}
+
+IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation."""
 
         # Get recent messages
         channel_id = str(message.channel.id)
@@ -171,7 +235,11 @@ class ReactiveEngine:
             history_parts.append("")
 
             for msg in recent_messages:
-                author_display = f"{msg.author_name} {'(bot)' if msg.is_bot else ''}"
+                # Clarify bot's own messages vs user messages
+                if msg.is_bot:
+                    author_display = "Assistant (you)"
+                else:
+                    author_display = msg.author_name
                 history_parts.append(f"**{author_display}**: {msg.content}")
 
             history_parts.append("")
@@ -246,12 +314,12 @@ class ReactiveEngine:
 
         if engaged:
             self.rate_limiter.record_engagement(channel_id)
-            logger.debug(
-                f"Message {message_id}: ENGAGED "
-                f"({'reactions' if has_reactions else 'replies'})"
-            )
+            method = "reactions" if has_reactions else "replies"
+            self.conversation_logger.log_engagement_result(engaged=True, method=method)
+            logger.debug(f"Message {message_id}: ENGAGED ({method})")
         else:
             self.rate_limiter.record_ignored(channel_id)
+            self.conversation_logger.log_engagement_result(engaged=False)
             logger.debug(f"Message {message_id}: IGNORED")
 
     async def _check_for_replies(
@@ -282,3 +350,13 @@ class ReactiveEngine:
 
         except discord.HTTPException:
             return False
+
+    async def shutdown(self):
+        """Cancel all background tasks for clean shutdown"""
+        logger.info(f"Cancelling {len(self._background_tasks)} background tasks...")
+        for task in self._background_tasks:
+            task.cancel()
+        # Wait briefly for cancellations to complete
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+        logger.info("ReactiveEngine shutdown complete")

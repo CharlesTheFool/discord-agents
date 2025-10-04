@@ -7,8 +7,9 @@ description: "Sharp, witty Discord participant with dark humor"
 
 # Discord Configuration
 discord:
+  token_env_var: "ALPHA_BOT_TOKEN"  # Environment variable containing Discord bot token
   servers:
-    - "1423428836921573406"  # Replace with your Discord server ID
+    - "1423428836921573406"  # Your Discord server ID
 
 # Personality Configuration
 personality:
@@ -54,8 +55,13 @@ agentic:
 # API Configuration
 api:
   model: "claude-sonnet-4-5-20250929"
-  max_tokens: 4096
-  temperature: 1.0
+  max_tokens: 16000  # Total tokens (thinking + response)
+  # Note: temperature removed - not compatible with extended thinking
+
+  # Extended Thinking - Enables step-by-step reasoning for better responses
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000  # Max tokens for thinking (leaves ~6k for response)
 
   context_editing:
     enabled: true

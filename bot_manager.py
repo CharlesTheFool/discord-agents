@@ -86,16 +86,7 @@ class BotManager:
         # Load environment variables
         load_dotenv()
 
-        # Check required environment variables
-        discord_token = os.getenv("DISCORD_BOT_TOKEN")
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-
-        if not discord_token:
-            raise ValueError("DISCORD_BOT_TOKEN not set in .env file")
-        if not anthropic_key:
-            raise ValueError("ANTHROPIC_API_KEY not set in .env file")
-
-        # Load bot configuration
+        # Load bot configuration first (to get token_env_var)
         config_path = Path(f"bots/{self.bot_id}.yaml")
         if not config_path.exists():
             raise FileNotFoundError(f"Bot config not found: {config_path}")
@@ -103,6 +94,20 @@ class BotManager:
         self.config = BotConfig.load(config_path)
         self.config.validate()
         logger.info(f"Loaded config for bot '{self.config.name}'")
+
+        # Check required environment variables
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if not anthropic_key:
+            raise ValueError("ANTHROPIC_API_KEY not set in .env file")
+
+        # Get Discord token from environment variable specified in config
+        token_env_var = self.config.discord.token_env_var
+        discord_token = os.getenv(token_env_var)
+        if not discord_token:
+            raise ValueError(
+                f"{token_env_var} not set in .env file. "
+                f"This bot's config requires a Discord token in the {token_env_var} environment variable."
+            )
 
         # Update log level from config
         log_level = getattr(logging, self.config.logging.level)
@@ -120,6 +125,12 @@ class BotManager:
         memory_base_path = Path("memories")
         memory_manager = MemoryManager(self.bot_id, memory_base_path)
         logger.info("Memory manager initialized")
+
+        # Initialize conversation logger
+        from core.conversation_logger import ConversationLogger
+        log_dir = Path("logs")
+        conversation_logger = ConversationLogger(self.bot_id, log_dir)
+        logger.info("Conversation logger initialized")
 
         # Initialize rate limiter
         rate_limiter_config = {
@@ -139,6 +150,7 @@ class BotManager:
             message_memory=self.message_memory,
             memory_manager=memory_manager,
             anthropic_api_key=anthropic_key,
+            conversation_logger=conversation_logger,
         )
         logger.info("Reactive engine initialized")
 
@@ -147,6 +159,7 @@ class BotManager:
             config=self.config,
             reactive_engine=reactive_engine,
             message_memory=self.message_memory,
+            conversation_logger=conversation_logger,
         )
         logger.info("Discord client initialized")
 
@@ -166,22 +179,16 @@ class BotManager:
             # Initialize components
             discord_token = await self.initialize()
 
-            # Setup graceful shutdown
-            def handle_shutdown(sig, frame):
-                logger.info(f"Received signal {sig}, shutting down...")
-                asyncio.create_task(self.shutdown())
-
-            signal.signal(signal.SIGINT, handle_shutdown)
-            signal.signal(signal.SIGTERM, handle_shutdown)
-
             # Start bot
             logger.info("Connecting to Discord...")
             await self.client.start(discord_token)
 
+        except KeyboardInterrupt:
+            logger.info("Shutdown requested by user (Ctrl+C)")
         except Exception as e:
             logger.error(f"Fatal error: {e}", exc_info=True)
+        finally:
             await self.shutdown()
-            sys.exit(1)
 
     async def shutdown(self):
         """Graceful shutdown"""
@@ -189,9 +196,15 @@ class BotManager:
         logger.info("Shutting down bot...")
 
         try:
+            # Shutdown reactive engine (cancel background tasks)
+            if hasattr(self, 'client') and self.client and hasattr(self.client, 'reactive_engine'):
+                await self.client.reactive_engine.shutdown()
+
+            # Close Discord connection
             if self.client:
                 await self.client.close()
 
+            # Close database
             if self.message_memory:
                 await self.message_memory.close()
 
@@ -237,12 +250,7 @@ def main():
 
         # Create and run bot
         manager = BotManager(bot_id)
-
-        try:
-            asyncio.run(manager.run())
-        except KeyboardInterrupt:
-            print("\nShutdown requested by user")
-            sys.exit(0)
+        asyncio.run(manager.run())
 
     else:
         print(f"Error: Unknown command '{command}'")

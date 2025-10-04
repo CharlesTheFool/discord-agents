@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .config import BotConfig
     from .reactive_engine import ReactiveEngine
     from .message_memory import MessageMemory
+    from .conversation_logger import ConversationLogger
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class DiscordClient(discord.Client):
         config: "BotConfig",
         reactive_engine: "ReactiveEngine",
         message_memory: "MessageMemory",
+        conversation_logger: "ConversationLogger",
     ):
         """
         Initialize Discord client.
@@ -40,6 +42,7 @@ class DiscordClient(discord.Client):
             config: Bot configuration
             reactive_engine: Reactive engine for message handling
             message_memory: Message storage
+            conversation_logger: Conversation logger
         """
         # Setup intents
         intents = discord.Intents.default()
@@ -53,6 +56,7 @@ class DiscordClient(discord.Client):
         self.config = config
         self.reactive_engine = reactive_engine
         self.message_memory = message_memory
+        self.conversation_logger = conversation_logger
 
         logger.info(f"Discord client initialized for bot '{config.bot_id}'")
 
@@ -84,15 +88,6 @@ class DiscordClient(discord.Client):
         Args:
             message: Discord message object
         """
-        # Ignore bot's own messages
-        if message.author == self.user:
-            return
-
-        # Ignore messages from other bots (optional, configurable)
-        if message.author.bot:
-            logger.debug(f"Ignoring message from bot: {message.author.name}")
-            return
-
         # Only process messages from configured servers
         if message.guild:
             guild_id = str(message.guild.id)
@@ -103,11 +98,19 @@ class DiscordClient(discord.Client):
                     )
                     return
 
-        # Store message in memory
+        # Store ALL messages in memory (including bot's own for context)
         try:
             await self.message_memory.add_message(message)
         except Exception as e:
             logger.error(f"Error storing message: {e}")
+
+        # Don't process bot's own messages or other bots' messages
+        if message.author == self.user:
+            return
+
+        if message.author.bot:
+            logger.debug(f"Ignoring message from bot: {message.author.name}")
+            return
 
         # Check if this is an urgent message (@mention)
         is_mention = self.user in message.mentions
@@ -135,6 +138,46 @@ class DiscordClient(discord.Client):
             logger.debug(
                 f"Message from {message.author.name} in #{message.channel.name} (stored)"
             )
+
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """
+        Message edited.
+
+        Update stored message with new content.
+
+        Args:
+            before: Message before edit
+            after: Message after edit
+        """
+        # Ignore bot's own edits
+        if after.author == self.user:
+            return
+
+        # Ignore edits from other bots
+        if after.author.bot:
+            return
+
+        # Update message in storage
+        try:
+            await self.message_memory.update_message(after)
+            logger.debug(f"Updated edited message from {after.author.name}")
+        except Exception as e:
+            logger.error(f"Error updating edited message: {e}")
+
+    async def on_message_delete(self, message: discord.Message):
+        """
+        Message deleted.
+
+        Remove from storage to maintain accuracy.
+
+        Args:
+            message: Deleted message
+        """
+        try:
+            await self.message_memory.delete_message(message.id)
+            logger.debug(f"Deleted message {message.id} from storage")
+        except Exception as e:
+            logger.error(f"Error deleting message from storage: {e}")
 
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         """

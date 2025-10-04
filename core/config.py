@@ -91,6 +91,13 @@ class ContextEditingConfig:
 
 
 @dataclass
+class ExtendedThinkingConfig:
+    """Extended thinking configuration"""
+    enabled: bool = True
+    budget_tokens: int = 10000  # Max tokens for thinking (min: 1024)
+
+
+@dataclass
 class ThrottlingConfig:
     """API throttling settings"""
     min_delay_seconds: float = 1.0
@@ -110,10 +117,11 @@ class APIConfig:
     """Claude API configuration"""
     model: str = "claude-sonnet-4-5-20250929"
     max_tokens: int = 4096
-    temperature: float = 1.0
+    extended_thinking: ExtendedThinkingConfig = field(default_factory=ExtendedThinkingConfig)
     context_editing: ContextEditingConfig = field(default_factory=ContextEditingConfig)
     throttling: ThrottlingConfig = field(default_factory=ThrottlingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
+    # Note: temperature removed - not compatible with extended thinking
 
 
 @dataclass
@@ -156,6 +164,7 @@ class LoggingConfig:
 @dataclass
 class DiscordConfig:
     """Discord-specific configuration"""
+    token_env_var: str = "DISCORD_BOT_TOKEN"  # Environment variable containing bot token
     servers: List[str] = field(default_factory=list)  # Guild IDs
 
 
@@ -237,6 +246,7 @@ class BotConfig:
         # Parse discord config
         discord_data = data.get("discord", {})
         discord = DiscordConfig(
+            token_env_var=discord_data.get("token_env_var", "DISCORD_BOT_TOKEN"),
             servers=discord_data.get("servers", [])
         )
 
@@ -265,6 +275,13 @@ class BotConfig:
 
         # Parse API config
         api_data = data.get("api", {})
+
+        extended_thinking_data = api_data.get("extended_thinking", {})
+        extended_thinking = ExtendedThinkingConfig(
+            enabled=extended_thinking_data.get("enabled", True),
+            budget_tokens=extended_thinking_data.get("budget_tokens", 10000),
+        )
+
         context_editing_data = api_data.get("context_editing", {})
         context_editing = ContextEditingConfig(
             enabled=context_editing_data.get("enabled", True),
@@ -282,7 +299,7 @@ class BotConfig:
         api = APIConfig(
             model=api_data.get("model", "claude-sonnet-4-5-20250929"),
             max_tokens=api_data.get("max_tokens", 4096),
-            temperature=api_data.get("temperature", 1.0),
+            extended_thinking=extended_thinking,
             context_editing=context_editing,
             throttling=throttling,
         )

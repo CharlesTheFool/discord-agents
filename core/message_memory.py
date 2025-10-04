@@ -155,6 +155,53 @@ class MessageMemory:
             # Message already exists (duplicate ID)
             logger.debug(f"Message {message.id} already stored, skipping")
 
+    async def update_message(self, message: discord.Message):
+        """
+        Update message content when edited.
+
+        Args:
+            message: Edited Discord message
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        # Extract mentions
+        mentions = [str(user.id) for user in message.mentions]
+        mentions_json = json.dumps(mentions)
+
+        await self._db.execute(
+            """
+            UPDATE messages
+            SET content = ?, has_attachments = ?, mentions = ?
+            WHERE message_id = ?
+            """,
+            (
+                message.content,
+                len(message.attachments) > 0,
+                mentions_json,
+                str(message.id),
+            ),
+        )
+        await self._db.commit()
+        logger.debug(f"Updated message {message.id}")
+
+    async def delete_message(self, message_id: int):
+        """
+        Delete message from storage.
+
+        Args:
+            message_id: Discord message ID
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        await self._db.execute(
+            "DELETE FROM messages WHERE message_id = ?",
+            (str(message_id),)
+        )
+        await self._db.commit()
+        logger.debug(f"Deleted message {message_id}")
+
     async def get_recent(
         self, channel_id: str, limit: int = 20
     ) -> List[StoredMessage]:

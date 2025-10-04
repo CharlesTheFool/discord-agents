@@ -46,26 +46,40 @@ client = Anthropic(api_key="your-api-key")
 
 response = client.messages.create(
     model="claude-sonnet-4-5-20250929",
-    betas=["context-management-2025-06-27"],  # Required beta header
-    tools=[{"type": "memory"}],                # Enable memory tool
+    tools=[{"type": "memory_20250818", "name": "memory"}],  # Enable memory tool
     messages=[
         {"role": "user", "content": "Remember that I prefer Python for coding"}
     ],
-    max_tokens=1024
+    max_tokens=1024,
+    extra_headers={"anthropic-beta": "context-management-2025-06-27"}  # Required beta header
 )
 ```
+
+**Important:** The memory tool requires client-side implementation. Claude will return `stop_reason="tool_use"` and you must:
+1. Execute the memory command (view/create/str_replace/etc.)
+2. Return the result to Claude
+3. Continue the conversation loop
 
 ### Implementation Options
 
 **Python:**
-- Use `AbstractMemoryTool` base class
+- Use `BetaAbstractMemoryTool` base class (SDK version 0.69.0+)
 - Implement your own backend (file-based, database, cloud storage, etc.)
 - Example: `examples/memory/basic.py` in anthropic-sdk-python
+- **Note:** SDK version 0.69.0+ required for correct API format
 
 **TypeScript:**
 - Use `betaMemoryTool` helper
 - Flexible backend implementation
 - Example: `examples/tools-helpers-memory.ts` in anthropic-sdk-typescript
+
+**Tool Use Loop Required:**
+Memory is not automatic - you must implement a loop that:
+1. Sends request with memory tool enabled
+2. Checks `response.stop_reason == "tool_use"`
+3. Executes memory commands client-side
+4. Returns results to Claude
+5. Continues conversation until `stop_reason == "end_turn"`
 
 ---
 
