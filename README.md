@@ -6,40 +6,46 @@ Generalized framework for building agentic Discord bots powered by Claude AI.
 
 ```
 discord-claude-framework/
-├── core/                   # Core framework components
-│   ├── config.py          # Configuration system
-│   ├── rate_limiter.py    # Rate limiting (preserved algorithm)
-│   ├── message_memory.py  # SQLite message storage
-│   ├── memory_manager.py  # Memory tool wrapper
-│   ├── reactive_engine.py # Message handling engine
-│   └── discord_client.py  # Discord.py integration
+├── core/                      # Core framework components
+│   ├── config.py             # Configuration system
+│   ├── rate_limiter.py       # Rate limiting (preserved algorithm)
+│   ├── message_memory.py     # SQLite message storage
+│   ├── memory_manager.py     # Memory tool wrapper
+│   ├── memory_tool_executor.py # Client-side memory tool operations (Phase 2)
+│   ├── context_builder.py    # Smart context assembly (Phase 2)
+│   ├── reactive_engine.py    # Message handling engine
+│   ├── conversation_logger.py # Enhanced logging
+│   └── discord_client.py     # Discord.py integration
 │
-├── tools/                  # Tool implementations
+├── tools/                     # Tool implementations
 │
-├── bots/                   # Bot configurations
-│   └── alpha.yaml         # Example bot config
+├── bots/                      # Bot configurations
+│   ├── alpha.yaml            # Example bot config
+│   └── beta.yaml             # Second bot for testing
 │
-├── memories/               # Memory tool storage (git committed)
+├── memories/                  # Memory tool storage (git committed)
 │   └── {bot_id}/
 │       └── servers/...
 │
-├── persistence/            # SQLite databases (git committed)
+├── persistence/               # SQLite databases (git committed)
 │   └── {bot_id}_messages.db
 │
-├── logs/                   # Bot logs (git committed)
-│   └── {bot_id}.log
+├── logs/                      # Bot logs (git committed)
+│   ├── {bot_id}.log
+│   └── {bot_id}_conversations.log
 │
-├── prototype/              # v1 prototype (reference only)
+├── prototype/                 # v1 prototype (reference only)
 │   └── slh.py
 │
-├── docs/                   # Documentation
-│   ├── PROJECT_SPEC.md    # Complete framework specification
+├── docs/                      # Documentation
+│   ├── PROJECT_SPEC.md       # Complete framework specification
+│   ├── PHASE_2_COMPLETE.md   # Phase 2 completion summary
 │   ├── api_memory_tool.md
 │   ├── api_context_editing.md
 │   ├── discord_patterns.md
 │   └── preserved_algorithms.md
 │
-├── bot_manager.py          # CLI entry point
+├── bot_manager.py             # CLI entry point
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -88,21 +94,24 @@ python bot_manager.py spawn alpha
 
 The bot will connect to Discord and respond to @mentions!
 
-## Features (Phase 1)
+## Features
 
-✅ **Foundation Complete**
+✅ **Phase 1: Foundation Complete**
 - Responds to @mentions with Claude Sonnet 4.5
-- Memory tool integration (auto-managed knowledge)
+- Extended thinking integration (step-by-step reasoning)
 - SQLite message storage
 - Rate limiting with engagement tracking
 - Multi-bot support via YAML configs
 - Git-friendly state management
 
-🚧 **Coming in Phase 2**
+✅ **Phase 2: Intelligence Complete**
+- Smart context building with reply chain threading (up to 5 levels)
+- Memory tool integration (all 6 official commands)
+- @Mention resolution to readable names
+- Temporal awareness (current time + message timestamps)
+- Bot identity awareness (knows its Discord name)
+- Loose engagement detection (any user message counts)
 - Context editing for token efficiency
-- Response plan execution
-- Cooldowns and momentum calculation
-- Reply chain resolution
 
 🚧 **Coming in Phase 3**
 - Agentic engine (proactive behaviors)
@@ -126,21 +135,25 @@ The bot will connect to Discord and respond to @mentions!
 
 ## Current Status
 
-**Phase 1: Foundation** - ✅ Complete
+**Phase 1: Foundation** - ✅ Complete (2025-09-30)
 - Bot connects to Discord
 - Responds to @mentions
 - Stores messages in SQLite
-- Memory tool enabled
+- Extended thinking enabled
 - Rate limiting works
 
-**Phase 2: Intelligence** - 📋 Next
-- Smart context building
-- Response plan execution
-- Advanced rate limiting
+**Phase 2: Intelligence** - ✅ Complete (2025-10-04)
+- Smart context building with reply chains
+- Memory tool (6 commands: view, create, str_replace, insert, delete, rename)
+- Temporal awareness (timestamps + current time)
+- Bot identity awareness
+- Loose engagement detection
+- Context editing enabled
 
-**Phase 3: Autonomy** - 🔮 Future
+**Phase 3: Autonomy** - 📋 Next
 - Proactive engagement
 - Follow-up system
+- Engagement analytics
 
 **Phase 4: Tools & Polish** - 🔮 Future
 - Image processing
