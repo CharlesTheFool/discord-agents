@@ -5,12 +5,14 @@ Handles Discord.py setup, event handlers, and bot lifecycle.
 """
 
 import discord
+import asyncio
 import logging
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import BotConfig
     from .reactive_engine import ReactiveEngine
+    from .agentic_engine import AgenticEngine
     from .message_memory import MessageMemory
     from .conversation_logger import ConversationLogger
 
@@ -32,6 +34,7 @@ class DiscordClient(discord.Client):
         self,
         config: "BotConfig",
         reactive_engine: "ReactiveEngine",
+        agentic_engine: Optional["AgenticEngine"],
         message_memory: "MessageMemory",
         conversation_logger: "ConversationLogger",
     ):
@@ -41,6 +44,7 @@ class DiscordClient(discord.Client):
         Args:
             config: Bot configuration
             reactive_engine: Reactive engine for message handling
+            agentic_engine: Agentic engine for autonomous behaviors (Phase 3)
             message_memory: Message storage
             conversation_logger: Conversation logger
         """
@@ -55,6 +59,7 @@ class DiscordClient(discord.Client):
 
         self.config = config
         self.reactive_engine = reactive_engine
+        self.agentic_engine = agentic_engine
         self.message_memory = message_memory
         self.conversation_logger = conversation_logger
 
@@ -76,6 +81,17 @@ class DiscordClient(discord.Client):
         # Set activity status
         activity = discord.Game(name="Powered by Claude Sonnet 4.5")
         await self.change_presence(activity=activity)
+
+        # Give reactive engine access to Discord client for periodic checks (Phase 3)
+        self.reactive_engine.discord_client = self
+
+        # Start periodic conversation scanning (Phase 3)
+        self.reactive_engine.start_periodic_check()
+
+        # Start agentic loop (Phase 3)
+        if self.agentic_engine:
+            asyncio.create_task(self.agentic_engine.agentic_loop())
+            logger.info("Agentic loop started")
 
         logger.info("Bot is ready!")
 
@@ -134,9 +150,11 @@ class DiscordClient(discord.Client):
                     pass
 
         else:
-            # Non-urgent message (Phase 1: skip periodic checking, just store)
+            # Non-urgent message - add to pending for periodic check (Phase 3)
+            channel_id = str(message.channel.id)
+            self.reactive_engine.add_pending_channel(channel_id)
             logger.debug(
-                f"Message from {message.author.name} in #{message.channel.name} (stored)"
+                f"Message from {message.author.name} in #{message.channel.name} (stored, added to pending)"
             )
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message):

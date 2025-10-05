@@ -50,10 +50,30 @@ reactive:
     multi_message: 85
     heavy_activity: 120
 
-# Agentic Engine (Phase 3 - Disabled for now)
+# Agentic Engine (Phase 3 - Autonomous Behaviors)
 agentic:
-  enabled: false
+  enabled: false  # Enable when ready to test Phase 3
   check_interval_hours: 1
+
+  followups:
+    enabled: false
+    auto_create: true
+    max_pending: 20
+    priority_threshold: "medium"
+    follow_up_delay_days: 1
+    max_age_days: 14
+
+  proactive:
+    enabled: false
+    min_idle_hours: 1.0
+    max_idle_hours: 8.0
+    min_provocation_gap_hours: 1.0
+    max_per_day_global: 10
+    max_per_day_per_channel: 3
+    engagement_threshold: 0.3
+    learning_window_days: 7
+    quiet_hours: [0, 1, 2, 3, 4, 5, 6]  # No proactive messages midnight-6am
+    allowed_channels: []  # Add channel IDs when enabling
 
 # API Configuration
 api:

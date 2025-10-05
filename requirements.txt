@@ -5,7 +5,7 @@
 discord.py>=2.3.0
 
 # Anthropic Claude API (context management requires 0.50.0+)
-anthropic>=0.50.0
+anthropic>=0.69.0
 
 # Environment variables
 python-dotenv>=1.0.0

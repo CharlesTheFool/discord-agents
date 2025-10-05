@@ -154,14 +154,32 @@ class BotManager:
         )
         logger.info("Reactive engine initialized")
 
+        # Initialize agentic engine (Phase 3)
+        agentic_engine = None
+        if self.config.agentic.enabled:
+            from core.agentic_engine import AgenticEngine
+
+            agentic_engine = AgenticEngine(
+                config=self.config,
+                memory_manager=memory_manager,
+                message_memory=self.message_memory,
+                anthropic_client=reactive_engine.anthropic,  # Share client
+            )
+            logger.info("Agentic engine initialized")
+
         # Initialize Discord client
         self.client = DiscordClient(
             config=self.config,
             reactive_engine=reactive_engine,
+            agentic_engine=agentic_engine,
             message_memory=self.message_memory,
             conversation_logger=conversation_logger,
         )
         logger.info("Discord client initialized")
+
+        # Set Discord client reference on agentic engine (Phase 3)
+        if agentic_engine:
+            agentic_engine.set_discord_client(self.client)
 
         logger.info("Bot initialization complete!")
 
@@ -199,6 +217,11 @@ class BotManager:
             # Shutdown reactive engine (cancel background tasks)
             if hasattr(self, 'client') and self.client and hasattr(self.client, 'reactive_engine'):
                 await self.client.reactive_engine.shutdown()
+
+            # Shutdown agentic engine (Phase 3)
+            if hasattr(self, 'client') and self.client and hasattr(self.client, 'agentic_engine'):
+                if self.client.agentic_engine:
+                    await self.client.agentic_engine.shutdown()
 
             # Close Discord connection
             if self.client:

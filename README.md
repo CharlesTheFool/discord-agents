@@ -14,6 +14,8 @@ discord-claude-framework/
 │   ├── memory_tool_executor.py # Client-side memory tool operations (Phase 2)
 │   ├── context_builder.py    # Smart context assembly (Phase 2)
 │   ├── reactive_engine.py    # Message handling engine
+│   ├── agentic_engine.py     # Autonomous behaviors (Phase 3)
+│   ├── proactive_action.py   # Proactive action data class (Phase 3)
 │   ├── conversation_logger.py # Enhanced logging
 │   └── discord_client.py     # Discord.py integration
 │
@@ -40,6 +42,7 @@ discord-claude-framework/
 ├── docs/                      # Documentation
 │   ├── PROJECT_SPEC.md       # Complete framework specification
 │   ├── PHASE_2_COMPLETE.md   # Phase 2 completion summary
+│   ├── PHASE_3_COMPLETE.md   # Phase 3 completion summary
 │   ├── api_memory_tool.md
 │   ├── api_context_editing.md
 │   ├── discord_patterns.md
@@ -111,13 +114,16 @@ The bot will connect to Discord and respond to @mentions!
 - Temporal awareness (current time + message timestamps)
 - Bot identity awareness (knows its Discord name)
 - Loose engagement detection (any user message counts)
-- Context editing for token efficiency
+- Context editing for token efficiency (full integration)
 
-🚧 **Coming in Phase 3**
-- Agentic engine (proactive behaviors)
-- Follow-up system
-- Engagement analytics
-- Memory maintenance
+✅ **Phase 3: Autonomy Complete**
+- Agentic engine with hourly background loop
+- Follow-up system (auto-track user events, natural check-ins)
+- Proactive engagement (initiates conversations in idle channels)
+- Adaptive learning (learns channel success rates)
+- Memory maintenance (cleanup old follow-ups)
+- Configurable quiet hours and rate limits
+- Delivery method intelligence (standalone/woven/deferred)
 
 🚧 **Coming in Phase 4**
 - Image processing
@@ -132,6 +138,7 @@ The bot will connect to Discord and respond to @mentions!
 - **[Context Editing API](docs/api_context_editing.md)** - Token management reference
 - **[Discord Patterns](docs/discord_patterns.md)** - Discord.py patterns and examples
 - **[Preserved Algorithms](docs/preserved_algorithms.md)** - Battle-tested algorithms from v1
+- **[Beta Features Tracking](docs/BETA_FEATURES_TRACKING.md)** - Beta API features in use and migration guide
 
 ## Current Status
 
@@ -148,12 +155,15 @@ The bot will connect to Discord and respond to @mentions!
 - Temporal awareness (timestamps + current time)
 - Bot identity awareness
 - Loose engagement detection
-- Context editing enabled
+- Context editing fully integrated
 
-**Phase 3: Autonomy** - 📋 Next
-- Proactive engagement
-- Follow-up system
-- Engagement analytics
+**Phase 3: Autonomy** - ✅ Complete (2025-10-04)
+- AgenticEngine with background loop
+- Follow-up system (tracking + natural check-ins)
+- Proactive engagement (idle channel detection)
+- Adaptive learning (channel success rates)
+- Memory maintenance tasks
+- Complete configuration system
 
 **Phase 4: Tools & Polish** - 🔮 Future
 - Image processing

@@ -85,11 +85,60 @@ class ContextBuilder:
             else "You are a helpful Discord bot assistant."
         )
 
+        # Check if followups are enabled
+        followup_instructions = ""
+        if self.config.agentic and self.config.agentic.followups.enabled:
+            server_id = str(message.guild.id) if message.guild else None
+            if server_id:
+                followups_path = self.memory_manager.get_followups_path(server_id)
+                followup_instructions = f"""
+
+# Follow-Up System
+
+When users mention future events (appointments, deadlines, meetings, trips, etc.), you can create follow-ups to check in later.
+
+To create a follow-up, use the memory tool to write to: {followups_path}
+
+Format (JSON):
+{{
+  "pending": [
+    {{
+      "id": "unique-id-{current_time.replace(' ', '-').replace(':', '')}",
+      "user_id": "<Discord user ID>",
+      "user_name": "<user display name>",
+      "channel_id": "<channel ID>",
+      "event": "<brief description>",
+      "context": "<relevant context>",
+      "mentioned_date": "{current_time}",
+      "follow_up_after": "<ISO 8601 datetime>",
+      "priority": "low|medium|high"
+    }}
+  ],
+  "completed": []
+}}
+
+Only create follow-ups when:
+- User explicitly mentions a specific future event
+- Event has a clear timeframe
+- User would benefit from a check-in
+- User hasn't declined follow-ups
+
+Examples of when to create:
+- "I have a job interview on Friday"
+- "Going on vacation next week"
+- "My exam is tomorrow"
+
+Don't create for:
+- Vague future references
+- Recurring events
+- Past events
+"""
+
         # Add identity, current time, and clarification about conversation history
         system_prompt = f"""You are {bot_display_name}.
 Current time: {current_time}
 
-{base_prompt}
+{base_prompt}{followup_instructions}
 
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation."""
 

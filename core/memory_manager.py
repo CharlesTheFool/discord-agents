@@ -90,6 +90,129 @@ class MemoryManager:
         """
         return f"/memories/{self.bot_id}/servers/{server_id}/followups.json"
 
+    async def get_followups(self, server_id: str) -> Optional[dict]:
+        """
+        Get followups data for server.
+
+        Args:
+            server_id: Discord server/guild ID
+
+        Returns:
+            Followups dict with 'pending' and 'completed' lists, or None
+        """
+        path = self.get_followups_path(server_id)
+        data = await self.read_json(path)
+
+        if not data:
+            # Return empty structure
+            return {"pending": [], "completed": []}
+
+        return data
+
+    async def write_followups(self, server_id: str, data: dict):
+        """
+        Write followups data to file (system-level operation).
+
+        This is used by the system when completing or cleaning up followups,
+        not for Claude-initiated creation (which uses memory tool).
+
+        Args:
+            server_id: Discord server/guild ID
+            data: Followups dict with 'pending' and 'completed' lists
+        """
+        path = self.get_followups_path(server_id)
+
+        # Convert memory tool path to filesystem path
+        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
+        file_path = self.base_path / relative_path
+
+        # Ensure directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
+            logger.debug(f"Wrote followups to {path}")
+
+        except Exception as e:
+            logger.error(f"Error writing followups to {path}: {e}")
+
+    def get_channel_stats_path(self, server_id: str, channel_id: str) -> str:
+        """
+        Get path for channel engagement stats JSON.
+
+        Args:
+            server_id: Discord server ID
+            channel_id: Discord channel ID
+
+        Returns:
+            Memory tool path (e.g., "/memories/alpha/servers/123/channels/456_stats.json")
+        """
+        return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}_stats.json"
+
+    async def get_engagement_stats(self, server_id: str, channel_id: str) -> dict:
+        """
+        Get engagement stats for channel from stats file.
+
+        Args:
+            server_id: Discord server ID
+            channel_id: Discord channel ID
+
+        Returns:
+            Stats dict with success_rate, total_attempts, successful_attempts
+        """
+        path = self.get_channel_stats_path(server_id, channel_id)
+        data = await self.read_json(path)
+
+        if not data:
+            # No data, return defaults
+            return {
+                "success_rate": 0.5,
+                "total_attempts": 0,
+                "successful_attempts": 0,
+            }
+
+        total = data.get("total_attempts", 0)
+        successful = data.get("successful_attempts", 0)
+
+        # Calculate success rate (default to 0.5 if no attempts yet)
+        if total == 0:
+            success_rate = 0.5
+        else:
+            success_rate = successful / total
+
+        return {
+            "success_rate": success_rate,
+            "total_attempts": total,
+            "successful_attempts": successful,
+        }
+
+    async def write_engagement_stats(self, server_id: str, channel_id: str, data: dict):
+        """
+        Write engagement stats to file (system-level operation).
+
+        Args:
+            server_id: Discord server ID
+            channel_id: Discord channel ID
+            data: Stats dict with total_attempts and successful_attempts
+        """
+        path = self.get_channel_stats_path(server_id, channel_id)
+
+        # Convert memory tool path to filesystem path
+        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
+        file_path = self.base_path / relative_path
+
+        # Ensure directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
+            logger.debug(f"Wrote engagement stats to {path}")
+
+        except Exception as e:
+            logger.error(f"Error writing engagement stats to {path}: {e}")
+
     async def read(self, path: str) -> Optional[str]:
         """
         Read memory file.

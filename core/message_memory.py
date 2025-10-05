@@ -327,6 +327,70 @@ class MessageMemory:
         deleted = cursor.rowcount
         logger.info(f"Cleaned up {deleted} messages older than {days} days")
 
+    async def get_active_servers(self) -> List[str]:
+        """
+        Get list of unique server/guild IDs from message history.
+
+        Returns:
+            List of guild IDs that have messages in database
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        cursor = await self._db.execute(
+            "SELECT DISTINCT guild_id FROM messages ORDER BY guild_id"
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [row[0] for row in rows]
+
+    async def get_server_for_channel(self, channel_id: str) -> Optional[str]:
+        """
+        Get server/guild ID for a given channel.
+
+        Args:
+            channel_id: Discord channel ID
+
+        Returns:
+            Guild ID if found, None if channel not in database
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        cursor = await self._db.execute(
+            "SELECT guild_id FROM messages WHERE channel_id = ? LIMIT 1",
+            (channel_id,)
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        return row[0] if row else None
+
+    async def check_user_activity(self, user_id: str, hours: int = 24) -> bool:
+        """
+        Check if user has been active in the last N hours.
+
+        Args:
+            user_id: Discord user ID
+            hours: Number of hours to check (default 24)
+
+        Returns:
+            True if user has posted messages within timeframe, False otherwise
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        cutoff = datetime.now() - timedelta(hours=hours)
+        cursor = await self._db.execute(
+            """
+            SELECT COUNT(*) FROM messages
+            WHERE author_id = ? AND timestamp > ?
+            """,
+            (user_id, cutoff.isoformat())
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        return row[0] > 0 if row else False
+
     def _row_to_message(self, row: aiosqlite.Row) -> StoredMessage:
         """
         Convert database row to StoredMessage.

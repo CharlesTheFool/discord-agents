@@ -266,11 +266,40 @@ class BotConfig:
             cooldowns=cooldowns,
         )
 
-        # Parse agentic config (minimal for Phase 1)
+        # Parse agentic config
         agentic_data = data.get("agentic", {})
+
+        # Parse followups config
+        followups_data = agentic_data.get("followups", {})
+        followups = FollowupsConfig(
+            enabled=followups_data.get("enabled", False),
+            auto_create=followups_data.get("auto_create", True),
+            max_pending=followups_data.get("max_pending", 20),
+            priority_threshold=followups_data.get("priority_threshold", "medium"),
+            follow_up_delay_days=followups_data.get("follow_up_delay_days", 1),
+            max_age_days=followups_data.get("max_age_days", 14),
+        )
+
+        # Parse proactive config
+        proactive_data = agentic_data.get("proactive", {})
+        proactive = ProactiveConfig(
+            enabled=proactive_data.get("enabled", False),
+            min_idle_hours=proactive_data.get("min_idle_hours", 1.0),
+            max_idle_hours=proactive_data.get("max_idle_hours", 8.0),
+            min_provocation_gap_hours=proactive_data.get("min_provocation_gap_hours", 1.0),
+            max_per_day_global=proactive_data.get("max_per_day_global", 10),
+            max_per_day_per_channel=proactive_data.get("max_per_day_per_channel", 3),
+            engagement_threshold=proactive_data.get("engagement_threshold", 0.3),
+            learning_window_days=proactive_data.get("learning_window_days", 7),
+            quiet_hours=proactive_data.get("quiet_hours", [0, 6]),
+            allowed_channels=proactive_data.get("allowed_channels", []),
+        )
+
         agentic = AgenticConfig(
             enabled=agentic_data.get("enabled", False),
             check_interval_hours=agentic_data.get("check_interval_hours", 1),
+            followups=followups,
+            proactive=proactive,
         )
 
         # Parse API config
