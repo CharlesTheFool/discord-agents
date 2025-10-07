@@ -79,6 +79,31 @@ class MessageMemory:
 
     CREATE INDEX IF NOT EXISTS idx_author
     ON messages(author_id);
+
+    -- FTS5 virtual table for full-text search
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        message_id UNINDEXED,
+        content,
+        author_name,
+        content='messages',
+        content_rowid='id'
+    );
+
+    -- Triggers to keep FTS5 table in sync
+    CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts(rowid, message_id, content, author_name)
+        VALUES (new.id, new.message_id, new.content, new.author_name);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+        DELETE FROM messages_fts WHERE rowid = old.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+        UPDATE messages_fts
+        SET content = new.content, author_name = new.author_name
+        WHERE rowid = new.id;
+    END;
     """
 
     def __init__(self, db_path: Path):
@@ -390,6 +415,59 @@ class MessageMemory:
         row = await cursor.fetchone()
         await cursor.close()
         return row[0] > 0 if row else False
+
+    async def search_messages(
+        self,
+        query: str,
+        channel_id: Optional[str] = None,
+        author_id: Optional[str] = None,
+        limit: int = 20
+    ) -> List[StoredMessage]:
+        """
+        Full-text search of message content using FTS5.
+
+        Args:
+            query: Search query (supports FTS5 syntax)
+            channel_id: Optional channel ID to filter results
+            author_id: Optional author ID to filter results
+            limit: Maximum results to return (default 20)
+
+        Returns:
+            List of matching messages, ordered by relevance
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        # Build query with optional filters
+        filters = []
+        params = [query]
+
+        if channel_id:
+            filters.append("m.channel_id = ?")
+            params.append(channel_id)
+
+        if author_id:
+            filters.append("m.author_id = ?")
+            params.append(author_id)
+
+        where_clause = " AND ".join(filters) if filters else "1=1"
+        params.append(limit)
+
+        # Execute FTS5 search
+        cursor = await self._db.execute(
+            f"""
+            SELECT m.*
+            FROM messages_fts
+            JOIN messages m ON messages_fts.rowid = m.id
+            WHERE messages_fts MATCH ? AND {where_clause}
+            ORDER BY rank
+            LIMIT ?
+            """,
+            tuple(params),
+        )
+
+        rows = await cursor.fetchall()
+        return [self._row_to_message(row) for row in rows]
 
     def _row_to_message(self, row: aiosqlite.Row) -> StoredMessage:
         """

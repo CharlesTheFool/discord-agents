@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .reactive_engine import ReactiveEngine
     from .agentic_engine import AgenticEngine
     from .message_memory import MessageMemory
+    from .user_cache import UserCache
     from .conversation_logger import ConversationLogger
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ class DiscordClient(discord.Client):
         reactive_engine: "ReactiveEngine",
         agentic_engine: Optional["AgenticEngine"],
         message_memory: "MessageMemory",
+        user_cache: "UserCache",
         conversation_logger: "ConversationLogger",
     ):
         """
@@ -167,6 +169,7 @@ class DiscordClient(discord.Client):
             reactive_engine: Reactive engine for message handling
             agentic_engine: Agentic engine for autonomous behaviors (Phase 3)
             message_memory: Message storage
+            user_cache: User information cache (Phase 4)
             conversation_logger: Conversation logger
         """
         # Setup intents
@@ -182,6 +185,7 @@ class DiscordClient(discord.Client):
         self.reactive_engine = reactive_engine
         self.agentic_engine = agentic_engine
         self.message_memory = message_memory
+        self.user_cache = user_cache
         self.conversation_logger = conversation_logger
 
         logger.info(f"Discord client initialized for bot '{config.bot_id}'")
@@ -205,6 +209,14 @@ class DiscordClient(discord.Client):
 
         # Give reactive engine access to Discord client for periodic checks (Phase 3)
         self.reactive_engine.discord_client = self
+
+        # Initialize Discord tools executor (Phase 4)
+        from tools.discord_tools import DiscordToolExecutor
+        self.reactive_engine.discord_tool_executor = DiscordToolExecutor(
+            message_memory=self.message_memory,
+            user_cache=self.user_cache
+        )
+        logger.info("Discord tools enabled")
 
         # Start periodic conversation scanning (Phase 3)
         self.reactive_engine.start_periodic_check()
@@ -240,6 +252,12 @@ class DiscordClient(discord.Client):
             await self.message_memory.add_message(message)
         except Exception as e:
             logger.error(f"Error storing message: {e}")
+
+        # Update user cache (Phase 4)
+        try:
+            await self.user_cache.update_user(message.author, increment_messages=True)
+        except Exception as e:
+            logger.error(f"Error updating user cache: {e}")
 
         # Don't process bot's own messages or other bots' messages
         if message.author == self.user:

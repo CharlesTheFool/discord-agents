@@ -13,11 +13,18 @@ import logging
 import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
+import sys
+import os
+
+# Add tools directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 if TYPE_CHECKING:
     from .config import BotConfig
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
+
+from tools.image_processor import ImageProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +57,7 @@ class ContextBuilder:
         self.config = config
         self.message_memory = message_memory
         self.memory_manager = memory_manager
+        self.image_processor = ImageProcessor()
 
         logger.info(f"ContextBuilder initialized for bot '{config.bot_id}'")
 
@@ -68,7 +76,8 @@ class ContextBuilder:
             "mentions_resolved": 0,
             "reply_chain_length": 0,
             "recent_messages": 0,
-            "reactions_found": 0
+            "reactions_found": 0,
+            "images_processed": 0
         }
         # Get bot's Discord display name
         bot_display_name = "Assistant"
@@ -235,9 +244,21 @@ IMPORTANT: In the conversation history below, messages marked "Assistant (you)" 
                 history_parts.append("")
                 history_parts.append(memory_context)
 
-            messages.append(
-                {"role": "user", "content": "\n".join(history_parts)}
-            )
+            # Process images from current message
+            images = await self.process_images(message)
+            if images:
+                stats["images_processed"] = len(images)
+                # Content becomes array with text and images
+                content_parts = [{"type": "text", "text": "\n".join(history_parts)}]
+                content_parts.extend(images)
+                messages.append(
+                    {"role": "user", "content": content_parts}
+                )
+            else:
+                # No images, use string content
+                messages.append(
+                    {"role": "user", "content": "\n".join(history_parts)}
+                )
 
         else:
             # No history, just current message with full context
@@ -252,9 +273,21 @@ IMPORTANT: In the conversation history below, messages marked "Assistant (you)" 
             if has_reactions:
                 stats["reactions_found"] += 1
 
-            messages.append(
-                {"role": "user", "content": message_with_context}
-            )
+            # Process images from current message
+            images = await self.process_images(message)
+            if images:
+                stats["images_processed"] = len(images)
+                # Content becomes array with text and images
+                content_parts = [{"type": "text", "text": message_with_context}]
+                content_parts.extend(images)
+                messages.append(
+                    {"role": "user", "content": content_parts}
+                )
+            else:
+                # No images, use string content
+                messages.append(
+                    {"role": "user", "content": message_with_context}
+                )
 
         return {"system_prompt": system_prompt, "messages": messages, "stats": stats}
 
@@ -379,3 +412,44 @@ IMPORTANT: In the conversation history below, messages marked "Assistant (you)" 
                 parts.append(f"  *(Replying to {replied_author}: \"{replied_content}\")*")
 
         return "\n".join(parts), has_reactions
+
+    async def process_images(self, message: discord.Message) -> List[Dict]:
+        """
+        Process image attachments from message.
+
+        Args:
+            message: Discord message with potential attachments
+
+        Returns:
+            List of processed images in Claude API format
+        """
+        if not message.attachments:
+            return []
+
+        # Filter to only images
+        image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+        image_attachments = [
+            attachment for attachment in message.attachments
+            if any(attachment.filename.lower().endswith(ext) for ext in image_extensions)
+        ]
+
+        if not image_attachments:
+            return []
+
+        # Limit to 5 images (Claude API limit)
+        if len(image_attachments) > 5:
+            logger.warning(f"Message has {len(image_attachments)} images, limiting to 5")
+            image_attachments = image_attachments[:5]
+
+        # Process each image
+        processed_images = []
+        for attachment in image_attachments:
+            try:
+                processed = await self.image_processor.process_attachment(attachment)
+                if processed:
+                    processed_images.append(processed)
+                    logger.info(f"Processed image: {attachment.filename}")
+            except Exception as e:
+                logger.error(f"Failed to process image {attachment.filename}: {e}")
+
+        return processed_images

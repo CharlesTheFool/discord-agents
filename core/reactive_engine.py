@@ -11,6 +11,11 @@ import logging
 from anthropic import Anthropic, AsyncAnthropic
 from typing import Optional, TYPE_CHECKING
 from pathlib import Path
+import sys
+import os
+
+# Add tools directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 if TYPE_CHECKING:
     from .config import BotConfig
@@ -21,6 +26,8 @@ if TYPE_CHECKING:
 
 from .memory_tool_executor import MemoryToolExecutor
 from .context_builder import ContextBuilder
+from tools.web_search import WebSearchManager, get_web_search_tools
+from tools.discord_tools import DiscordToolExecutor, get_discord_tools
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +85,21 @@ class ReactiveEngine:
             message_memory=message_memory,
             memory_manager=memory_manager
         )
+
+        # Initialize web search manager if enabled
+        self.web_search_manager = None
+        if config.api.web_search.enabled:
+            stats_file = Path("persistence") / f"{config.bot_id}_web_search_stats.json"
+            self.web_search_manager = WebSearchManager(
+                stats_file=stats_file,
+                max_daily=config.api.web_search.max_daily
+            )
+            logger.info(f"Web search enabled (max_daily={config.api.web_search.max_daily})")
+
+        # Initialize Discord tool executor (Phase 4)
+        # Get user_cache from discord_client once it's set in on_ready
+        self.discord_tool_executor = None
+        self._discord_tools_enabled = True  # Always enabled for Phase 4
 
         # Track background tasks for clean shutdown
         self._background_tasks = set()
@@ -152,11 +174,30 @@ class ReactiveEngine:
                     await asyncio.sleep(1.5)
 
                     # Build API request parameters
+                    tools = [{"type": "memory_20250818", "name": "memory"}]
+
+                    # Add Discord tools if enabled (Phase 4)
+                    if self.discord_tool_executor:
+                        tools.extend(get_discord_tools())
+                        logger.debug("Discord tools added to API request")
+
+                    # Add web search tools if enabled and quota available
+                    beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
+                    if self.web_search_manager:
+                        can_search, reason = self.web_search_manager.can_search()
+                        if can_search:
+                            max_uses = self.config.api.web_search.max_per_request
+                            tools.extend(get_web_search_tools(max_uses=max_uses))
+                            beta_headers.append("web-fetch-2025-09-10")
+                            logger.debug(f"Web search tools added to API request (max_uses={max_uses})")
+                        else:
+                            logger.debug(f"Web search disabled for this request: {reason}")
+
                     api_params = {
                         "model": self.config.api.model,
                         "max_tokens": self.config.api.max_tokens,
-                        "tools": [{"type": "memory_20250818", "name": "memory"}],
-                        "extra_headers": {"anthropic-beta": "context-management-2025-06-27,prompt-caching-2024-07-31"}
+                        "tools": tools,
+                        "extra_headers": {"anthropic-beta": ",".join(beta_headers)}
                     }
 
                     # Add context management if enabled
@@ -257,21 +298,48 @@ class ReactiveEngine:
 
                             for block in response.content:
                                 if block.type == "tool_use":
-                                    command = block.input.get('command', 'unknown')
-                                    path = block.input.get('path', 'unknown')
-                                    logger.debug(f"Executing memory tool: {command} {path}")
+                                    # Handle memory tool
+                                    if block.name == "memory":
+                                        command = block.input.get('command', 'unknown')
+                                        path = block.input.get('path', 'unknown')
+                                        logger.debug(f"Executing memory tool: {command} {path}")
 
-                                    # Execute memory command
-                                    result = self.memory_tool_executor.execute(block.input)
+                                        # Execute memory command
+                                        result = self.memory_tool_executor.execute(block.input)
 
-                                    # Log memory tool operation
-                                    self.conversation_logger.log_memory_tool(command, path, result)
+                                        # Log memory tool operation
+                                        self.conversation_logger.log_memory_tool(command, path, result)
 
-                                    tool_results.append({
-                                        "type": "tool_result",
-                                        "tool_use_id": block.id,
-                                        "content": result
-                                    })
+                                        tool_results.append({
+                                            "type": "tool_result",
+                                            "tool_use_id": block.id,
+                                            "content": result
+                                        })
+
+                                    # Handle Discord tools (Phase 4)
+                                    elif block.name == "discord_tools":
+                                        if self.discord_tool_executor:
+                                            command = block.input.get('command', 'unknown')
+                                            logger.debug(f"Executing Discord tool: {command}")
+
+                                            # Execute Discord tool
+                                            result = await self.discord_tool_executor.execute(block.input)
+
+                                            tool_results.append({
+                                                "type": "tool_result",
+                                                "tool_use_id": block.id,
+                                                "content": result
+                                            })
+
+                                    # Web search tools are handled directly by API
+                                    # Record usage for quota tracking
+                                    elif block.name in ["web_search", "web_fetch"]:
+                                        if self.web_search_manager:
+                                            self.web_search_manager.record_search()
+                                            logger.info(f"Web search performed: {block.name}")
+
+                                        # No tool_result needed - API handles these tools directly
+                                        # They don't appear in tool_use blocks that need manual execution
 
                             # Add assistant message with tool use to conversation
                             api_params["messages"].append({
@@ -673,13 +741,32 @@ class ReactiveEngine:
             system_prompt = self._build_response_decision_prompt(context)
 
             # Prepare API parameters
+            tools = [{"type": "memory_20250818", "name": "memory"}]
+
+            # Add Discord tools if enabled (Phase 4)
+            if self.discord_tool_executor:
+                tools.extend(get_discord_tools())
+                logger.debug("Discord tools added to periodic check")
+
+            # Add web search tools if enabled and quota available
+            beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
+            if self.web_search_manager:
+                can_search, reason = self.web_search_manager.can_search()
+                if can_search:
+                    max_uses = self.config.api.web_search.max_per_request
+                    tools.extend(get_web_search_tools(max_uses=max_uses))
+                    beta_headers.append("web-fetch-2025-09-10")
+                    logger.debug(f"Web search tools added to periodic check (max_uses={max_uses})")
+                else:
+                    logger.debug(f"Web search disabled for periodic check: {reason}")
+
             api_params = {
                 "model": self.config.api.model,
                 "max_tokens": self.config.api.max_tokens,
                 "system": system_prompt,
                 "messages": context["messages"],
-                "tools": [{"type": "memory_20250818", "name": "memory"}],
-                "extra_headers": {"anthropic-beta": "context-management-2025-06-27,prompt-caching-2024-07-31"}
+                "tools": tools,
+                "extra_headers": {"anthropic-beta": ",".join(beta_headers)}
             }
 
             # Add extended thinking if enabled
@@ -741,12 +828,30 @@ class ReactiveEngine:
                         tool_results = []
                         for content_block in response.content:
                             if content_block.type == "tool_use":
-                                result = self.memory_tool_executor.execute(content_block.input)
-                                tool_results.append({
-                                    "type": "tool_result",
-                                    "tool_use_id": content_block.id,
-                                    "content": result
-                                })
+                                # Handle memory tool
+                                if content_block.name == "memory":
+                                    result = self.memory_tool_executor.execute(content_block.input)
+                                    tool_results.append({
+                                        "type": "tool_result",
+                                        "tool_use_id": content_block.id,
+                                        "content": result
+                                    })
+
+                                # Handle Discord tools (Phase 4)
+                                elif content_block.name == "discord_tools":
+                                    if self.discord_tool_executor:
+                                        result = await self.discord_tool_executor.execute(content_block.input)
+                                        tool_results.append({
+                                            "type": "tool_result",
+                                            "tool_use_id": content_block.id,
+                                            "content": result
+                                        })
+
+                                # Record web search usage
+                                elif content_block.name in ["web_search", "web_fetch"]:
+                                    if self.web_search_manager:
+                                        self.web_search_manager.record_search()
+                                        logger.info(f"Web search performed (periodic): {content_block.name}")
 
                         # Continue conversation with tool results
                         api_params["messages"].append({"role": "assistant", "content": response.content})

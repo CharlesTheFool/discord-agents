@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
 
 from .proactive_action import ProactiveAction
+from .engagement_tracker import EngagementTracker
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ class AgenticEngine:
         self._proactive_counts_global = 0
         self._proactive_counts_per_channel = {}  # {channel_id: count}
         self._rate_limit_reset_date = datetime.now().date()
+
+        # Initialize engagement tracker (Phase 4)
+        tracker_file = Path("persistence") / f"{config.bot_id}_engagement_stats.json"
+        self.engagement_tracker = EngagementTracker(tracker_file)
+        logger.info("Engagement tracker initialized")
 
         logger.info(f"AgenticEngine initialized for bot '{config.bot_id}'")
 
@@ -510,8 +516,17 @@ class AgenticEngine:
             from .discord_client import split_message
             message_chunks = split_message(message)
 
+            sent_message = None
             for i, chunk in enumerate(message_chunks):
-                await channel.send(chunk)
+                sent_message = await channel.send(chunk)
+
+            # Track engagement (Phase 4)
+            if sent_message:
+                self.engagement_tracker.record_proactive_message(
+                    message_id=str(sent_message.id),
+                    channel_id=action.channel_id,
+                    topic="followup"
+                )
 
             logger.info(f"Sent follow-up message to channel {action.channel_id} ({len(message_chunks)} chunk{'s' if len(message_chunks) > 1 else ''})")
 
@@ -767,6 +782,14 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             sent_message = None
             for i, chunk in enumerate(message_chunks):
                 sent_message = await channel.send(chunk)
+
+            # Track engagement (Phase 4)
+            if sent_message:
+                self.engagement_tracker.record_proactive_message(
+                    message_id=str(sent_message.id),
+                    channel_id=action.channel_id,
+                    topic="proactive"
+                )
 
             logger.info(f"Sent proactive message to channel {action.channel_id} ({len(message_chunks)} chunk{'s' if len(message_chunks) > 1 else ''}): {generated_message[:50]}...")
 

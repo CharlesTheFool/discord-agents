@@ -325,12 +325,20 @@ class BotConfig:
             max_concurrent=throttling_data.get("max_concurrent", 10),
         )
 
+        web_search_data = api_data.get("web_search", {})
+        web_search = WebSearchConfig(
+            enabled=web_search_data.get("enabled", False),
+            max_daily=web_search_data.get("max_daily", 300),
+            max_per_request=web_search_data.get("max_per_request", 3),
+        )
+
         api = APIConfig(
             model=api_data.get("model", "claude-sonnet-4-5-20250929"),
             max_tokens=api_data.get("max_tokens", 4096),
             extended_thinking=extended_thinking,
             context_editing=context_editing,
             throttling=throttling,
+            web_search=web_search,
         )
 
         # Parse rate limiting config

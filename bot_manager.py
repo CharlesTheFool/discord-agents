@@ -27,6 +27,7 @@ from core.message_memory import MessageMemory
 from core.memory_manager import MemoryManager
 from core.reactive_engine import ReactiveEngine
 from core.discord_client import DiscordClient
+from core.user_cache import UserCache
 
 
 class BotManager:
@@ -121,6 +122,12 @@ class BotManager:
         await self.message_memory.initialize()
         logger.info("Message memory initialized")
 
+        # Initialize user cache (Phase 4)
+        user_cache_path = Path("persistence") / f"{self.bot_id}_users.db"
+        user_cache = UserCache(user_cache_path)
+        await user_cache.initialize()
+        logger.info("User cache initialized")
+
         # Initialize memory manager
         memory_base_path = Path("memories")
         memory_manager = MemoryManager(self.bot_id, memory_base_path)
@@ -173,6 +180,7 @@ class BotManager:
             reactive_engine=reactive_engine,
             agentic_engine=agentic_engine,
             message_memory=self.message_memory,
+            user_cache=user_cache,
             conversation_logger=conversation_logger,
         )
         logger.info("Discord client initialized")

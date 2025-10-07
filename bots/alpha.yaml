@@ -101,6 +101,12 @@ api:
     min_delay_seconds: 1.0
     max_concurrent: 10
 
+  # Web Search (Phase 4) - Built-in Anthropic tools
+  web_search:
+    enabled: true
+    max_daily: 300  # Daily quota limit
+    max_per_request: 3  # Max searches per API call (not yet enforced)
+
 # Rate Limiting (SimpleRateLimiter)
 rate_limiting:
   short:
