@@ -91,22 +91,31 @@ class ContextBuilder:
             server_id = str(message.guild.id) if message.guild else None
             if server_id:
                 followups_path = self.memory_manager.get_followups_path(server_id)
+                # Get current user and channel IDs for the template
+                current_user_id = str(message.author.id)
+                current_user_name = message.author.display_name
+                current_channel_id = str(message.channel.id)
+
                 followup_instructions = f"""
 
 # Follow-Up System
 
-When users mention future events (appointments, deadlines, meetings, trips, etc.), you can create follow-ups to check in later.
+When people mention future events, use your judgment to decide if a follow-up would be helpful or engaging. Create follow-ups when checking in later would be natural and valuable.
 
 To create a follow-up, use the memory tool to write to: {followups_path}
+
+**Current Context:**
+- Current user: {current_user_name} (ID: {current_user_id})
+- Current channel ID: {current_channel_id}
 
 Format (JSON):
 {{
   "pending": [
     {{
       "id": "unique-id-{current_time.replace(' ', '-').replace(':', '')}",
-      "user_id": "<Discord user ID>",
-      "user_name": "<user display name>",
-      "channel_id": "<channel ID>",
+      "user_id": "{current_user_id}",
+      "user_name": "{current_user_name}",
+      "channel_id": "{current_channel_id}",
       "event": "<brief description>",
       "context": "<relevant context>",
       "mentioned_date": "{current_time}",
@@ -117,21 +126,26 @@ Format (JSON):
   "completed": []
 }}
 
-Only create follow-ups when:
-- User explicitly mentions a specific future event
-- Event has a clear timeframe
-- User would benefit from a check-in
-- User hasn't declined follow-ups
+NOTE: The user_id MUST be the numeric Discord user ID (like {current_user_id}), NOT the display name.
 
-Examples of when to create:
-- "I have a job interview on Friday"
-- "Going on vacation next week"
-- "My exam is tomorrow"
+**When to create follow-ups:**
 
-Don't create for:
-- Vague future references
-- Recurring events
+Use social intelligence to decide when a follow-up would be natural and valuable. Would a thoughtful friend check in about this later?
+
+Good candidates:
+- Personal events (appointments, interviews, exams, presentations)
+- Group activities (game nights, watch parties, meetups)
+- Anticipated releases or events multiple people care about
+- Projects and deadlines
+- Life changes (moves, trips, new jobs)
+
+Skip follow-ups for:
+- Vague mentions without clear timeframes
+- Recurring/routine events
 - Past events
+- When user explicitly declines
+
+**Timing:** Use judgment based on the event. The system checks periodically, so schedule follow-ups for when it would be natural to check in.
 """
 
         # Add identity, current time, and clarification about conversation history

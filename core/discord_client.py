@@ -19,6 +19,127 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def split_message(text: str, max_length: int = 2000) -> list[str]:
+    """
+    Split a message into chunks that fit Discord's character limit.
+
+    Intelligently splits on:
+    1. Code block boundaries (preserves ``` blocks intact)
+    2. Paragraph boundaries (\n\n)
+    3. Sentence boundaries (. ! ? followed by space or newline)
+    4. Word boundaries (spaces)
+
+    Args:
+        text: Message text to split
+        max_length: Maximum characters per chunk (default: 2000 for Discord)
+
+    Returns:
+        List of message chunks, each under max_length
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+
+    # First, check for code blocks and handle them specially
+    code_block_pattern = r'```[\s\S]*?```'
+    import re
+
+    # Split by code blocks but keep them
+    parts = re.split(r'(```[\s\S]*?```)', text)
+
+    current_chunk = ""
+
+    for part in parts:
+        # Check if this part is a code block
+        is_code_block = part.startswith('```') and part.endswith('```')
+
+        # If adding this part would exceed limit
+        if len(current_chunk) + len(part) > max_length:
+            # Save current chunk if not empty
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+
+            # Handle the part
+            if is_code_block:
+                # Code block is too large - split it (preserve markers)
+                lang_line = part.split('\n')[0]  # ```python or similar
+                code_content = part[len(lang_line):-3]  # Remove ``` markers
+                close_marker = '```'
+
+                # Split code content by lines
+                code_lines = code_content.split('\n')
+                temp_code = lang_line + '\n'
+
+                for line in code_lines:
+                    if len(temp_code) + len(line) + len(close_marker) + 1 > max_length:
+                        chunks.append(temp_code + close_marker)
+                        temp_code = lang_line + '\n' + line + '\n'
+                    else:
+                        temp_code += line + '\n'
+
+                if temp_code != lang_line + '\n':
+                    chunks.append(temp_code + close_marker)
+            else:
+                # Non-code-block text - split intelligently
+                chunks.extend(_split_text_intelligently(part, max_length))
+        else:
+            current_chunk += part
+
+    # Add remaining chunk
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+
+    return chunks if chunks else [text[:max_length]]
+
+
+def _split_text_intelligently(text: str, max_length: int) -> list[str]:
+    """
+    Split plain text on natural boundaries.
+
+    Tries in order:
+    1. Paragraph boundaries (\n\n)
+    2. Sentence boundaries (. ! ?)
+    3. Word boundaries (spaces)
+    4. Hard cut as fallback
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+    remaining = text
+
+    while remaining:
+        if len(remaining) <= max_length:
+            chunks.append(remaining)
+            break
+
+        # Try to split on paragraph boundary
+        chunk = remaining[:max_length]
+        split_pos = chunk.rfind('\n\n')
+
+        # If no paragraph, try sentence boundary
+        if split_pos == -1:
+            for punct in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                pos = chunk.rfind(punct)
+                if pos > split_pos:
+                    split_pos = pos + len(punct)
+
+        # If no sentence, try word boundary
+        if split_pos == -1:
+            split_pos = chunk.rfind(' ')
+
+        # Fallback: hard cut
+        if split_pos == -1:
+            split_pos = max_length
+
+        chunks.append(remaining[:split_pos].strip())
+        remaining = remaining[split_pos:].strip()
+
+    return chunks
+
+
 class DiscordClient(discord.Client):
     """
     Discord client with framework integration.

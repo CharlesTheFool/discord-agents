@@ -217,6 +217,12 @@ class ReactiveEngine:
                         # Log tool use loop iteration
                         self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
 
+                        # Log current input token count (first iteration only)
+                        if loop_iteration == 1 and hasattr(response, 'usage'):
+                            input_tokens = response.usage.input_tokens
+                            trigger_threshold = self.config.api.context_editing.trigger_tokens
+                            logger.info(f"Input tokens: {input_tokens:,} / {trigger_threshold:,} ({input_tokens/trigger_threshold*100:.1f}%)")
+
                         # Log context management stats if present (first iteration only)
                         if loop_iteration == 1 and hasattr(response, 'context_management') and response.context_management:
                             cm = response.context_management
@@ -301,19 +307,34 @@ class ReactiveEngine:
                             break
 
             # Send response (outside semaphore to allow concurrent API calls while sending)
-            try:
-                # Reply to the triggering message to create a thread
-                sent_message = await message.channel.send(response_text, reference=message)
-            except discord.HTTPException as e:
-                # If reply fails (e.g., message deleted), try without reference
+            # Split message if it exceeds Discord's limit
+            from .discord_client import split_message
+            message_chunks = split_message(response_text)
+
+            sent_message = None
+            for i, chunk in enumerate(message_chunks):
                 try:
-                    logger.warning(f"Failed to send reply, trying standalone: {e}")
-                    sent_message = await message.channel.send(response_text)
-                except discord.HTTPException as e2:
-                    logger.error(f"Failed to send response to Discord: {e2}")
-                    self.conversation_logger.log_error(f"Discord send failed: {str(e2)}")
-                    self.conversation_logger.log_separator()
-                    return
+                    # First chunk: reply to triggering message
+                    # Subsequent chunks: standalone messages
+                    if i == 0:
+                        sent_message = await message.channel.send(chunk, reference=message)
+                    else:
+                        sent_message = await message.channel.send(chunk)
+                except discord.HTTPException as e:
+                    # If reply fails (e.g., message deleted), try without reference
+                    if i == 0:
+                        try:
+                            logger.warning(f"Failed to send reply, trying standalone: {e}")
+                            sent_message = await message.channel.send(chunk)
+                        except discord.HTTPException as e2:
+                            logger.error(f"Failed to send response to Discord: {e2}")
+                            self.conversation_logger.log_error(f"Discord send failed: {str(e2)}")
+                            self.conversation_logger.log_separator()
+                            return
+                    else:
+                        logger.error(f"Failed to send message chunk {i+1}/{len(message_chunks)}: {e}")
+                        self.conversation_logger.log_error(f"Discord send failed (chunk {i+1}): {str(e)}")
+                        # Continue trying to send remaining chunks
 
             # Log thinking trace (if present) and bot response
             if thinking_text:
@@ -552,11 +573,13 @@ class ReactiveEngine:
         # This is a workaround since we don't have the actual discord.Message object
         try:
             # Fetch the actual latest message from Discord
-            history = channel.history(limit=1)
-            latest_message = await history.flatten()
+            latest_message = None
+            async for msg in channel.history(limit=1):
+                latest_message = msg
+                break
+
             if not latest_message:
                 return
-            latest_message = latest_message[0]
 
             # Don't respond if latest message is from the bot
             if latest_message.author == self.discord_client.user:
@@ -627,10 +650,22 @@ class ReactiveEngine:
         Call Claude API to decide if bot should respond and generate response if yes.
 
         Args:
-            message: Discord message object
+            message: Discord message object (latest in channel)
             context: Built context from ContextBuilder
         """
         channel_id = str(message.channel.id)
+
+        # Log periodic check decision attempt
+        self.conversation_logger.log_user_message(
+            author="[PERIODIC CHECK]",
+            channel=message.channel.name,
+            content=f"Scanning conversation (momentum: {context['conversation_momentum'].upper()})",
+            is_mention=False
+        )
+
+        # Log context building stats
+        if context.get("stats"):
+            self.conversation_logger.log_context_building(**context["stats"])
 
         # Prevent concurrent responses
         async with self._response_semaphore:
@@ -642,8 +677,9 @@ class ReactiveEngine:
                 "model": self.config.api.model,
                 "max_tokens": self.config.api.max_tokens,
                 "system": system_prompt,
-                "messages": context.api_messages,
+                "messages": context["messages"],
                 "tools": [{"type": "memory_20250818", "name": "memory"}],
+                "extra_headers": {"anthropic-beta": "context-management-2025-06-27,prompt-caching-2024-07-31"}
             }
 
             # Add extended thinking if enabled
@@ -674,57 +710,103 @@ class ReactiveEngine:
 
             # Call Claude API
             try:
-                if self.config.api.context_editing.enabled:
-                    response = await self.anthropic.beta.messages.create(**api_params)
-                else:
-                    response = await self.anthropic.messages.create(**api_params)
+                # Initialize response tracking
+                thinking_text = ""
+                response_text = ""
+                loop_iteration = 0
 
-                # Handle tool use loop for memory operations
-                loop_iteration = 1
-                while response.stop_reason == "tool_use" and loop_iteration < 10:
-                    # Execute memory tool calls
-                    tool_results = []
-                    for content_block in response.content:
-                        if content_block.type == "tool_use":
-                            result = await self.memory_tool_executor.execute_tool_use(content_block)
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": content_block.id,
-                                "content": result
-                            })
-
-                    # Continue conversation with tool results
-                    api_params["messages"].append({"role": "assistant", "content": response.content})
-                    api_params["messages"].append({"role": "user", "content": tool_results})
-
+                while True:
                     loop_iteration += 1
+
+                    # Call API
                     if self.config.api.context_editing.enabled:
                         response = await self.anthropic.beta.messages.create(**api_params)
                     else:
                         response = await self.anthropic.messages.create(**api_params)
 
-                # Extract text response
-                response_text = ""
-                for content_block in response.content:
-                    if hasattr(content_block, "text"):
-                        response_text += content_block.text
+                    # Log current input token count (first iteration only)
+                    if loop_iteration == 1 and hasattr(response, 'usage'):
+                        input_tokens = response.usage.input_tokens
+                        trigger_threshold = self.config.api.context_editing.trigger_tokens
+                        logger.info(f"Input tokens: {input_tokens:,} / {trigger_threshold:,} ({input_tokens/trigger_threshold*100:.1f}%)")
+
+                    # Extract thinking if present
+                    for block in response.content:
+                        if block.type == "thinking":
+                            thinking_text += block.thinking
+
+                    # Check stop reason
+                    if response.stop_reason == "tool_use":
+                        # Execute tool calls
+                        tool_results = []
+                        for content_block in response.content:
+                            if content_block.type == "tool_use":
+                                result = self.memory_tool_executor.execute(content_block.input)
+                                tool_results.append({
+                                    "type": "tool_result",
+                                    "tool_use_id": content_block.id,
+                                    "content": result
+                                })
+
+                        # Continue conversation with tool results
+                        api_params["messages"].append({"role": "assistant", "content": response.content})
+                        api_params["messages"].append({"role": "user", "content": tool_results})
+
+                        # Continue loop for next API call
+                        if loop_iteration >= 10:
+                            logger.warning(f"Tool use loop exceeded 10 iterations in periodic check")
+                            break
+                        continue
+
+                    elif response.stop_reason == "end_turn":
+                        # Extract final text response
+                        for block in response.content:
+                            if block.type == "text":
+                                response_text += block.text
+
+                        # Exit loop
+                        break
+
+                    else:
+                        # Unexpected stop reason
+                        logger.warning(f"Unexpected stop_reason in periodic check: {response.stop_reason}")
+                        break
 
                 # If Claude decided to respond, send it
                 if response_text.strip():
-                    # Send response
-                    try:
-                        sent_message = await message.channel.send(response_text, reference=message)
-                    except discord.HTTPException as e:
-                        logger.warning(f"Failed to send reply, trying standalone: {e}")
-                        sent_message = await message.channel.send(response_text)
+                    # Log thinking trace (if present) and bot response to conversation log
+                    if thinking_text:
+                        self.conversation_logger.log_thinking(thinking_text, len(thinking_text))
+                    self.conversation_logger.log_bot_response(response_text, len(response_text))
+
+                    # Send response as standalone (not a reply)
+                    # Split message if it exceeds Discord's limit
+                    from .discord_client import split_message
+                    message_chunks = split_message(response_text)
+
+                    sent_message = None
+                    for i, chunk in enumerate(message_chunks):
+                        try:
+                            sent_message = await message.channel.send(chunk)
+                        except discord.HTTPException as e:
+                            logger.error(f"Failed to send periodic response chunk {i+1}/{len(message_chunks)}: {e}")
+                            self.conversation_logger.log_error(f"Discord send failed: {str(e)}")
+                            return
 
                     # Record response and track engagement
                     self.rate_limiter.record_response(channel_id)
+
+                    # Log engagement tracking start
+                    self.conversation_logger.log_engagement_tracking(started=True)
+                    self.conversation_logger.log_separator()
+
+                    # Track engagement in background
                     task = asyncio.create_task(
                         self._track_engagement(
                             message_id=sent_message.id,
-                            channel_id=channel_id,
-                            original_author_id=message.author.id
+                            channel=message.channel,
+                            original_author_id=message.author.id,
+                            delay=30
                         )
                     )
                     self._background_tasks.add(task)
@@ -733,9 +815,16 @@ class ReactiveEngine:
                     logger.info(f"Periodic response sent in channel {channel_id} ({len(response_text)} chars)")
                 else:
                     logger.debug(f"Claude decided not to respond in channel {channel_id}")
+                    # Log thinking trace if present, then log decision to stay silent
+                    if thinking_text:
+                        self.conversation_logger.log_thinking(thinking_text, len(thinking_text))
+                    self.conversation_logger.log_bot_response("[No response - staying silent]", 0)
+                    self.conversation_logger.log_separator()
 
             except Exception as e:
                 logger.error(f"Error calling Claude for periodic check: {e}", exc_info=True)
+                self.conversation_logger.log_error(f"Periodic check error: {str(e)}")
+                self.conversation_logger.log_separator()
 
     def _build_response_decision_prompt(self, context) -> list:
         """
@@ -752,9 +841,9 @@ class ReactiveEngine:
         bot_name = self.discord_client.user.display_name if self.discord_client else "Assistant"
 
         # Get response rates from config
-        cold_rate = int(self.config.personality.engagement.cold_conversation_rate * 100)
-        warm_rate = int(self.config.personality.engagement.warm_conversation_rate * 100)
-        hot_rate = int(self.config.personality.engagement.hot_conversation_rate * 100)
+        cold_rate = int(self.config.personality.cold_conversation_rate * 100)
+        warm_rate = int(self.config.personality.warm_conversation_rate * 100)
+        hot_rate = int(self.config.personality.hot_conversation_rate * 100)
 
         decision_criteria = f"""
 
@@ -781,15 +870,19 @@ You are monitoring an ongoing Discord conversation. Decide whether to participat
 - Just agreeing without adding value
 - Making conversation about yourself
 
-**Current Conversation Momentum**: {context.conversation_momentum.upper()}
+**Current Conversation Momentum**: {context["conversation_momentum"].upper()}
 
-If you decide to respond, provide a natural, relevant contribution. If not, simply output nothing (empty response).
+**RESPONSE FORMAT:**
+- If you decide to respond: Output ONLY your message to the channel (no meta-commentary, no explanation of your decision)
+- If you decide NOT to respond: Output ABSOLUTELY NOTHING (not even an explanation - complete silence)
+
+DO NOT explain your reasoning for responding or not responding. DO NOT output meta-commentary about the conversation. Either respond naturally or output nothing.
 """
 
         system_prompt = [
             {
                 "type": "text",
-                "text": context.personality_prompt + decision_criteria,
+                "text": context["system_prompt"] + decision_criteria,
                 "cache_control": {"type": "ephemeral"} if self.config.api.context_editing.enabled else None
             }
         ]

@@ -1,5 +1,8 @@
 # Alpha Bot Configuration
 # Example bot for Discord-Claude Framework
+#
+# ⚡ FAST MODE ACTIVE - Currently configured for rapid Phase 3 testing
+# Production values: check_interval_hours: 1.0, follow_up_delay_days: 1, min_idle_hours: 1.0, level: "INFO"
 
 bot_id: alpha
 name: "Claude (Alpha)"
@@ -48,6 +51,8 @@ reactive:
     heavy_activity: 105
 
 # Agentic Engine (Phase 3 - Autonomous Behaviors)
+# NOTE: Currently in TEST MODE with fast timings for Phase 3 testing
+# See comments for production values
 agentic:
   enabled: true  # Enable when ready to test Phase 3
   check_interval_hours: 0.0167  # TEST MODE: 1 minute (use 1.0 for production)
@@ -61,7 +66,7 @@ agentic:
     max_age_days: 14
 
   proactive:
-    enabled: false
+    enabled: true
     min_idle_hours: 0.0083  # TEST MODE: 30 seconds (use 1.0 for production)
     max_idle_hours: 0.0167  # TEST MODE: 1 minute (use 8.0 for production)
     min_provocation_gap_hours: 0.0167  # TEST MODE: 1 minute (use 1.0 for production)
@@ -70,7 +75,7 @@ agentic:
     engagement_threshold: 0.3
     learning_window_days: 7
     quiet_hours: []  # TEST MODE: Allow testing any time (use [0,1,2,3,4,5,6] for production)
-    allowed_channels: []  # Add your test channel ID when enabling (e.g., "1423428836921573406")
+    allowed_channels: [1424938152413368352,1424945626659164271]  # Add your test channel ID when enabling (e.g., "1423428836921573406")
 
 # API Configuration
 api:
@@ -85,9 +90,12 @@ api:
 
   context_editing:
     enabled: true
-    trigger_tokens: 100000
+    trigger_tokens: 3000  # TEST MODE: Lowered for Phase 4 testing (use 8000 for production)
     keep_tool_uses: 3
     exclude_tools: ["memory"]
+    # NOTE: Context editing test deferred to Phase 4 - requires non-memory tools to properly test
+    # Phase 3 only has memory tool, which is excluded, so nothing gets cleared
+    # Phase 4 will add web search, Discord tools, etc. that can be cleared while preserving memory
 
   throttling:
     min_delay_seconds: 1.0

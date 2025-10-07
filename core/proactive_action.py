@@ -29,6 +29,7 @@ class ProactiveAction:
     context: Optional[str] = None
     delivery_method: str = "standalone"  # "standalone" | "woven" | "deferred"
     followup_id: Optional[str] = None  # ID of followup (for completion tracking)
+    followup_event: Optional[str] = None  # Event description (for message generation)
 
     def __post_init__(self):
         """Validate action fields"""

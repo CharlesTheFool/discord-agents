@@ -1638,68 +1638,104 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 
 **Goal:** Autonomous behaviors beyond reactive @mentions.
 
-**Completion Date:** 2025-10-05
+**Completion:** 2025-10-06 (Two sessions)
+- Session 1 (2025-10-05): Core autonomy features
+- Session 2 (2025-10-06): Polish, fixes, and production-readiness
 
 **Deliverables:**
-1. ✅ **Periodic Conversation Scanning** (NEW - Most Critical)
+1. ✅ **Periodic Conversation Scanning** (Session 1)
    - ✅ 30-second loop scanning non-@mention messages
    - ✅ Conversation momentum detection (hot/warm/cold based on message frequency)
    - ✅ Response decision system with momentum-based probabilities
    - ✅ Bot participates organically when helpful (not just @mentions)
    - ✅ Configurable response rates per momentum level
-2. ✅ **Hybrid Follow-Up System**
+2. ✅ **Hybrid Follow-Up System** (Session 1)
    - ✅ Manual creation via Claude using memory tool (system prompt instructions)
    - ✅ System-level completion tracking (auto-move pending→completed)
    - ✅ Followups.json storage structure
    - ✅ Priority-based execution
    - ✅ Delivery method decisions (standalone/woven/deferred)
-   - ✅ Memory cleanup for stale items (with write-back)
+   - ✅ Memory cleanup with fixed logic (Session 2: preserves future follow-ups)
+   - ✅ Timezone-aware datetime comparisons (Session 2: no crashes)
    - ✅ Message sending integration
    - ⚠️ Auto-detection of events deferred to Phase 4 (complex NLP, high error risk)
-3. ✅ **AgenticEngine implementation**
+3. ✅ **AgenticEngine implementation** (Session 1)
    - ✅ Hourly background task loop
    - ✅ Integration with Discord client
    - ✅ Graceful shutdown handling
-4. ✅ **Proactive engagement**
+4. ✅ **Proactive engagement** (Session 1 + Session 2 enhancements)
    - ✅ Idle time detection
    - ✅ Actual engagement stats tracking (attempt counts recorded to file)
    - ✅ Rate limiting implementation with daily reset
    - ✅ Quiet hours respect
    - ✅ Allowed channels configuration
-   - ✅ Message generation and sending via Claude
+   - ✅ Enhanced message generation (Session 2):
+     - Full personality system prompt (Anthony Jeselnik style)
+     - Extended thinking enabled (10k token budget)
+     - Memory tool access with tool use loop
+     - Recent messages with timestamps and context
+     - 1000 max tokens (up from 150)
    - ⚠️ Success detection (engagement within time window) deferred to Phase 4
-5. ✅ **Memory maintenance tasks**
-   - ✅ Old follow-up cleanup (pending items)
-   - ✅ Archive completed items (completed array cleanup)
+5. ✅ **Memory maintenance tasks** (Session 1 + Session 2 fixes)
+   - ✅ Old follow-up cleanup (pending items) with fixed logic (Session 2)
+   - ✅ Archive completed items (30 days, up from 14)
    - ✅ Engagement statistics file management
    - ✅ Write-back fixes for all cleanup operations
-6. ✅ **Configuration system**
+6. ✅ **Message Splitting for Discord Limits** (Session 2 - NEW)
+   - ✅ Handles 2000 character Discord limit automatically
+   - ✅ Smart splitting on code block boundaries (preserves ``` blocks)
+   - ✅ Paragraph boundaries (\n\n)
+   - ✅ Sentence boundaries (. ! ?)
+   - ✅ Word boundaries (spaces)
+   - ✅ Sends multiple sequential messages transparently
+   - ✅ Integrated in all message sending locations (reactive, agentic, follow-ups, proactive)
+7. ✅ **Input Token Count Logging** (Session 2 - NEW)
+   - ✅ Logs token count on every API call: `Input tokens: X / Y (Z%)`
+   - ✅ Monitors progress toward context editing trigger
+   - ✅ Helps debug context size issues
+   - ✅ Added to validation checklist
+8. ✅ **Context Editing Configuration** (Session 2)
+   - ✅ Trigger set to 3,000 tokens (testing) / 8,000 tokens (production recommended)
+   - ✅ Configured to exclude memory tool operations (preserve memory)
+   - ✅ Token logging for monitoring
+   - ⚠️ Testing deferred to Phase 4 (requires non-memory tools to properly test)
+9. ✅ **Configuration system** (Session 1)
    - ✅ Complete agentic config parsing
    - ✅ Followups config (enabled, max_pending, priority_threshold, etc.)
    - ✅ Proactive config (idle hours, rate limits, quiet hours, etc.)
-   - ✅ YAML examples updated
-7. ✅ **MessageMemory enhancements**
-   - ✅ get_followups() / write_followups() methods
-   - ✅ get_engagement_stats() / write_engagement_stats() methods
-   - ✅ get_active_servers() query
-   - ✅ get_server_for_channel() query
-   - ✅ check_user_activity() query
-8. ✅ **Discord reply feature** (Phase 2 completion)
-   - ✅ Reply to triggering @mention messages
-   - ✅ Fallback to standalone if reply fails
+   - ✅ YAML examples updated with test timings
+10. ✅ **MessageMemory enhancements** (Session 1)
+    - ✅ get_followups() / write_followups() methods
+    - ✅ get_engagement_stats() / write_engagement_stats() methods
+    - ✅ get_active_servers() query
+    - ✅ get_server_for_channel() query
+    - ✅ check_user_activity() query
+11. ✅ **Discord reply feature** (Phase 2 completion)
+    - ✅ Reply to triggering @mention messages
+    - ✅ Fallback to standalone if reply fails
 
 **Success criteria:**
 - ✅ Bot scans conversations periodically (every 30s)
 - ✅ Bot decides when to respond organically (momentum-based)
 - ✅ Bot creates follow-ups via memory tool (Claude judges appropriateness)
 - ✅ Bot executes follow-ups and tracks completion
-- ✅ Bot sends proactive messages in idle channels
+- ✅ Bot sends proactive messages in idle channels with full capabilities
 - ✅ Bot tracks actual engagement attempt counts
-- ✅ Memory maintenance archives old items
+- ✅ Memory maintenance archives old items correctly (preserves future follow-ups)
 - ✅ All write-back operations functional
 - ✅ Configuration allows fine-tuning behaviors
+- ✅ Long messages (>2000 chars) send successfully via smart splitting
+- ✅ Token count monitoring provides visibility into context size
+- ✅ Context editing configured and ready for Phase 4 testing
 
-See [PHASE_3_ACTUAL_IMPLEMENTATION.md](PHASE_3_ACTUAL_IMPLEMENTATION.md) for detailed implementation and [PHASE_3_TESTING.md](PHASE_3_TESTING.md) for minimal testing sequence.
+**Testing Results:**
+- ✅ Test 1: Periodic scanning - PASS
+- ✅ Test 2: Follow-ups - PASS
+- ✅ Test 3: Memory maintenance - PASS
+- ✅ Test 4: Proactive engagement - PASS
+- ⚠️ Test 5: Context editing - Deferred to Phase 4 (requires non-memory tools)
+
+See [PHASE_3_COMPLETE.md](PHASE_3_COMPLETE.md) for comprehensive implementation details, testing guide, and architecture documentation.
 
 ### Phase 4: Tools & Polish (TO-DO)
 
@@ -1722,6 +1758,11 @@ See [PHASE_3_ACTUAL_IMPLEMENTATION.md](PHASE_3_ACTUAL_IMPLEMENTATION.md) for det
      - Full-text search implementation (SQLite FTS5)
      - Filter by date range, author, channel, server
      - Return relevant messages with context
+   - 🆕 **Proper Discord mentions**
+     - Store user ID mappings when users are mentioned
+     - Provide Claude with user IDs for proper @mention format
+     - Bot can mention users with clickable Discord links (`<@user_id>`)
+     - Maintain user ID cache/lookup for follow-ups and responses
    - Query server members
    - Query channel list
    - Query roles and permissions
@@ -1734,7 +1775,14 @@ See [PHASE_3_ACTUAL_IMPLEMENTATION.md](PHASE_3_ACTUAL_IMPLEMENTATION.md) for det
      - Personality config: `wait_for_group_input: true/false`
    - Message batching (combine rapid messages)
    - Conversation flow detection
-5. **Agentic Intelligence (Phase 3 deferred + enhancements)**
+5. **Context Editing Testing** (deferred from Phase 3)
+   - ⚠️ **Test context editing with multi-tool usage**
+     - Context editing already implemented and configured (trigger: 3k test / 8k production)
+     - Requires non-memory tools to properly test (web search, images, Discord tools)
+     - Phase 3 only has memory tool (excluded from clearing) - nothing to clear
+     - Phase 4 will verify web/image results cleared while memory preserved
+     - Token count logging already added: `Input tokens: X / Y (Z%)`
+6. **Agentic Intelligence (Phase 3 deferred + enhancements)**
    - ⚠️ **Follow-up auto-detection** (deferred from Phase 3)
      - NLP-based event detection from natural conversation
      - Automatic followup.json creation without manual prompting
@@ -1749,27 +1797,27 @@ See [PHASE_3_ACTUAL_IMPLEMENTATION.md](PHASE_3_ACTUAL_IMPLEMENTATION.md) for det
      - Replace default 0.5 success rate with learned data
      - Enable true adaptive learning (back off from low-performing channels)
      - Topic-based success tracking (which topics work in which channels)
-6. **Advanced CLI features**
+7. **Advanced CLI features**
    - Config validation command
    - Memory inspection tools
    - Database cleanup utilities
    - Status dashboard
-6. **Logging improvements**
+8. **Logging improvements**
    - Structured logging (JSON format option)
    - Log rotation
    - Performance metrics
    - Error aggregation
-7. **Error handling hardening**
+9. **Error handling hardening**
    - Graceful degradation
    - Retry logic for API calls
    - Better error messages to users
    - Fallback behaviors
-8. **Testing suite**
-   - Unit tests for core components
-   - Integration tests
-   - Mock Discord client for testing
-   - Automated test runs
-9. **Documentation**
+10. **Testing suite**
+    - Unit tests for core components
+    - Integration tests
+    - Mock Discord client for testing
+    - Automated test runs
+11. **Documentation**
    - API reference
    - Configuration guide
    - Deployment guide
@@ -1888,6 +1936,7 @@ async def test_bot_updates_profile():
 - [ ] Images process reliably
 - [ ] Web search within budget
 - [ ] Discord tools work
+- [ ] Context editing clears non-memory tools (test deferred from Phase 3)
 - [ ] Follow-up auto-detection from conversation
 - [ ] Engagement success tracking (not just attempts)
 - [ ] Adaptive learning with real success rates
