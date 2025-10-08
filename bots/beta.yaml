@@ -11,6 +11,12 @@ discord:
   servers:
     - "1423428836921573406"  # Your Discord server ID
 
+  # Historical message backfill (Phase 4)
+  backfill_enabled: true  # Fetch historical messages on startup
+  backfill_days: 30  # How many days of history to fetch (ignored if backfill_unlimited=true)
+  backfill_unlimited: false  # If true, fetch ALL accessible message history (can be slow!)
+  backfill_in_background: true  # Don't block bot startup
+
 # Personality Configuration
 personality:
   base_prompt: |
@@ -52,11 +58,11 @@ reactive:
 
 # Agentic Engine (Phase 3 - Autonomous Behaviors)
 agentic:
-  enabled: false  # Enable when ready to test Phase 3
+  enabled: true  # Enable when ready to test Phase 3
   check_interval_hours: 1
 
   followups:
-    enabled: false
+    enabled: true
     auto_create: true
     max_pending: 20
     priority_threshold: "medium"
@@ -105,7 +111,7 @@ rate_limiting:
     duration_minutes: 60
     max_responses: 200
   ignore_threshold: 5
-  engagement_tracking_delay: 30
+  engagement_tracking_delay: 900  # 15 minutes - reasonable time to read/respond
 
 # Logging
 logging:

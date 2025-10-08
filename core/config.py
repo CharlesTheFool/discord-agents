@@ -110,6 +110,7 @@ class WebSearchConfig:
     enabled: bool = False  # Disabled for Phase 1
     max_daily: int = 300
     max_per_request: int = 3
+    citations_enabled: bool = True  # Required for end-user applications
 
 
 @dataclass
@@ -166,6 +167,12 @@ class DiscordConfig:
     """Discord-specific configuration"""
     token_env_var: str = "DISCORD_BOT_TOKEN"  # Environment variable containing bot token
     servers: List[str] = field(default_factory=list)  # Guild IDs
+
+    # Historical message backfill
+    backfill_enabled: bool = True  # Fetch historical messages on startup
+    backfill_days: int = 30  # How many days of history to fetch (ignored if backfill_unlimited=True)
+    backfill_unlimited: bool = False  # Fetch ALL message history (ignores backfill_days)
+    backfill_in_background: bool = True  # Run backfill in background (don't block startup)
 
 
 @dataclass
@@ -330,6 +337,7 @@ class BotConfig:
             enabled=web_search_data.get("enabled", False),
             max_daily=web_search_data.get("max_daily", 300),
             max_per_request=web_search_data.get("max_per_request", 3),
+            citations_enabled=web_search_data.get("citations_enabled", True),
         )
 
         api = APIConfig(

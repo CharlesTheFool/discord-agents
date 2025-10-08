@@ -130,7 +130,7 @@ class WebSearchManager:
         }
 
 
-def get_web_search_tools(max_uses: int = 3) -> list:
+def get_web_search_tools(max_uses: int = 3, citations_enabled: bool = True) -> list:
     """
     Get web search tools for Claude API.
 
@@ -138,6 +138,7 @@ def get_web_search_tools(max_uses: int = 3) -> list:
 
     Args:
         max_uses: Maximum number of searches per request (default 3)
+        citations_enabled: Enable citations for web_fetch (default True, required for end-user apps)
 
     Returns:
         List of tool definitions
@@ -151,6 +152,7 @@ def get_web_search_tools(max_uses: int = 3) -> list:
         {
             "type": "web_fetch_20250910",
             "name": "web_fetch",
-            "max_uses": max_uses
+            "max_uses": max_uses,
+            "citations": {"enabled": citations_enabled}
         }
     ]

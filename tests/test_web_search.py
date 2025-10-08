@@ -2,7 +2,6 @@
 Minimal test for web search quota management
 """
 
-import pytest
 import tempfile
 import os
 import sys
@@ -47,6 +46,7 @@ def test_quota_tracking():
 
 def test_get_web_search_tools():
     """Test that web search tools are correctly defined"""
+    # Test with default citations (enabled)
     tools = get_web_search_tools(max_uses=3)
 
     assert len(tools) == 2
@@ -62,10 +62,18 @@ def test_get_web_search_tools():
     assert web_fetch is not None
     assert web_fetch["type"] == "web_fetch_20250910"
     assert web_fetch["max_uses"] == 3
+    assert "citations" in web_fetch
+    assert web_fetch["citations"]["enabled"] is True
+
+    # Test with citations disabled
+    tools_no_citations = get_web_search_tools(max_uses=2, citations_enabled=False)
+    web_fetch_no_cit = next((t for t in tools_no_citations if t["name"] == "web_fetch"), None)
+    assert web_fetch_no_cit["citations"]["enabled"] is False
 
     print("✓ Web search tools test passed")
     print(f"  web_search: {web_search['type']}")
     print(f"  web_fetch: {web_fetch['type']}")
+    print(f"  citations enabled: {web_fetch['citations']['enabled']}")
 
 
 if __name__ == "__main__":

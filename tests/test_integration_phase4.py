@@ -68,6 +68,12 @@ async def test_web_search_integration():
         assert all(tool["name"] in ["web_search", "web_fetch"] for tool in tools)
         assert all(tool["max_uses"] == 3 for tool in tools)
 
+        # Verify citations enabled for web_fetch
+        web_fetch = next((t for t in tools if t["name"] == "web_fetch"), None)
+        assert web_fetch is not None
+        assert "citations" in web_fetch
+        assert web_fetch["citations"]["enabled"] is True
+
         print("✓ Web search integration test passed")
 
 

@@ -226,6 +226,21 @@ class DiscordClient(discord.Client):
             asyncio.create_task(self.agentic_engine.agentic_loop())
             logger.info("Agentic loop started")
 
+        # Backfill historical messages (Phase 4)
+        if self.config.discord.backfill_enabled:
+            if self.config.discord.backfill_in_background:
+                # Run in background - don't block bot startup
+                asyncio.create_task(self.backfill_message_history(
+                    days_back=self.config.discord.backfill_days,
+                    unlimited=self.config.discord.backfill_unlimited
+                ))
+            else:
+                # Block until backfill completes
+                await self.backfill_message_history(
+                    days_back=self.config.discord.backfill_days,
+                    unlimited=self.config.discord.backfill_unlimited
+                )
+
         logger.info("Bot is ready!")
 
     async def on_message(self, message: discord.Message):
@@ -377,3 +392,71 @@ class DiscordClient(discord.Client):
     async def on_guild_remove(self, guild: discord.Guild):
         """Bot removed from server"""
         logger.info(f"Removed from server: {guild.name} (ID: {guild.id})")
+
+    async def backfill_message_history(self, days_back: int = 30, unlimited: bool = False):
+        """
+        Fetch and index historical messages from accessible channels.
+
+        Populates message database with historical messages to enable
+        powerful search capabilities beyond current session.
+
+        Args:
+            days_back: Number of days of history to fetch (default: 30, ignored if unlimited=True)
+            unlimited: If True, fetch ALL message history (ignores days_back)
+        """
+        from datetime import datetime, timedelta
+
+        if unlimited:
+            logger.info(f"Starting UNLIMITED message history backfill (all accessible history)...")
+            cutoff = None
+        else:
+            logger.info(f"Starting message history backfill ({days_back} days)...")
+            cutoff = datetime.utcnow() - timedelta(days=days_back)
+
+        total_messages = 0
+        total_channels = 0
+        failed_channels = 0
+
+        for guild in self.guilds:
+            # Only backfill configured servers
+            if self.config.discord.servers:
+                if str(guild.id) not in self.config.discord.servers:
+                    continue
+
+            logger.info(f"Backfilling server: {guild.name}")
+
+            for channel in guild.text_channels:
+                try:
+                    channel_messages = 0
+                    logger.debug(f"  Backfilling #{channel.name}...")
+
+                    # Use cutoff if provided, otherwise fetch all
+                    async for message in channel.history(limit=None, after=cutoff):
+                        try:
+                            await self.message_memory.add_message(message)
+                            channel_messages += 1
+                            total_messages += 1
+
+                            # Log progress every 100 messages
+                            if total_messages % 100 == 0:
+                                logger.info(f"  Progress: {total_messages} messages indexed...")
+
+                        except Exception as e:
+                            logger.debug(f"  Skipped message {message.id}: {e}")
+
+                    if channel_messages > 0:
+                        logger.debug(f"  ✓ #{channel.name}: {channel_messages} messages")
+                        total_channels += 1
+
+                except discord.Forbidden:
+                    logger.debug(f"  ✗ #{channel.name}: No read permission")
+                    failed_channels += 1
+                except Exception as e:
+                    logger.warning(f"  ✗ #{channel.name}: {e}")
+                    failed_channels += 1
+
+        logger.info(f"Backfill complete: {total_messages} messages from {total_channels} channels")
+        if failed_channels > 0:
+            logger.info(f"  ({failed_channels} channels skipped due to permissions/errors)")
+
+        return total_messages

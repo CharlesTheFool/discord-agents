@@ -11,6 +11,7 @@ import logging
 from anthropic import Anthropic, AsyncAnthropic
 from typing import Optional, TYPE_CHECKING
 from pathlib import Path
+from collections import deque
 import sys
 import os
 
@@ -107,6 +108,10 @@ class ReactiveEngine:
         # Prevent concurrent responses (fixes multiple responses to single mention)
         self._response_semaphore = asyncio.Semaphore(1)
 
+        # Track messages that have been responded to (prevent race condition)
+        # Using deque with maxlen to automatically discard old entries
+        self._responded_messages = deque(maxlen=1000)
+
         # Pending channels for periodic check (Phase 3)
         self.pending_channels = set()
         self._periodic_task = None
@@ -132,25 +137,16 @@ class ReactiveEngine:
             is_mention=True
         )
 
-        # Check rate limits
-        can_respond, reason = self.rate_limiter.can_respond(channel_id)
+        # @mentions ALWAYS bypass rate limits (especially ignore threshold)
+        # Get stats for logging but don't check limits
         rate_limit_stats = self.rate_limiter.get_stats(channel_id)
 
         # Log decision
         self.conversation_logger.log_decision(
-            should_respond=can_respond,
-            reason="mention detected" if can_respond else reason,
+            should_respond=True,
+            reason="mention detected (bypasses rate limits)",
             rate_limit_stats=rate_limit_stats
         )
-
-        if not can_respond:
-            logger.info(f"Cannot respond to @mention: {reason}")
-            # Still send a brief message to acknowledge
-            await message.channel.send(
-                f"{message.author.mention} I'm currently rate-limited. Please try again in a few minutes."
-            )
-            self.conversation_logger.log_separator()
-            return
 
         # Build context
         context = await self.context_builder.build_context(message)
@@ -187,9 +183,10 @@ class ReactiveEngine:
                         can_search, reason = self.web_search_manager.can_search()
                         if can_search:
                             max_uses = self.config.api.web_search.max_per_request
-                            tools.extend(get_web_search_tools(max_uses=max_uses))
+                            citations_enabled = self.config.api.web_search.citations_enabled
+                            tools.extend(get_web_search_tools(max_uses=max_uses, citations_enabled=citations_enabled))
                             beta_headers.append("web-fetch-2025-09-10")
-                            logger.debug(f"Web search tools added to API request (max_uses={max_uses})")
+                            logger.debug(f"Web search tools added to API request (max_uses={max_uses}, citations={citations_enabled})")
                         else:
                             logger.debug(f"Web search disabled for this request: {reason}")
 
@@ -257,6 +254,38 @@ class ReactiveEngine:
 
                         # Log tool use loop iteration
                         self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
+
+                        # Track server tool usage (web_search, web_fetch)
+                        # Server tools appear as server_tool_use blocks in response.content
+                        if self.web_search_manager:
+                            # Log all response blocks for debugging
+                            logger.info(f"Response has {len(response.content)} content blocks")
+                            for i, block in enumerate(response.content):
+                                logger.info(f"  Block {i}: type={block.type} (type class: {type(block.type).__name__}, repr: {repr(block.type)})")
+
+                                # Log text blocks
+                                if hasattr(block, 'text'):
+                                    preview = block.text[:300] if len(block.text) > 300 else block.text
+                                    logger.info(f"    Text preview: {preview}")
+
+                                # Log web_fetch_tool_result content
+                                # Structure: block.content.content.source.data contains the fetched text
+                                if block.type == "web_fetch_tool_result":
+                                    if hasattr(block, 'content') and hasattr(block.content, 'content'):
+                                        if hasattr(block.content.content, 'source') and hasattr(block.content.content.source, 'data'):
+                                            fetch_text = block.content.content.source.data[:1000]
+                                            logger.info(f"    WEB_FETCH CONTENT (first 1000 chars): {fetch_text}")
+                                        else:
+                                            logger.warning(f"    web_fetch_tool_result has unexpected structure")
+
+                                if hasattr(block, 'type') and block.type == "server_tool_use":
+                                    if hasattr(block, 'name') and block.name in ["web_search", "web_fetch"]:
+                                        self.web_search_manager.record_search()
+                                        logger.info(f"Server tool used: {block.name}")
+
+                                        # Log server tool input/output for debugging
+                                        logger.info(f"Server tool {block.name} input: {block.input}")
+                                        logger.info(f"Server tool {block.name} id: {block.id}")
 
                         # Log current input token count (first iteration only)
                         if loop_iteration == 1 and hasattr(response, 'usage'):
@@ -331,16 +360,6 @@ class ReactiveEngine:
                                                 "content": result
                                             })
 
-                                    # Web search tools are handled directly by API
-                                    # Record usage for quota tracking
-                                    elif block.name in ["web_search", "web_fetch"]:
-                                        if self.web_search_manager:
-                                            self.web_search_manager.record_search()
-                                            logger.info(f"Web search performed: {block.name}")
-
-                                        # No tool_result needed - API handles these tools directly
-                                        # They don't appear in tool_use blocks that need manual execution
-
                             # Add assistant message with tool use to conversation
                             api_params["messages"].append({
                                 "role": "assistant",
@@ -357,10 +376,23 @@ class ReactiveEngine:
                             continue
 
                         elif response.stop_reason == "end_turn":
-                            # Extract final text response
+                            # Extract final text response and citations
+                            citations_list = []
                             for block in response.content:
                                 if block.type == "text":
                                     response_text += block.text
+
+                                    # Extract citations if present
+                                    if hasattr(block, 'citations') and block.citations:
+                                        for citation in block.citations:
+                                            url = getattr(citation, 'url', None)
+                                            title = getattr(citation, 'title', None)
+                                            if url and title:
+                                                citations_list.append(f"[{title}]({url})")
+
+                            # Append citations to response
+                            if citations_list:
+                                response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
 
                             if not response_text:
                                 response_text = "I'm not sure how to respond to that."
@@ -413,7 +445,10 @@ class ReactiveEngine:
             self.rate_limiter.record_response(channel_id)
 
             # Log engagement tracking start
-            self.conversation_logger.log_engagement_tracking(started=True)
+            self.conversation_logger.log_engagement_tracking(
+                started=True,
+                delay_seconds=self.config.rate_limiting.engagement_tracking_delay
+            )
             self.conversation_logger.log_separator()
 
             # Create and track background task
@@ -427,6 +462,9 @@ class ReactiveEngine:
             )
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
+
+            # Mark message as responded to prevent duplicate responses from periodic check
+            self._responded_messages.append(message.id)
 
             logger.info(
                 f"Response sent to {message.author.name} ({len(response_text)} chars)"
@@ -654,6 +692,11 @@ class ReactiveEngine:
                 logger.debug(f"Latest message in {channel_id} is from bot, skipping")
                 return
 
+            # Don't respond if we already responded to this message (prevents race condition)
+            if latest_message.id in self._responded_messages:
+                logger.debug(f"Already responded to message {latest_message.id} in {channel_id}, skipping")
+                return
+
             # Build context using the actual Discord message
             context = await self.context_builder.build_context(latest_message)
 
@@ -754,9 +797,10 @@ class ReactiveEngine:
                 can_search, reason = self.web_search_manager.can_search()
                 if can_search:
                     max_uses = self.config.api.web_search.max_per_request
-                    tools.extend(get_web_search_tools(max_uses=max_uses))
+                    citations_enabled = self.config.api.web_search.citations_enabled
+                    tools.extend(get_web_search_tools(max_uses=max_uses, citations_enabled=citations_enabled))
                     beta_headers.append("web-fetch-2025-09-10")
-                    logger.debug(f"Web search tools added to periodic check (max_uses={max_uses})")
+                    logger.debug(f"Web search tools added to periodic check (max_uses={max_uses}, citations={citations_enabled})")
                 else:
                     logger.debug(f"Web search disabled for periodic check: {reason}")
 
@@ -811,6 +855,38 @@ class ReactiveEngine:
                     else:
                         response = await self.anthropic.messages.create(**api_params)
 
+                    # Track server tool usage (web_search, web_fetch)
+                    # Server tools appear as server_tool_use blocks in response.content
+                    if self.web_search_manager:
+                        # Log all response blocks for debugging
+                        logger.info(f"Response has {len(response.content)} content blocks (periodic)")
+                        for i, block in enumerate(response.content):
+                            logger.info(f"  Block {i}: type={block.type} (type class: {type(block.type).__name__}, repr: {repr(block.type)})")
+
+                            # Log text blocks
+                            if hasattr(block, 'text'):
+                                preview = block.text[:300] if len(block.text) > 300 else block.text
+                                logger.info(f"    Text preview: {preview}")
+
+                            # Log web_fetch_tool_result content
+                            # Structure: block.content.content.source.data contains the fetched text
+                            if block.type == "web_fetch_tool_result":
+                                if hasattr(block, 'content') and hasattr(block.content, 'content'):
+                                    if hasattr(block.content.content, 'source') and hasattr(block.content.content.source, 'data'):
+                                        fetch_text = block.content.content.source.data[:1000]
+                                        logger.info(f"    WEB_FETCH CONTENT (first 1000 chars): {fetch_text}")
+                                    else:
+                                        logger.warning(f"    web_fetch_tool_result has unexpected structure")
+
+                            if hasattr(block, 'type') and block.type == "server_tool_use":
+                                if hasattr(block, 'name') and block.name in ["web_search", "web_fetch"]:
+                                    self.web_search_manager.record_search()
+                                    logger.info(f"Server tool used (periodic): {block.name}")
+
+                                    # Log server tool input/output for debugging
+                                    logger.info(f"Server tool {block.name} input (periodic): {block.input}")
+                                    logger.info(f"Server tool {block.name} id (periodic): {block.id}")
+
                     # Log current input token count (first iteration only)
                     if loop_iteration == 1 and hasattr(response, 'usage'):
                         input_tokens = response.usage.input_tokens
@@ -847,12 +923,6 @@ class ReactiveEngine:
                                             "content": result
                                         })
 
-                                # Record web search usage
-                                elif content_block.name in ["web_search", "web_fetch"]:
-                                    if self.web_search_manager:
-                                        self.web_search_manager.record_search()
-                                        logger.info(f"Web search performed (periodic): {content_block.name}")
-
                         # Continue conversation with tool results
                         api_params["messages"].append({"role": "assistant", "content": response.content})
                         api_params["messages"].append({"role": "user", "content": tool_results})
@@ -864,10 +934,23 @@ class ReactiveEngine:
                         continue
 
                     elif response.stop_reason == "end_turn":
-                        # Extract final text response
+                        # Extract final text response and citations
+                        citations_list = []
                         for block in response.content:
                             if block.type == "text":
                                 response_text += block.text
+
+                                # Extract citations if present
+                                if hasattr(block, 'citations') and block.citations:
+                                    for citation in block.citations:
+                                        url = getattr(citation, 'url', None)
+                                        title = getattr(citation, 'title', None)
+                                        if url and title:
+                                            citations_list.append(f"[{title}]({url})")
+
+                        # Append citations to response
+                        if citations_list:
+                            response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
 
                         # Exit loop
                         break
@@ -902,7 +985,10 @@ class ReactiveEngine:
                     self.rate_limiter.record_response(channel_id)
 
                     # Log engagement tracking start
-                    self.conversation_logger.log_engagement_tracking(started=True)
+                    self.conversation_logger.log_engagement_tracking(
+                        started=True,
+                        delay_seconds=self.config.rate_limiting.engagement_tracking_delay
+                    )
                     self.conversation_logger.log_separator()
 
                     # Track engagement in background
@@ -916,6 +1002,9 @@ class ReactiveEngine:
                     )
                     self._background_tasks.add(task)
                     task.add_done_callback(self._background_tasks.discard)
+
+                    # Mark message as responded to prevent duplicate responses
+                    self._responded_messages.append(message.id)
 
                     logger.info(f"Periodic response sent in channel {channel_id} ({len(response_text)} chars)")
                 else:

@@ -163,13 +163,21 @@ Current time: {current_time}
 
 {base_prompt}{followup_instructions}
 
-IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation."""
+IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
 
-        # Get recent messages
+CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response."""
+
+        # Get recent messages (excluding current message to avoid duplication)
         channel_id = str(message.channel.id)
-        recent_messages = await self.message_memory.get_recent(
-            channel_id, limit=self.config.reactive.context_window
+        all_recent = await self.message_memory.get_recent(
+            channel_id, limit=self.config.reactive.context_window + 1
         )
+
+        # Filter out current message (it was just saved to DB before this call)
+        recent_messages = [msg for msg in all_recent if msg.message_id != str(message.id)]
+
+        # Trim to configured limit after filtering
+        recent_messages = recent_messages[:self.config.reactive.context_window]
 
         # Build messages array for Claude
         messages = []

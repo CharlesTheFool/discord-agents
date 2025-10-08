@@ -100,9 +100,8 @@ class MessageMemory:
     END;
 
     CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
-        UPDATE messages_fts
-        SET content = new.content, author_name = new.author_name
-        WHERE rowid = new.id;
+        UPDATE messages_fts SET content = new.content, author_name = new.author_name
+        WHERE rowid = old.id;
     END;
     """
 
@@ -151,6 +150,25 @@ class MessageMemory:
         mentions = [str(user.id) for user in message.mentions]
         mentions_json = json.dumps(mentions)
 
+        # Extract content from message.content and embeds (for forwarded messages)
+        content_parts = []
+        if message.content:
+            content_parts.append(message.content)
+
+        # Extract content from embeds (forwarded messages often have content here)
+        if message.embeds:
+            for embed in message.embeds:
+                if embed.description:
+                    content_parts.append(embed.description)
+                if embed.title:
+                    content_parts.append(embed.title)
+                # Extract text from fields
+                for field in embed.fields:
+                    if field.value:
+                        content_parts.append(field.value)
+
+        full_content = "\n".join(content_parts)
+
         try:
             await self._db.execute(
                 """
@@ -166,7 +184,7 @@ class MessageMemory:
                     str(message.guild.id) if message.guild else "DM",
                     str(message.author.id),
                     message.author.display_name,
-                    message.content,
+                    full_content,
                     message.created_at.isoformat(),
                     message.author.bot,
                     len(message.attachments) > 0,
@@ -194,6 +212,24 @@ class MessageMemory:
         mentions = [str(user.id) for user in message.mentions]
         mentions_json = json.dumps(mentions)
 
+        # Extract content from message.content and embeds (for forwarded messages)
+        content_parts = []
+        if message.content:
+            content_parts.append(message.content)
+
+        # Extract content from embeds
+        if message.embeds:
+            for embed in message.embeds:
+                if embed.description:
+                    content_parts.append(embed.description)
+                if embed.title:
+                    content_parts.append(embed.title)
+                for field in embed.fields:
+                    if field.value:
+                        content_parts.append(field.value)
+
+        full_content = "\n".join(content_parts)
+
         await self._db.execute(
             """
             UPDATE messages
@@ -201,7 +237,7 @@ class MessageMemory:
             WHERE message_id = ?
             """,
             (
-                message.content,
+                full_content,
                 len(message.attachments) > 0,
                 mentions_json,
                 str(message.id),
@@ -332,6 +368,34 @@ class MessageMemory:
             "last_message": last_msg,
         }
 
+    async def get_user_message_count(self, user_id: str, server_id: str = None) -> int:
+        """
+        Get total message count for a user.
+
+        Args:
+            user_id: Discord user ID
+            server_id: Optional server ID to scope count to specific server
+
+        Returns:
+            Total message count
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        if server_id:
+            # Count messages in specific server (all channels in that server)
+            # Note: This requires channel_id format to include server info or a separate server_id column
+            # For now, just count all messages by user
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM messages WHERE author_id = ?", (user_id,)
+            )
+        else:
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM messages WHERE author_id = ?", (user_id,)
+            )
+
+        return (await cursor.fetchone())[0]
+
     async def cleanup_old(self, days: int = 90):
         """
         Archive/delete messages older than N days.
@@ -439,8 +503,11 @@ class MessageMemory:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
         # Build query with optional filters
+        # Sanitize query for FTS5: escape double quotes and wrap in quotes
+        # This treats the query as a literal phrase search, avoiding FTS5 syntax errors
+        sanitized_query = f'"{query.replace('"', '""')}"'
         filters = []
-        params = [query]
+        params = [sanitized_query]
 
         if channel_id:
             filters.append("m.channel_id = ?")

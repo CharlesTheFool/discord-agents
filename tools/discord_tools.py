@@ -129,12 +129,15 @@ class DiscordToolExecutor:
             if not user_info:
                 return f"User {user_id} not found in cache"
 
+            # Get actual total message count from message history (not just session count)
+            total_messages = await self.message_memory.get_user_message_count(user_id)
+
             lines = [
                 f"User: {user_info.username} (ID: {user_info.user_id})",
                 f"Display Name: {user_info.display_name}",
                 f"Bot: {'Yes' if user_info.is_bot else 'No'}",
                 f"Last Seen: {user_info.last_seen.strftime('%Y-%m-%d %H:%M')}",
-                f"Message Count: {user_info.message_count}",
+                f"Messages Tracked: {total_messages} (since bot started)",
             ]
 
             return "\n".join(lines)

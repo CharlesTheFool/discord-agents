@@ -17,6 +17,7 @@ import signal
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import threading
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -209,6 +210,8 @@ class BotManager:
             logger.info("Connecting to Discord...")
             await self.client.start(discord_token)
 
+        except asyncio.CancelledError:
+            logger.info("Shutdown requested")
         except KeyboardInterrupt:
             logger.info("Shutdown requested by user (Ctrl+C)")
         except Exception as e:
@@ -234,12 +237,27 @@ class BotManager:
             # Close Discord connection
             if self.client:
                 await self.client.close()
+                # Give Discord client time to finish closing
+                await asyncio.sleep(0.5)
 
             # Close database
             if self.message_memory:
                 await self.message_memory.close()
 
+            # Cancel any remaining tasks
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            if tasks:
+                logger.info(f"Cancelling {len(tasks)} remaining tasks...")
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
             logger.info("Shutdown complete")
+
+            # Log active threads for debugging
+            active_threads = threading.enumerate()
+            if len(active_threads) > 1:  # More than just main thread
+                logger.info(f"Active threads: {[t.name for t in active_threads]}")
 
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
@@ -281,7 +299,17 @@ def main():
 
         # Create and run bot
         manager = BotManager(bot_id)
-        asyncio.run(manager.run())
+
+        # Run with proper KeyboardInterrupt handling
+        try:
+            asyncio.run(manager.run())
+        except KeyboardInterrupt:
+            # Already handled in manager.run(), exit cleanly
+            pass
+        finally:
+            # Force exit to prevent hanging - use os._exit for hard kill
+            # This skips cleanup handlers but ensures termination
+            os._exit(0)
 
     else:
         print(f"Error: Unknown command '{command}'")

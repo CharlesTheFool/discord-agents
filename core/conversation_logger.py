@@ -129,15 +129,23 @@ class ConversationLogger:
 
         self._write(entry)
 
-    def log_engagement_tracking(self, started: bool = True):
+    def log_engagement_tracking(self, started: bool = True, delay_seconds: Optional[int] = None):
         """
         Log engagement tracking status.
 
         Args:
             started: True if tracking started, False if result recorded
+            delay_seconds: Engagement tracking delay in seconds (shown when started=True)
         """
         if started:
-            entry = "\n[ENGAGEMENT] Tracking started (30s delay)\n"
+            if delay_seconds:
+                if delay_seconds >= 60:
+                    delay_str = f"{delay_seconds // 60}min"
+                else:
+                    delay_str = f"{delay_seconds}s"
+                entry = f"\n[ENGAGEMENT] Tracking started ({delay_str} delay)\n"
+            else:
+                entry = "\n[ENGAGEMENT] Tracking started\n"
         else:
             entry = "\n[ENGAGEMENT] Result recorded\n"
 
@@ -200,7 +208,8 @@ class ConversationLogger:
         mentions_resolved: int = 0,
         reply_chain_length: int = 0,
         recent_messages: int = 0,
-        reactions_found: int = 0
+        reactions_found: int = 0,
+        images_processed: int = 0
     ):
         """
         Log context building details.
@@ -210,6 +219,7 @@ class ConversationLogger:
             reply_chain_length: Length of reply chain
             recent_messages: Number of recent messages included
             reactions_found: Number of messages with reactions
+            images_processed: Number of images processed (Phase 4)
         """
         entry = "\n[CONTEXT] Building context:\n"
         if mentions_resolved > 0:
@@ -220,6 +230,8 @@ class ConversationLogger:
             entry += f"  - Recent history: {recent_messages} message(s)\n"
         if reactions_found > 0:
             entry += f"  - Found reactions on {reactions_found} message(s)\n"
+        if images_processed > 0:
+            entry += f"  - Processed {images_processed} image(s)\n"
         self._write(entry)
 
     def log_cache_status(self, enabled: bool, cache_hit: bool = False):
