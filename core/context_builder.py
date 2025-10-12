@@ -61,12 +61,13 @@ class ContextBuilder:
 
         logger.info(f"ContextBuilder initialized for bot '{config.bot_id}'")
 
-    async def build_context(self, message: discord.Message) -> dict:
+    async def build_context(self, message: discord.Message, exclude_message_ids: List[int] = None) -> dict:
         """
         Build context for Claude API call.
 
         Args:
             message: Discord message to build context for
+            exclude_message_ids: Optional list of message IDs to exclude from context (for filtering in-flight messages)
 
         Returns:
             Dictionary with system_prompt, messages, and stats
@@ -165,12 +166,16 @@ Current time: {current_time}
 
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
 
+NOTE: Messages showing "[Forwarded message - content not accessible]" are forwards from other channels. You cannot see forwarded message content due to Discord API limitations.
+
 CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response."""
 
         # Get recent messages (excluding current message to avoid duplication)
         channel_id = str(message.channel.id)
         all_recent = await self.message_memory.get_recent(
-            channel_id, limit=self.config.reactive.context_window + 1
+            channel_id,
+            limit=self.config.reactive.context_window + 1,
+            exclude_message_ids=exclude_message_ids
         )
 
         # Filter out current message (it was just saved to DB before this call)

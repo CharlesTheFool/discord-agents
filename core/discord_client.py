@@ -241,6 +241,10 @@ class DiscordClient(discord.Client):
                     unlimited=self.config.discord.backfill_unlimited
                 )
 
+            # Start daily re-backfill task to catch edited messages
+            asyncio.create_task(self._daily_reindex_task())
+            logger.info("Daily re-backfill task started (will run at 3 AM UTC)")
+
         logger.info("Bot is ready!")
 
     async def on_message(self, message: discord.Message):
@@ -290,6 +294,22 @@ class DiscordClient(discord.Client):
                 f"@mention from {message.author.name} in "
                 f"#{message.channel.name}: {message.content[:50]}..."
             )
+
+            # Check for reindex command trigger (manual backfill)
+            if "reindex" in message.content.lower() or "backfill" in message.content.lower():
+                logger.info(f"Manual reindex triggered by {message.author.name}")
+                await message.channel.send("Starting manual re-backfill... This may take a minute.")
+                try:
+                    total = await self.backfill_message_history(
+                        days_back=self.config.discord.backfill_days,
+                        unlimited=self.config.discord.backfill_unlimited
+                    )
+                    await message.channel.send(f"✓ Re-backfill complete! Indexed {total} messages.")
+                except Exception as e:
+                    logger.error(f"Manual reindex error: {e}", exc_info=True)
+                    await message.channel.send(f"✗ Re-backfill failed: {e}")
+                return
+
             # Handle immediately (Phase 1: only @mentions)
             try:
                 await self.reactive_engine.handle_urgent(message)
@@ -321,20 +341,26 @@ class DiscordClient(discord.Client):
             before: Message before edit
             after: Message after edit
         """
+        logger.info(f"[EDIT EVENT] Message {after.id} edited by {after.author.name} in #{after.channel.name}")
+        logger.info(f"[EDIT EVENT] Before: {before.content[:100] if before.content else '(no content)'}")
+        logger.info(f"[EDIT EVENT] After: {after.content[:100] if after.content else '(no content)'}")
+
         # Ignore bot's own edits
         if after.author == self.user:
+            logger.info(f"[EDIT EVENT] Ignoring bot's own edit")
             return
 
         # Ignore edits from other bots
         if after.author.bot:
+            logger.info(f"[EDIT EVENT] Ignoring edit from other bot")
             return
 
         # Update message in storage
         try:
             await self.message_memory.update_message(after)
-            logger.debug(f"Updated edited message from {after.author.name}")
+            logger.info(f"[EDIT EVENT] Successfully processed edit from {after.author.name}")
         except Exception as e:
-            logger.error(f"Error updating edited message: {e}")
+            logger.error(f"[EDIT EVENT] Error updating edited message: {e}", exc_info=True)
 
     async def on_message_delete(self, message: discord.Message):
         """
@@ -460,3 +486,48 @@ class DiscordClient(discord.Client):
             logger.info(f"  ({failed_channels} channels skipped due to permissions/errors)")
 
         return total_messages
+
+    async def _daily_reindex_task(self):
+        """
+        Background task that runs daily re-backfill to catch edited messages.
+
+        Runs at 3 AM UTC each day to update the message database with any
+        edits that occurred during the previous day.
+        """
+        from datetime import datetime, timedelta
+
+        logger.info("Daily reindex task initialized")
+
+        while True:
+            try:
+                # Calculate time until next 3 AM UTC
+                now = datetime.utcnow()
+                target_hour = 3  # 3 AM UTC
+
+                # Calculate next 3 AM
+                next_run = now.replace(hour=target_hour, minute=0, second=0, microsecond=0)
+                if now.hour >= target_hour:
+                    # Already past 3 AM today, schedule for tomorrow
+                    next_run += timedelta(days=1)
+
+                wait_seconds = (next_run - now).total_seconds()
+                logger.info(f"Next daily reindex scheduled for {next_run} UTC (in {wait_seconds/3600:.1f} hours)")
+
+                # Wait until 3 AM
+                await asyncio.sleep(wait_seconds)
+
+                # Run backfill
+                logger.info("Starting scheduled daily re-backfill...")
+                total = await self.backfill_message_history(
+                    days_back=self.config.discord.backfill_days,
+                    unlimited=self.config.discord.backfill_unlimited
+                )
+                logger.info(f"Daily re-backfill complete: {total} messages indexed")
+
+            except asyncio.CancelledError:
+                logger.info("Daily reindex task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in daily reindex task: {e}", exc_info=True)
+                # Wait 1 hour before retrying on error
+                await asyncio.sleep(3600)

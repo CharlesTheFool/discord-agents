@@ -127,6 +127,14 @@ class ReactiveEngine:
         Args:
             message: Discord message with @mention
         """
+        # Check if already responded/processing this message (prevent race condition)
+        if message.id in self._responded_messages:
+            logger.debug(f"Already responded to @mention {message.id}, skipping")
+            return
+
+        # Mark as being processed immediately (before building context)
+        self._responded_messages.append(message.id)
+
         channel_id = str(message.channel.id)
 
         # Log incoming message
@@ -148,22 +156,26 @@ class ReactiveEngine:
             rate_limit_stats=rate_limit_stats
         )
 
-        # Build context
-        context = await self.context_builder.build_context(message)
-
-        # Log context building stats
-        if context.get("stats"):
-            self.conversation_logger.log_context_building(**context["stats"])
-
-        # Log cache status
-        self.conversation_logger.log_cache_status(enabled=self.config.api.context_editing.enabled)
-
         # Call Claude API
         logger.info(f"Calling Claude API for @mention from {message.author.name}")
 
         try:
-            # Acquire semaphore to prevent concurrent API calls
+            # Acquire semaphore FIRST to prevent race condition
+            # Context is built inside semaphore so each message gets isolated context
             async with self._response_semaphore:
+                # Build context (inside semaphore to prevent overlapping contexts)
+                # Exclude messages that are currently being processed to prevent seeing other pending @mentions
+                context = await self.context_builder.build_context(
+                    message,
+                    exclude_message_ids=list(self._responded_messages)
+                )
+
+                # Log context building stats
+                if context.get("stats"):
+                    self.conversation_logger.log_context_building(**context["stats"])
+
+                # Log cache status
+                self.conversation_logger.log_cache_status(enabled=self.config.api.context_editing.enabled)
                 # Show typing indicator
                 async with message.channel.typing():
                     # Small delay for more natural feel
@@ -176,6 +188,8 @@ class ReactiveEngine:
                     if self.discord_tool_executor:
                         tools.extend(get_discord_tools())
                         logger.debug("Discord tools added to API request")
+                    else:
+                        logger.warning("Discord tool executor is None - tools NOT added!")
 
                     # Add web search tools if enabled and quota available
                     beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
@@ -462,9 +476,6 @@ class ReactiveEngine:
             )
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
-
-            # Mark message as responded to prevent duplicate responses from periodic check
-            self._responded_messages.append(message.id)
 
             logger.info(
                 f"Response sent to {message.author.name} ({len(response_text)} chars)"
@@ -790,6 +801,8 @@ class ReactiveEngine:
             if self.discord_tool_executor:
                 tools.extend(get_discord_tools())
                 logger.debug("Discord tools added to periodic check")
+            else:
+                logger.warning("Discord tool executor is None - tools NOT added to periodic check!")
 
             # Add web search tools if enabled and quota available
             beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]

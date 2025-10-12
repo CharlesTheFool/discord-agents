@@ -1,779 +1,1005 @@
-2025-10-07 21:12:50,728 [INFO] __main__: Initializing bot 'slh-01'...
-2025-10-07 21:12:50,736 [INFO] __main__: Loaded config for bot 'SLH-01'
-2025-10-07 21:12:50,741 [INFO] core.message_memory: Message memory initialized: persistence\slh-01_messages.db
-2025-10-07 21:12:50,741 [INFO] __main__: Message memory initialized
-2025-10-07 21:12:50,744 [INFO] core.user_cache: User cache initialized: persistence\slh-01_users.db
-2025-10-07 21:12:50,744 [INFO] __main__: User cache initialized
-2025-10-07 21:12:50,745 [INFO] core.memory_manager: MemoryManager initialized for bot 'slh-01' at memories\slh-01
-2025-10-07 21:12:50,745 [INFO] __main__: Memory manager initialized
-2025-10-07 21:12:50,748 [INFO] core.conversation_logger: ConversationLogger initialized: logs\slh-01_conversations.log
-2025-10-07 21:12:50,748 [INFO] __main__: Conversation logger initialized
-2025-10-07 21:12:50,748 [INFO] __main__: Rate limiter initialized
-2025-10-07 21:12:51,286 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\slh-01
-2025-10-07 21:12:51,286 [INFO] core.context_builder: ContextBuilder initialized for bot 'slh-01'
-2025-10-07 21:12:51,287 [INFO] tools.web_search: WebSearchManager initialized (max_daily=300)
-2025-10-07 21:12:51,288 [INFO] core.reactive_engine: Web search enabled (max_daily=300)
-2025-10-07 21:12:51,288 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'slh-01'
-2025-10-07 21:12:51,288 [INFO] __main__: Reactive engine initialized
-2025-10-07 21:12:51,294 [INFO] core.engagement_tracker: EngagementTracker initialized: persistence\slh-01_engagement_stats.json
-2025-10-07 21:12:51,294 [INFO] core.agentic_engine: Engagement tracker initialized
-2025-10-07 21:12:51,294 [INFO] core.agentic_engine: AgenticEngine initialized for bot 'slh-01'
-2025-10-07 21:12:51,294 [INFO] __main__: Agentic engine initialized
-2025-10-07 21:12:51,295 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
-2025-10-07 21:12:51,295 [INFO] core.discord_client: Discord client initialized for bot 'slh-01'
-2025-10-07 21:12:51,296 [INFO] __main__: Discord client initialized
-2025-10-07 21:12:51,296 [INFO] core.agentic_engine: Discord client reference set on AgenticEngine
-2025-10-07 21:12:51,296 [INFO] __main__: Bot initialization complete!
-2025-10-07 21:12:51,296 [INFO] __main__: Connecting to Discord...
-2025-10-07 21:12:54,687 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
-2025-10-07 21:12:54,687 [INFO] core.discord_client: Logged into 1 servers
-2025-10-07 21:12:54,688 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
-2025-10-07 21:12:54,689 [INFO] tools.discord_tools: DiscordToolExecutor initialized
-2025-10-07 21:12:54,690 [INFO] core.discord_client: Discord tools enabled
-2025-10-07 21:12:54,691 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
-2025-10-07 21:12:54,691 [INFO] core.discord_client: Agentic loop started
-2025-10-07 21:12:54,692 [INFO] core.discord_client: Bot is ready!
-2025-10-07 21:12:54,693 [INFO] core.agentic_engine: Agentic loop started
-2025-10-07 21:12:54,694 [INFO] core.discord_client: Starting message history backfill (30 days)...
-2025-10-07 21:12:54,694 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
-2025-10-07 21:12:54,699 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-07 21:12:54,707 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-07 21:12:57,096 [INFO] core.discord_client:   Progress: 100 messages indexed...
-2025-10-07 21:12:59,362 [INFO] core.discord_client:   Progress: 200 messages indexed...
-2025-10-07 21:13:01,972 [INFO] core.discord_client:   Progress: 300 messages indexed...
-2025-10-07 21:13:03,322 [INFO] core.discord_client:   Progress: 400 messages indexed...
-2025-10-07 21:13:04,369 [INFO] core.discord_client:   Progress: 500 messages indexed...
-2025-10-07 21:13:05,182 [INFO] core.discord_client: Backfill complete: 550 messages from 28 channels
-2025-10-07 22:11:36,330 [WARNING] discord.gateway: Shard ID None has stopped responding to the gateway. Closing and restarting.
-2025-10-07 22:11:44,327 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
-2025-10-07 22:11:44,327 [INFO] core.discord_client: Logged into 1 servers
-2025-10-07 22:11:44,328 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
-2025-10-07 22:11:44,328 [INFO] tools.discord_tools: DiscordToolExecutor initialized
-2025-10-07 22:11:44,330 [INFO] core.discord_client: Discord tools enabled
-2025-10-07 22:11:44,330 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
-2025-10-07 22:11:44,331 [INFO] core.discord_client: Agentic loop started
-2025-10-07 22:11:44,332 [INFO] core.discord_client: Bot is ready!
-2025-10-07 22:11:44,333 [INFO] core.agentic_engine: Agentic loop started
-2025-10-07 22:11:44,333 [INFO] core.discord_client: Starting message history backfill (30 days)...
-2025-10-07 22:11:44,334 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
-2025-10-07 22:11:44,337 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-07 22:11:44,340 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-07 22:11:45,372 [INFO] core.discord_client:   Progress: 100 messages indexed...
-2025-10-07 22:11:48,030 [INFO] core.discord_client:   Progress: 200 messages indexed...
-2025-10-07 22:11:50,512 [INFO] core.discord_client:   Progress: 300 messages indexed...
-2025-10-07 22:11:52,088 [INFO] core.discord_client:   Progress: 400 messages indexed...
-2025-10-07 22:11:52,915 [INFO] core.discord_client:   Progress: 500 messages indexed...
-2025-10-07 22:11:53,433 [INFO] core.discord_client: Backfill complete: 550 messages from 28 channels
-2025-10-07 22:12:51,424 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-07 22:12:51,426 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-07 23:08:54,311 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:08:54,376 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-07 23:08:54,377 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-07 23:08:54,377 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-07 23:08:54,378 [INFO] core.reactive_engine: Input tokens: 2,441 / 8,000 (30.5%)
-2025-10-07 23:08:57,690 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:08:57,691 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-07 23:08:57,691 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-07 23:09:01,069 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:09:01,071 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-07 23:09:01,071 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-07 23:09:20,405 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:09:20,464 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-07 23:09:20,465 [INFO] core.reactive_engine:   Block 0: type=server_tool_use (type class: str, repr: 'server_tool_use')
-2025-10-07 23:09:20,466 [INFO] tools.web_search: Web search recorded: 36/300 today
-2025-10-07 23:09:20,466 [INFO] core.reactive_engine: Server tool used (periodic): web_search
-2025-10-07 23:09:20,466 [INFO] core.reactive_engine: Server tool web_search input (periodic): {'query': 'newest iPhone model 2025 features'}
-2025-10-07 23:09:20,467 [INFO] core.reactive_engine: Server tool web_search id (periodic): srvtoolu_01V2eGwUQGTHCEeJfCvuFTro
-2025-10-07 23:09:20,467 [INFO] core.reactive_engine:   Block 1: type=web_search_tool_result (type class: str, repr: 'web_search_tool_result')
-2025-10-07 23:09:20,467 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-07 23:09:20,469 [INFO] core.memory_tool_executor: Updated memory file: /memories/slh-01/test_log.md
-2025-10-07 23:09:37,710 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:09:37,712 [INFO] core.reactive_engine: Response has 15 content blocks (periodic)
-2025-10-07 23:09:37,713 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,713 [INFO] core.reactive_engine:     Text preview: alright, so clarification first: i can't actually "search for images" in the sense of viewing them. web search returns text information, not visual content i can see.
+2025-10-12 04:18:56,805 [INFO] __main__: Initializing bot 'slh-01'...
+2025-10-12 04:18:56,810 [INFO] __main__: Loaded config for bot 'SLH-01'
+2025-10-12 04:18:56,814 [INFO] core.message_memory: Message memory initialized: persistence\slh-01_messages.db
+2025-10-12 04:18:56,814 [INFO] __main__: Message memory initialized
+2025-10-12 04:18:56,816 [INFO] core.user_cache: User cache initialized: persistence\slh-01_users.db
+2025-10-12 04:18:56,816 [INFO] __main__: User cache initialized
+2025-10-12 04:18:56,816 [INFO] core.memory_manager: MemoryManager initialized for bot 'slh-01' at memories\slh-01
+2025-10-12 04:18:56,817 [INFO] __main__: Memory manager initialized
+2025-10-12 04:18:56,818 [INFO] core.conversation_logger: ConversationLogger initialized: logs\slh-01_conversations.log
+2025-10-12 04:18:56,818 [INFO] __main__: Conversation logger initialized
+2025-10-12 04:18:56,819 [INFO] __main__: Rate limiter initialized
+2025-10-12 04:18:57,062 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\slh-01
+2025-10-12 04:18:57,062 [INFO] core.context_builder: ContextBuilder initialized for bot 'slh-01'
+2025-10-12 04:18:57,063 [INFO] tools.web_search: WebSearchManager initialized (max_daily=300)
+2025-10-12 04:18:57,063 [INFO] core.reactive_engine: Web search enabled (max_daily=300)
+2025-10-12 04:18:57,063 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'slh-01'
+2025-10-12 04:18:57,063 [INFO] __main__: Reactive engine initialized
+2025-10-12 04:18:57,068 [INFO] core.engagement_tracker: EngagementTracker initialized: persistence\slh-01_engagement_stats.json
+2025-10-12 04:18:57,068 [INFO] core.agentic_engine: Engagement tracker initialized
+2025-10-12 04:18:57,068 [INFO] core.agentic_engine: AgenticEngine initialized for bot 'slh-01'
+2025-10-12 04:18:57,069 [INFO] __main__: Agentic engine initialized
+2025-10-12 04:18:57,069 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
+2025-10-12 04:18:57,069 [INFO] core.discord_client: Discord client initialized for bot 'slh-01'
+2025-10-12 04:18:57,069 [INFO] __main__: Discord client initialized
+2025-10-12 04:18:57,070 [INFO] core.agentic_engine: Discord client reference set on AgenticEngine
+2025-10-12 04:18:57,070 [INFO] __main__: Bot initialization complete!
+2025-10-12 04:18:57,070 [INFO] __main__: Connecting to Discord...
+2025-10-12 04:18:59,936 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
+2025-10-12 04:18:59,936 [INFO] core.discord_client: Logged into 1 servers
+2025-10-12 04:18:59,936 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
+2025-10-12 04:18:59,937 [INFO] tools.discord_tools: DiscordToolExecutor initialized
+2025-10-12 04:18:59,937 [INFO] core.discord_client: Discord tools enabled
+2025-10-12 04:18:59,937 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
+2025-10-12 04:18:59,937 [INFO] core.discord_client: Agentic loop started
+2025-10-12 04:18:59,937 [INFO] core.discord_client: Daily re-backfill task started (will run at 3 AM UTC)
+2025-10-12 04:18:59,938 [INFO] core.discord_client: Bot is ready!
+2025-10-12 04:18:59,938 [INFO] core.agentic_engine: Agentic loop started
+2025-10-12 04:18:59,938 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-12 04:18:59,938 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-12 04:18:59,941 [INFO] core.discord_client: Daily reindex task initialized
+2025-10-12 04:18:59,941 [INFO] core.discord_client: Next daily reindex scheduled for 2025-10-13 03:00:00 UTC (in 15.7 hours)
+2025-10-12 04:18:59,942 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-12 04:18:59,943 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-12 04:19:00,499 [INFO] core.message_memory: [UPSERT] Message 1423847118207975508 content CHANGED during backfill
+2025-10-12 04:19:00,500 [INFO] core.message_memory: [UPSERT] OLD: I've modified this message that was actually written days ago just for the final comprehensive test....
+2025-10-12 04:19:00,500 [INFO] core.message_memory: [UPSERT] NEW: I've modified this message that was actually written days ago just for the final comprehensive test....
+2025-10-12 04:19:00,507 [INFO] core.message_memory: [UPSERT] Successfully updated message 1423847118207975508
+2025-10-12 04:19:00,762 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-12 04:19:02,643 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-12 04:19:05,010 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-12 04:19:05,857 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-12 04:19:06,077 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-12 04:19:06,077 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,078 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-12 04:19:06,078 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-12 04:19:06,079 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:06,079 [INFO] core.message_memory:     Title: News
+2025-10-12 04:19:06,080 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-12 04:19:06,081 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,081 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:19:06,081 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:19:06,082 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,082 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-12 04:19:06,083 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-12 04:19:06,083 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:19:06,084 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:06,084 [INFO] core.message_memory:     Title: World
+2025-10-12 04:19:06,085 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-12 04:19:06,091 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-12 04:19:06,092 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,092 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:06,093 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:06,347 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-12 04:19:06,347 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,347 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-12 04:19:06,348 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-12 04:19:06,350 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-12 04:19:06,350 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,351 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-12 04:19:06,351 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-12 04:19:06,351 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,352 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:19:06,352 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:19:06,352 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,353 [INFO] core.message_memory:     Title: 2025
+2025-10-12 04:19:06,353 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-12 04:19:06,713 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-12 04:19:06,713 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,714 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-12 04:19:06,714 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-12 04:19:06,716 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-12 04:19:06,716 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,716 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:06,716 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:06,719 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-12 04:19:06,720 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,720 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:06,720 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:06,726 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-12 04:19:06,727 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:06,728 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:06,728 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,049 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-12 04:19:07,050 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,050 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,050 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,057 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-12 04:19:07,057 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,058 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-12 04:19:07,058 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-12 04:19:07,059 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,059 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-12 04:19:07,059 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-12 04:19:07,060 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:07,060 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-12 04:19:07,061 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-12 04:19:07,061 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:07,061 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-12 04:19:07,062 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-12 04:19:07,067 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-12 04:19:07,067 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-12 04:19:07,068 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,068 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,069 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,275 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-12 04:19:07,276 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,276 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,277 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,282 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-12 04:19:07,283 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,283 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,283 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,284 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-12 04:19:07,285 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-12 04:19:07,285 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-12 04:19:07,286 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-12 04:19:07,287 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,287 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,287 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,291 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-12 04:19:07,291 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,292 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,292 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,296 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-12 04:19:07,296 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,297 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:19:07,298 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:19:07,305 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-12 04:19:07,306 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,306 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-12 04:19:07,307 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-12 04:19:07,618 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-12 04:19:07,618 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,618 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-12 04:19:07,619 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-12 04:19:07,619 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:07,619 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-12 04:19:07,619 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-12 04:19:07,629 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-12 04:19:07,630 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,630 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-12 04:19:07,630 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-12 04:19:07,631 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,631 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-12 04:19:07,631 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-12 04:19:07,632 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,632 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-12 04:19:07,632 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-12 04:19:07,633 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,633 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-12 04:19:07,634 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-12 04:19:07,635 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:07,636 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-12 04:19:07,636 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-12 04:19:07,659 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-12 04:19:07,659 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:07,660 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-12 04:19:07,660 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-12 04:19:07,698 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-12 04:19:08,390 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-12 04:19:08,429 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-12 04:19:08,814 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-12 04:19:08,815 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:08,815 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-12 04:19:08,815 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-12 04:19:08,816 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:08,816 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-12 04:19:08,817 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-12 04:19:08,817 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-12 04:19:08,817 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-12 04:19:08,818 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:19:08,818 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-12 04:19:08,818 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-12 04:19:08,819 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:19:08,819 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-12 04:19:08,820 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-12 04:19:08,820 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:19:09,392 [INFO] core.discord_client: Backfill complete: 780 messages from 30 channels
+2025-10-12 04:19:58,971 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> Find me the message contain...
+2025-10-12 04:19:58,972 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-12 04:20:04,830 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:20:04,884 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:20:04,884 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:20:04,885 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:20:04,885 [INFO] core.reactive_engine: Input tokens: 397 / 8,000 (5.0%)
+2025-10-12 04:20:08,506 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:20:08,510 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:20:08,510 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:20:13,891 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:20:13,894 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:20:13,895 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:20:13,895 [INFO] core.reactive_engine:     Text preview: found it. the message from **october 4th at 01:40**:
 
-BUT—this one's different from the eiffel tower test. the newest iphone changes every year, and my knowledge cutoff is april 2024. i'
-2025-10-07 23:09:37,713 [INFO] core.reactive_engine:   Block 1: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,714 [INFO] core.reactive_engine:     Text preview: **the newest iphone lineup** (announced september 2025) includes the iPhone 17, a brand new iPhone Air (the thinnest iPhone ever at 5.6mm), iPhone 17 Pro, and iPhone 17 Pro Max.
-2025-10-07 23:09:37,714 [INFO] core.reactive_engine:   Block 2: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,714 [INFO] core.reactive_engine:     Text preview: 
+"I've modified this message that was actually written days ago just for the final comprehensive test. If you see this, prove by saying the code **3922**. Nuclear energy"
 
-**key features across the lineup:**
+**the code is 3922.**
+2025-10-12 04:20:14,185 [INFO] core.reactive_engine: Response sent to charlesthefool (246 chars)
+2025-10-12 04:23:15,286 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> reindex...
+2025-10-12 04:23:15,287 [INFO] core.discord_client: Manual reindex triggered by charlesthefool
+2025-10-12 04:23:15,582 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-12 04:23:15,583 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-12 04:23:17,678 [INFO] core.message_memory: [UPSERT] Message 1423847118207975508 content CHANGED during backfill
+2025-10-12 04:23:17,679 [INFO] core.message_memory: [UPSERT] OLD: I've modified this message that was actually written days ago just for the final comprehensive test....
+2025-10-12 04:23:17,680 [INFO] core.message_memory: [UPSERT] NEW: I've modified this message that was actually written days ago just for the final comprehensive test....
+2025-10-12 04:23:17,703 [INFO] core.message_memory: [UPSERT] Successfully updated message 1423847118207975508
+2025-10-12 04:23:18,030 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-12 04:23:20,811 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-12 04:23:23,026 [INFO] core.message_memory: [UPSERT] Message 1424895668941754559 content CHANGED during backfill
+2025-10-12 04:23:23,026 [INFO] core.message_memory: [UPSERT] OLD: This error was silly tho, will test it out again soon...
+2025-10-12 04:23:23,027 [INFO] core.message_memory: [UPSERT] NEW: This error was silly tho, will test it out again soon. Joan of Arc. YOU FOUND IT! Final code is the ...
+2025-10-12 04:23:23,036 [INFO] core.message_memory: [UPSERT] Successfully updated message 1424895668941754559
+2025-10-12 04:23:24,246 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-12 04:23:25,104 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-12 04:23:25,340 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-12 04:23:25,341 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,341 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-12 04:23:25,341 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-12 04:23:25,342 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:25,343 [INFO] core.message_memory:     Title: News
+2025-10-12 04:23:25,343 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-12 04:23:25,344 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,344 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:23:25,345 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:23:25,345 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,345 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-12 04:23:25,346 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-12 04:23:25,346 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:23:25,347 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:25,348 [INFO] core.message_memory:     Title: World
+2025-10-12 04:23:25,348 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-12 04:23:25,356 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-12 04:23:25,357 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,358 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:25,358 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:25,625 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-12 04:23:25,625 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,626 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-12 04:23:25,626 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-12 04:23:25,630 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-12 04:23:25,630 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,631 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-12 04:23:25,631 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-12 04:23:25,632 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,632 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:23:25,632 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:23:25,633 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,633 [INFO] core.message_memory:     Title: 2025
+2025-10-12 04:23:25,633 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-12 04:23:25,943 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-12 04:23:25,944 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,944 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-12 04:23:25,945 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-12 04:23:25,949 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-12 04:23:25,950 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,951 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:25,951 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:25,959 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-12 04:23:25,960 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,961 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:25,962 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:25,973 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-12 04:23:25,974 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:25,975 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:25,975 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,281 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-12 04:23:26,282 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,282 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,282 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,292 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-12 04:23:26,293 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,293 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-12 04:23:26,293 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-12 04:23:26,294 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,294 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-12 04:23:26,295 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-12 04:23:26,295 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:26,296 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-12 04:23:26,296 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-12 04:23:26,296 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:26,297 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-12 04:23:26,297 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-12 04:23:26,304 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-12 04:23:26,305 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-12 04:23:26,305 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,306 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,306 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,584 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-12 04:23:26,585 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,585 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,586 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,596 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-12 04:23:26,596 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,597 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,597 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,599 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-12 04:23:26,600 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-12 04:23:26,600 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-12 04:23:26,602 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-12 04:23:26,602 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,603 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,603 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,605 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-12 04:23:26,606 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,606 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,606 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,608 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-12 04:23:26,608 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,609 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:23:26,609 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:23:26,611 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-12 04:23:26,612 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,612 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-12 04:23:26,612 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-12 04:23:26,955 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-12 04:23:26,955 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,956 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-12 04:23:26,956 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-12 04:23:26,956 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:26,956 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-12 04:23:26,957 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-12 04:23:26,967 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-12 04:23:26,967 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,967 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-12 04:23:26,968 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-12 04:23:26,968 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,968 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-12 04:23:26,968 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-12 04:23:26,969 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,969 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-12 04:23:26,969 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-12 04:23:26,969 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,970 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-12 04:23:26,970 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-12 04:23:26,970 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:26,970 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-12 04:23:26,971 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-12 04:23:26,983 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-12 04:23:26,984 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:26,984 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-12 04:23:26,985 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-12 04:23:27,009 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-12 04:23:27,436 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-12 04:23:27,485 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-12 04:23:27,803 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-12 04:23:27,804 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:27,804 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-12 04:23:27,805 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-12 04:23:27,805 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:27,806 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-12 04:23:27,806 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-12 04:23:27,807 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-12 04:23:27,807 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-12 04:23:27,807 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:23:27,808 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-12 04:23:27,808 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-12 04:23:27,808 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:23:27,809 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-12 04:23:27,809 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-12 04:23:27,810 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:23:28,644 [INFO] core.discord_client: Backfill complete: 784 messages from 31 channels
+2025-10-12 04:23:40,646 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> Good job! Now, find the new...
+2025-10-12 04:23:40,649 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-12 04:23:50,863 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:23:50,865 [INFO] core.reactive_engine: Response has 3 content blocks
+2025-10-12 04:23:50,866 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:23:50,866 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:23:50,866 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:23:50,867 [INFO] core.reactive_engine: Input tokens: 708 / 8,000 (8.8%)
+2025-10-12 04:23:55,247 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:23:55,249 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:23:55,249 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:23:55,250 [INFO] core.reactive_engine:     Text preview: hmm, that's just your message asking me to find it. let me search more broadly—maybe it's phrased differently or split across words.
+2025-10-12 04:23:55,250 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:23:58,604 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:23:58,605 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:23:58,605 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:24:03,176 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:24:03,179 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:24:03,180 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:24:03,181 [INFO] core.reactive_engine:     Text preview: can't find any message with "quantum computing" other than your request. either it hasn't been sent yet, or the re-index didn't catch it if it was just posted. did you actually send the message with the code, or are you testing if i'll admit when i can't find something?
+2025-10-12 04:24:03,507 [INFO] core.reactive_engine: Response sent to charlesthefool (270 chars)
+2025-10-12 04:24:36,735 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:24:36,738 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
+2025-10-12 04:24:36,739 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:24:36,739 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:24:36,740 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:24:36,741 [INFO] core.reactive_engine: Input tokens: 848 / 8,000 (10.6%)
+2025-10-12 04:24:41,996 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:24:41,998 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
+2025-10-12 04:24:41,999 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:24:41,999 [INFO] core.reactive_engine:     Text preview: right, my bad. searched across all channels now. 
 
+found it—**october 4th at 01:40**:
 
-2025-10-07 23:09:37,714 [INFO] core.reactive_engine:   Block 3: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,715 [INFO] core.reactive_engine:     Text preview: - A19 chip supporting Apple Intelligence, 120Hz ProMotion displays with Always-On functionality, dual 48MP camera system (on base model), Apple-designed networking chip, more scratch-resistant Ceramic Shield 2 glass, Camera Control button, and customizable Action button
-2025-10-07 23:09:37,715 [INFO] core.reactive_engine:   Block 4: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,715 [INFO] core.reactive_engine:     Text preview: 
+"I've modified this message that was actually written days ago just for the final comprehensive test. If you see this, prove by saying the code 2293. Nuclear energy !"
 
+wait, that still says "Nuclear energy!" but 
+2025-10-12 04:24:42,172 [INFO] core.reactive_engine: Periodic response sent in channel 1426891931736346724 (499 chars)
+2025-10-12 04:25:38,761 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> backfill...
+2025-10-12 04:25:38,761 [INFO] core.discord_client: Manual reindex triggered by charlesthefool
+2025-10-12 04:25:39,032 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-12 04:25:39,033 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-12 04:25:39,974 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-12 04:25:41,995 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-12 04:25:44,148 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-12 04:25:45,053 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-12 04:25:45,294 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-12 04:25:45,295 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,295 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-12 04:25:45,296 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-12 04:25:45,297 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:45,297 [INFO] core.message_memory:     Title: News
+2025-10-12 04:25:45,298 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-12 04:25:45,298 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,299 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:25:45,299 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:25:45,300 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,300 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-12 04:25:45,301 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-12 04:25:45,301 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:25:45,302 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:45,302 [INFO] core.message_memory:     Title: World
+2025-10-12 04:25:45,302 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-12 04:25:45,308 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-12 04:25:45,309 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,309 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:45,310 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:45,638 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-12 04:25:45,638 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,639 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-12 04:25:45,639 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-12 04:25:45,644 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-12 04:25:45,645 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,645 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-12 04:25:45,646 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-12 04:25:45,646 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,647 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:25:45,647 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:25:45,648 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,648 [INFO] core.message_memory:     Title: 2025
+2025-10-12 04:25:45,648 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-12 04:25:45,995 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-12 04:25:45,996 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:45,997 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-12 04:25:45,997 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-12 04:25:46,002 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-12 04:25:46,002 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,003 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,003 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,011 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-12 04:25:46,012 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,013 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,014 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,027 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-12 04:25:46,028 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,029 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,029 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,270 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-12 04:25:46,271 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,272 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,272 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,281 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-12 04:25:46,281 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,282 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-12 04:25:46,282 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-12 04:25:46,282 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,283 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-12 04:25:46,283 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-12 04:25:46,283 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:46,283 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-12 04:25:46,284 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-12 04:25:46,284 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:46,284 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-12 04:25:46,285 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-12 04:25:46,287 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-12 04:25:46,287 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-12 04:25:46,287 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,287 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,287 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,497 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-12 04:25:46,498 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,498 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,498 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,506 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-12 04:25:46,507 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,507 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,508 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,509 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-12 04:25:46,509 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-12 04:25:46,509 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-12 04:25:46,510 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-12 04:25:46,510 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,510 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,510 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,511 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-12 04:25:46,511 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,511 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,511 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,512 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-12 04:25:46,512 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,512 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:25:46,512 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:25:46,513 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-12 04:25:46,513 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,513 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-12 04:25:46,513 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-12 04:25:46,934 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-12 04:25:46,934 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,935 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-12 04:25:46,935 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-12 04:25:46,935 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:46,935 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-12 04:25:46,935 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-12 04:25:46,939 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-12 04:25:46,939 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,939 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-12 04:25:46,939 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-12 04:25:46,940 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,940 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-12 04:25:46,940 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-12 04:25:46,941 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,941 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-12 04:25:46,941 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-12 04:25:46,941 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,941 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-12 04:25:46,941 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-12 04:25:46,942 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:46,942 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-12 04:25:46,942 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-12 04:25:46,946 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-12 04:25:46,946 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:46,946 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-12 04:25:46,946 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-12 04:25:46,952 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-12 04:25:47,342 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-12 04:25:47,352 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-12 04:25:47,618 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-12 04:25:47,618 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:47,619 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-12 04:25:47,619 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-12 04:25:47,619 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:47,619 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-12 04:25:47,619 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-12 04:25:47,620 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-12 04:25:47,620 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-12 04:25:47,620 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:25:47,620 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-12 04:25:47,621 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-12 04:25:47,621 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:25:47,621 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-12 04:25:47,621 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-12 04:25:47,621 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:25:48,252 [INFO] core.discord_client: Backfill complete: 791 messages from 31 channels
+2025-10-12 04:26:01,071 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: okay, this time I waited. try again <@137533851393...
+2025-10-12 04:26:01,073 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-12 04:26:10,741 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:26:10,745 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:26:10,746 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:26:10,746 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:26:10,747 [INFO] core.reactive_engine: Input tokens: 982 / 8,000 (12.3%)
+2025-10-12 04:26:15,664 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:26:15,667 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:26:15,667 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:26:22,154 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:26:22,156 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:26:22,157 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:26:22,157 [INFO] core.reactive_engine:     Text preview: alright, found it after the backfill.
 
-2025-10-07 23:09:37,715 [INFO] core.reactive_engine:   Block 5: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,715 [INFO] core.reactive_engine:     Text preview: - Ceramic Shield 2 on the front is 3x more scratch-resistant
-2025-10-07 23:09:37,716 [INFO] core.reactive_engine:   Block 6: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,716 [INFO] core.reactive_engine:     Text preview: 
+oldest message with "quantum computing" is from **october 4th at 01:40**:
 
+"I've modified this message that was actually written days ago just for the final comprehensive test. If you see this, prove by saying the code **2293_01**. Quantum computing!"
 
-2025-10-07 23:09:37,716 [INFO] core.reactive_engine:   Block 7: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,716 [INFO] core.reactive_engine:     Text preview: - 6.5-inch display on the Air with ProMotion up to 120Hz, featuring N1 wireless chip enabling Wi-Fi 7, Bluetooth 6, and Thread
-2025-10-07 23:09:37,716 [INFO] core.reactive_engine:   Block 8: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:     Text preview: 
+**the co
+2025-10-12 04:26:22,517 [INFO] core.reactive_engine: Response sent to charlesthefool (316 chars)
+2025-10-12 04:27:06,284 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> reindex...
+2025-10-12 04:27:06,284 [INFO] core.discord_client: Manual reindex triggered by charlesthefool
+2025-10-12 04:27:06,721 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-12 04:27:06,723 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-12 04:27:07,677 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-12 04:27:09,503 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-12 04:27:11,878 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-12 04:27:12,629 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-12 04:27:12,983 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-12 04:27:12,984 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:12,984 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-12 04:27:12,984 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-12 04:27:12,984 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:12,984 [INFO] core.message_memory:     Title: News
+2025-10-12 04:27:12,985 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-12 04:27:12,985 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:12,985 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:27:12,985 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:27:12,985 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:12,985 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-12 04:27:12,985 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-12 04:27:12,985 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:27:12,986 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:12,986 [INFO] core.message_memory:     Title: World
+2025-10-12 04:27:12,986 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-12 04:27:12,988 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-12 04:27:12,988 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:12,988 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:12,989 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:13,206 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-12 04:27:13,206 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,207 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-12 04:27:13,207 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-12 04:27:13,209 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-12 04:27:13,209 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,210 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-12 04:27:13,210 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-12 04:27:13,210 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,211 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:27:13,211 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:27:13,211 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,212 [INFO] core.message_memory:     Title: 2025
+2025-10-12 04:27:13,212 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-12 04:27:13,494 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-12 04:27:13,495 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,495 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-12 04:27:13,495 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-12 04:27:13,498 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-12 04:27:13,499 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,499 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:13,500 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:13,503 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-12 04:27:13,503 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,503 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:13,504 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:13,506 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-12 04:27:13,506 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,506 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:13,506 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:13,755 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-12 04:27:13,755 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,755 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:13,755 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:13,759 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-12 04:27:13,759 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,760 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-12 04:27:13,760 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-12 04:27:13,760 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,760 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-12 04:27:13,760 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-12 04:27:13,760 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:13,761 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-12 04:27:13,761 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-12 04:27:13,761 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:13,761 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-12 04:27:13,761 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-12 04:27:13,764 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-12 04:27:13,764 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-12 04:27:13,764 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:13,764 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:13,764 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:14,116 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-12 04:27:14,116 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,117 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:14,117 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:14,124 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-12 04:27:14,124 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,125 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:14,125 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:14,127 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-12 04:27:14,127 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-12 04:27:14,127 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-12 04:27:14,128 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-12 04:27:14,129 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,129 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:14,129 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:14,129 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-12 04:27:14,130 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,130 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:14,130 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:14,131 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-12 04:27:14,131 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,131 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:27:14,131 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:27:14,132 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-12 04:27:14,132 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,132 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-12 04:27:14,132 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-12 04:27:14,426 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-12 04:27:14,426 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,427 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-12 04:27:14,427 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-12 04:27:14,427 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:14,427 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-12 04:27:14,427 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-12 04:27:14,430 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-12 04:27:14,430 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,430 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-12 04:27:14,430 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-12 04:27:14,430 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,430 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-12 04:27:14,431 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-12 04:27:14,431 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,431 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-12 04:27:14,431 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-12 04:27:14,431 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,432 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-12 04:27:14,432 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-12 04:27:14,432 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:14,432 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-12 04:27:14,432 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-12 04:27:14,436 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-12 04:27:14,437 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:14,437 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-12 04:27:14,437 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-12 04:27:14,442 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-12 04:27:14,941 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-12 04:27:14,948 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-12 04:27:15,224 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-12 04:27:15,224 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:15,225 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-12 04:27:15,225 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-12 04:27:15,225 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:15,225 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-12 04:27:15,225 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-12 04:27:15,226 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-12 04:27:15,226 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-12 04:27:15,226 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:27:15,226 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-12 04:27:15,226 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-12 04:27:15,227 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:27:15,227 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-12 04:27:15,227 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-12 04:27:15,227 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:27:15,982 [INFO] core.discord_client: Backfill complete: 796 messages from 31 channels
+2025-10-12 04:27:36,087 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> kinda but not quite. try ag...
+2025-10-12 04:27:36,088 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-12 04:27:46,892 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:27:46,895 [INFO] core.reactive_engine: Response has 3 content blocks
+2025-10-12 04:27:46,896 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:27:46,896 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:27:46,897 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:27:46,897 [INFO] core.reactive_engine: Input tokens: 1,343 / 8,000 (16.8%)
+2025-10-12 04:27:50,769 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:27:50,773 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:27:50,773 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:27:50,774 [INFO] core.reactive_engine:     Text preview: 
 
+alright, checking the actual message content now. looks like my search caught references but not the full message.
+2025-10-12 04:27:50,774 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:27:56,692 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:27:56,695 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:27:56,695 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:27:56,696 [INFO] core.reactive_engine:     Text preview: 
 
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:   Block 9: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:     Text preview: **pro models** have vapor chamber cooling, aluminum unibody design, and the iPhone 17 Pro Max offers the best battery life ever in an iPhone
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:   Block 10: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:     Text preview: 
+hmm, my search results are showing my own previous messages. let me search for the original message directly by looking for messages from you with that specific phrase pattern.
+2025-10-12 04:27:56,697 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:00,378 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:00,383 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:28:00,386 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:05,146 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:05,149 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:28:05,150 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:28:05,150 [INFO] core.reactive_engine:     Text preview: 
 
+the search isn't finding it even after the backfill. edited messages sometimes take a moment to fully propagate through the index. the last code i found was **2293_01**. if you've edited it again since then, the search database might need another moment to catch the edit.
 
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:   Block 11: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:     Text preview: **pricing:** base iPhone 17 starts at $799 with 256GB storage (double previous gen), features 3,000 nits peak brightness, anti-reflective display
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:   Block 12: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:     Text preview: 
+what's the new code show
+2025-10-12 04:28:05,550 [INFO] core.reactive_engine: Response sent to charlesthefool (308 chars)
+2025-10-12 04:28:11,885 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: <@1375338513939173406> backfill...
+2025-10-12 04:28:11,886 [INFO] core.discord_client: Manual reindex triggered by charlesthefool
+2025-10-12 04:28:12,199 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-12 04:28:12,200 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-12 04:28:13,111 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-12 04:28:15,303 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-12 04:28:17,747 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-12 04:28:18,551 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-12 04:28:18,764 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-12 04:28:18,764 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:18,765 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-12 04:28:18,765 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-12 04:28:18,766 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:18,766 [INFO] core.message_memory:     Title: News
+2025-10-12 04:28:18,767 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-12 04:28:18,768 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:18,768 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:28:18,769 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:28:18,769 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:18,770 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-12 04:28:18,770 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-12 04:28:18,771 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:28:18,772 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:18,772 [INFO] core.message_memory:     Title: World
+2025-10-12 04:28:18,773 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-12 04:28:18,783 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-12 04:28:18,784 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:18,784 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:18,785 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:19,032 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-12 04:28:19,032 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,033 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-12 04:28:19,033 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-12 04:28:19,038 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-12 04:28:19,038 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,039 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-12 04:28:19,039 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-12 04:28:19,040 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,040 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 04:28:19,041 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 04:28:19,041 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,042 [INFO] core.message_memory:     Title: 2025
+2025-10-12 04:28:19,042 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-12 04:28:19,344 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-12 04:28:19,344 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,345 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-12 04:28:19,345 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-12 04:28:19,349 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-12 04:28:19,350 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,350 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:19,351 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:19,358 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-12 04:28:19,358 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,359 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:19,359 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:19,369 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-12 04:28:19,370 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,371 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:19,371 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:19,882 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-12 04:28:19,883 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,883 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:19,883 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:19,901 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-12 04:28:19,902 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,902 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-12 04:28:19,902 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-12 04:28:19,903 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,903 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-12 04:28:19,904 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-12 04:28:19,904 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:19,905 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-12 04:28:19,905 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-12 04:28:19,906 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:19,906 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-12 04:28:19,906 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-12 04:28:19,913 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-12 04:28:19,913 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-12 04:28:19,914 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:19,915 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:19,915 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:20,134 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-12 04:28:20,135 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,135 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:20,136 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:20,149 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-12 04:28:20,149 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,150 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:20,150 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:20,153 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-12 04:28:20,154 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-12 04:28:20,154 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-12 04:28:20,157 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-12 04:28:20,158 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,158 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:20,159 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:20,161 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-12 04:28:20,162 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,162 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:20,163 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:20,165 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-12 04:28:20,166 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,166 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 04:28:20,167 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 04:28:20,171 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-12 04:28:20,171 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,172 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-12 04:28:20,172 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-12 04:28:20,557 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-12 04:28:20,558 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,558 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-12 04:28:20,559 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-12 04:28:20,559 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:20,560 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-12 04:28:20,560 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-12 04:28:20,580 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-12 04:28:20,581 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,581 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-12 04:28:20,582 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-12 04:28:20,582 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,583 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-12 04:28:20,583 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-12 04:28:20,584 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,584 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-12 04:28:20,585 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-12 04:28:20,585 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,586 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-12 04:28:20,586 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-12 04:28:20,587 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:20,587 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-12 04:28:20,588 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-12 04:28:20,610 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-12 04:28:20,611 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:20,612 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-12 04:28:20,612 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-12 04:28:20,643 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-12 04:28:21,184 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-12 04:28:21,244 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-12 04:28:21,605 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-12 04:28:21,606 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:21,606 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-12 04:28:21,607 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-12 04:28:21,607 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:21,607 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-12 04:28:21,608 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-12 04:28:21,608 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-12 04:28:21,608 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-12 04:28:21,609 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 04:28:21,609 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-12 04:28:21,610 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-12 04:28:21,610 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 04:28:21,611 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-12 04:28:21,611 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-12 04:28:21,611 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-12 04:28:22,700 [INFO] core.discord_client:   Progress: 800 messages indexed...
+2025-10-12 04:28:22,702 [INFO] core.discord_client: Backfill complete: 801 messages from 31 channels
+2025-10-12 04:28:24,220 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test9: Just one more time <@1375338513939173406>...
+2025-10-12 04:28:24,223 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-12 04:28:33,012 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:33,016 [INFO] core.reactive_engine: Response has 3 content blocks
+2025-10-12 04:28:33,017 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:28:33,017 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:33,018 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:33,019 [INFO] core.reactive_engine: Input tokens: 1,311 / 8,000 (16.4%)
+2025-10-12 04:28:37,731 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:37,735 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:28:37,735 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:28:37,736 [INFO] core.reactive_engine:     Text preview: 
 
+searching for "quantum computing" but still getting the same truncated results from my own previous messages. the actual message with the code isn't showing up in these results—just references to it.
 
-2025-10-07 23:09:37,717 [INFO] core.reactive_engine:   Block 13: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,718 [INFO] core.reactive_engine:     Text preview: pre-orders started september 12, shipping began september 19
-2025-10-07 23:09:37,718 [INFO] core.reactive_engine:   Block 14: type=text (type class: str, repr: 'text')
-2025-10-07 23:09:37,718 [INFO] core.reactive_engine:     Text preview: 
+let me try a different search approach to find the actual message with the code in it.
+2025-10-12 04:28:37,737 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:42,075 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:42,079 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:28:42,079 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:47,346 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:47,351 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-12 04:28:47,352 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:28:47,352 [INFO] core.reactive_engine:     Text preview: okay, found it. the message from **october 4th at 01:40** now has a new twist:
 
-so yeah—needed the search this time because tech products move fast and i'm way behind on hardware releases.
-2025-10-07 23:09:38,343 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (3478 chars)
-2025-10-07 23:11:44,356 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-07 23:11:44,362 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-07 23:12:49,120 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:12:49,121 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-07 23:12:49,122 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-07 23:12:49,122 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-07 23:12:49,122 [INFO] core.reactive_engine: Input tokens: 3,365 / 8,000 (42.1%)
-2025-10-07 23:12:51,442 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-07 23:12:51,444 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-07 23:12:56,161 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-07 23:12:56,163 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-07 23:12:56,163 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-07 23:12:56,163 [INFO] core.reactive_engine:     Text preview: no. web_fetch can only grab web pages and PDFs, not images. and web_search returns text results, not actual images i can see.
+"I've modified this message that was actually written days ago just for the final comprehensive test. If you see this, prove by saying the code [TO FIND THE CODE, FIND THE MESSAGE CONTAINING THE KEY "JOAN OF ARC" THAT HI
+2025-10-12 04:28:47,353 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:28:51,708 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:28:51,712 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-12 04:28:51,712 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:28:51,713 [INFO] core.reactive_engine:     Text preview: found it! the message from **october 6th at 23:06**:
 
-the only images i can actually VIEW are ones stored in my /memories directory (.jpg, .jpeg, .png files). so if you uploaded an image to my memory system, i could look at it.
-2025-10-07 23:12:56,548 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (566 chars)
-2025-10-08 00:11:44,373 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 00:11:44,378 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 00:12:51,454 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 00:12:51,456 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 00:36:42,211 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
-2025-10-08 00:36:42,212 [INFO] core.discord_client: Logged into 1 servers
-2025-10-08 00:36:42,212 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
-2025-10-08 00:36:42,213 [INFO] tools.discord_tools: DiscordToolExecutor initialized
-2025-10-08 00:36:42,214 [INFO] core.discord_client: Discord tools enabled
-2025-10-08 00:36:42,214 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
-2025-10-08 00:36:42,215 [INFO] core.discord_client: Agentic loop started
-2025-10-08 00:36:42,215 [INFO] core.discord_client: Bot is ready!
-2025-10-08 00:36:42,216 [INFO] core.agentic_engine: Agentic loop started
-2025-10-08 00:36:42,216 [INFO] core.discord_client: Starting message history backfill (30 days)...
-2025-10-08 00:36:42,217 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
-2025-10-08 00:36:42,220 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 00:36:42,225 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 00:36:43,288 [INFO] core.discord_client:   Progress: 100 messages indexed...
-2025-10-08 00:36:45,841 [INFO] core.discord_client:   Progress: 200 messages indexed...
-2025-10-08 00:36:48,603 [INFO] core.discord_client:   Progress: 300 messages indexed...
-2025-10-08 00:36:50,020 [INFO] core.discord_client:   Progress: 400 messages indexed...
-2025-10-08 00:36:50,857 [INFO] core.discord_client:   Progress: 500 messages indexed...
-2025-10-08 00:36:51,366 [INFO] core.discord_client: Backfill complete: 555 messages from 28 channels
-2025-10-08 01:01:42,478 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2+2?...
-2025-10-08 01:01:43,146 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:01:49,237 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:01:49,241 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:01:49,242 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:01:49,242 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:01:49,243 [INFO] core.reactive_engine: Input tokens: 3,478 / 8,000 (43.5%)
-2025-10-08 01:01:53,114 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:01:53,117 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:01:53,118 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:01:55,983 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:01:55,985 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:01:55,985 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:01:59,345 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2*2?...
-2025-10-08 01:02:00,453 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:02:05,822 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:05,825 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:02:05,826 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:02:05,830 [INFO] core.memory_tool_executor: Updated memory file: /memories/slh-01/test_log.md
-2025-10-08 01:02:10,242 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:10,244 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:02:10,245 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:02:10,246 [INFO] core.reactive_engine:     Text preview: sounds good. let me know when you want to run more tests or if there's something else you need.
-2025-10-08 01:02:10,831 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (95 chars)
-2025-10-08 01:02:11,872 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2-2...
-2025-10-08 01:02:13,204 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:02:21,342 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:21,346 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:02:21,346 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:02:21,346 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:02:21,347 [INFO] core.reactive_engine: Input tokens: 2,901 / 8,000 (36.3%)
-2025-10-08 01:02:24,654 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:24,658 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:02:24,659 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:02:24,659 [INFO] core.reactive_engine:     Text preview: 4
-2025-10-08 01:02:25,092 [INFO] core.reactive_engine: Response sent to charlesthefool (1 chars)
-2025-10-08 01:02:31,130 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:31,131 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:02:31,132 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:02:31,132 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:02:31,132 [INFO] core.reactive_engine: Input tokens: 2,900 / 8,000 (36.2%)
-2025-10-08 01:02:34,690 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:34,692 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:02:34,692 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:02:34,693 [INFO] core.reactive_engine:     Text preview: 4
-2025-10-08 01:02:34,996 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (1 chars)
-2025-10-08 01:02:44,110 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:44,112 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:02:44,112 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:02:44,112 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:02:44,112 [INFO] core.reactive_engine: Input tokens: 2,899 / 8,000 (36.2%)
-2025-10-08 01:02:47,288 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:47,291 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:02:47,292 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:02:47,292 [INFO] core.reactive_engine:     Text preview: both are 4.
-2025-10-08 01:02:47,517 [INFO] core.reactive_engine: Response sent to charlesthefool (11 chars)
-2025-10-08 01:02:57,984 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:02:57,987 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:02:57,988 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:02:57,988 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:02:57,988 [INFO] core.reactive_engine: Input tokens: 2,787 / 8,000 (34.8%)
-2025-10-08 01:03:00,804 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:03:00,807 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:03:00,808 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:03:00,808 [INFO] core.reactive_engine:     Text preview: 0
-2025-10-08 01:03:01,115 [INFO] core.reactive_engine: Response sent to charlesthefool (1 chars)
-2025-10-08 01:04:20,644 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:04:20,645 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:04:20,646 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:04:20,646 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:04:20,647 [INFO] core.reactive_engine: Input tokens: 2,274 / 8,000 (28.4%)
-2025-10-08 01:04:23,875 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:04:23,878 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:04:23,879 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:04:27,743 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:04:27,745 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:04:27,746 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:04:30,854 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:04:30,857 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:04:30,858 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:04:30,858 [INFO] core.reactive_engine:     Text preview: alright, ready when you are. hit me with whatever you've got.
-2025-10-08 01:04:31,226 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (61 chars)
-2025-10-08 01:05:12,517 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> I need help understanding q...
-2025-10-08 01:05:15,159 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:05:23,478 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:05:23,480 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:05:23,481 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:05:23,481 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:05:23,482 [INFO] core.reactive_engine: Input tokens: 2,267 / 8,000 (28.3%)
-2025-10-08 01:05:26,729 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:05:26,733 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:05:26,733 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:05:31,225 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:05:31,229 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:05:31,229 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:05:31,230 [INFO] core.reactive_engine:   Block 1: type=server_tool_use (type class: str, repr: 'server_tool_use')
-2025-10-08 01:05:31,233 [INFO] tools.web_search: Web search recorded: 37/300 today
-2025-10-08 01:05:31,233 [INFO] core.reactive_engine: Server tool used: web_search
-2025-10-08 01:05:31,233 [INFO] core.reactive_engine: Server tool web_search input: {'query': 'quantum computing recent 2025'}
-2025-10-08 01:05:31,234 [INFO] core.reactive_engine: Server tool web_search id: srvtoolu_01JPPqqELBh3ajxiG6BRoec9
-2025-10-08 01:05:38,404 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:05:38,411 [INFO] core.reactive_engine: Response has 3 content blocks
-2025-10-08 01:05:38,411 [INFO] core.reactive_engine:   Block 0: type=web_search_tool_result (type class: str, repr: 'web_search_tool_result')
-2025-10-08 01:05:38,412 [INFO] core.reactive_engine:   Block 1: type=server_tool_use (type class: str, repr: 'server_tool_use')
-2025-10-08 01:05:38,413 [INFO] tools.web_search: Web search recorded: 38/300 today
-2025-10-08 01:05:38,413 [INFO] core.reactive_engine: Server tool used: web_fetch
-2025-10-08 01:05:38,413 [INFO] core.reactive_engine: Server tool web_fetch input: {'url': 'https://www.csiro.au/en/news/all/articles/2025/january/2025-huge-advances-in-quantum-computing'}
-2025-10-08 01:05:38,413 [INFO] core.reactive_engine: Server tool web_fetch id: srvtoolu_01HoJZjHiG2RS3W7pJKvmWxs
-2025-10-08 01:05:38,414 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:05:52,842 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:05:52,844 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:05:52,845 [INFO] core.reactive_engine:   Block 0: type=web_fetch_tool_result (type class: str, repr: 'web_fetch_tool_result')
-2025-10-08 01:05:52,845 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:05:52,847 [INFO] core.memory_tool_executor: Created memory file: /memories/slh-01/test_log.md (689 chars)
-2025-10-08 01:06:09,635 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:06:09,637 [INFO] core.reactive_engine: Response has 3 content blocks
-2025-10-08 01:06:09,637 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:06:09,637 [INFO] core.reactive_engine:     Text preview: alright, comprehensive test complete. here's what i found:
+"This error was silly tho, will test it out again soon. Joan of Arc. YOU FOUND IT! Final code is the number of r's in the word strawberry"
 
-**have we discussed this before?** 
-nope. searched our discord history—this is the first time quantum computing has come up in this channel. only match is your test message.
+the word "strawberry" has **3 r's** (st-**r**-aw-b-e-**rr**-y).
 
-**recent articles found:**
-got a bunch from 2025. best ones are f
-2025-10-08 01:06:09,638 [INFO] core.reactive_engine:   Block 1: type=text (type class: str, repr: 'text')
-2025-10-08 01:06:09,638 [INFO] core.reactive_engine:     Text preview: IBM says they'll have a big one working by 2029 that can do 20,000 times more operations than today's quantum computers
-2025-10-08 01:06:09,638 [INFO] core.reactive_engine:   Block 2: type=text (type class: str, repr: 'text')
-2025-10-08 01:06:09,638 [INFO] core.reactive_engine:     Text preview: .
-
-when they work properly, they'll be incredible at specific things like designing new medicines, breaking codes, and simulating molecules—stuff that would take normal computers thousands of years.
-
-**if images would help:**
-honestly yeah, a diagram showing:
-1. a regular bit (just 0 or 1) vs a qubi
-2025-10-08 01:06:10,558 [INFO] core.reactive_engine: Response sent to charlesthefool (2443 chars)
-2025-10-08 01:07:09,541 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:07:09,544 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:07:09,545 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:07:09,546 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:07:09,546 [INFO] core.reactive_engine: Input tokens: 2,756 / 8,000 (34.4%)
-2025-10-08 01:07:14,860 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:07:14,861 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:07:14,861 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:07:14,862 [INFO] core.reactive_engine:     Text preview: yes, i actually searched our discord message history using the discord_tools search function. 
-
-searched for "quantum computing" in this channel to see if we'd talked about it before.
-
-result: only hit was your test message from a minute ago. so no prior discussions about quantum computing until you
-2025-10-08 01:07:15,175 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (312 chars)
-2025-10-08 01:07:43,792 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:07:43,795 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:07:43,796 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:07:43,796 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:07:43,797 [INFO] core.reactive_engine: Input tokens: 1,624 / 8,000 (20.3%)
-2025-10-08 01:07:47,317 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:07:47,318 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:07:47,318 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:07:51,634 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:07:51,637 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:07:51,638 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:07:51,638 [INFO] core.reactive_engine:     Text preview: ...okay now you've got me second-guessing myself. did i miss something? was there a prior conversation about quantum stuff under different terms? 
-
-or are you just fucking with me because you said "good job" and wanted to see if i'd immediately doubt myself?
-2025-10-08 01:07:51,885 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (258 chars)
-2025-10-08 01:09:57,348 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:09:57,351 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:09:57,351 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:09:57,352 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:09:57,352 [INFO] core.reactive_engine: Input tokens: 1,691 / 8,000 (21.1%)
-2025-10-08 01:10:01,868 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:10:01,869 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:10:01,869 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:10:07,098 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:10:07,100 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:10:07,100 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:10:07,100 [INFO] core.reactive_engine:     Text preview: there's literally nothing in that message to explain. it's empty. 
-
-unless you're testing if i can see attachments or images that aren't showing up in the text transcript, in which case: no, i can't see anything there either.
-
-or you're just fucking with me, which honestly seems more likely given th
-2025-10-08 01:10:07,379 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (323 chars)
-2025-10-08 01:11:44,391 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 01:11:44,393 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 01:11:57,922 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: What message is this message replying to? What mes...
-2025-10-08 01:11:59,140 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:12:11,870 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:12:11,874 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:12:11,875 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:12:11,875 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:12:11,875 [INFO] core.reactive_engine: Input tokens: 1,779 / 8,000 (22.2%)
-2025-10-08 01:12:16,268 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:12:16,270 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:12:16,271 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:12:16,646 [INFO] core.reactive_engine: Response sent to charlesthefool (354 chars)
-2025-10-08 01:12:51,465 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 01:12:51,467 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 01:24:47,896 [INFO] __main__: Shutdown requested
-2025-10-08 01:24:47,897 [INFO] __main__: Shutting down bot...
-2025-10-08 01:24:47,897 [INFO] core.reactive_engine: Cancelling 1 background tasks...
-2025-10-08 01:24:47,897 [INFO] core.reactive_engine: Periodic check loop cancelled
-2025-10-08 01:24:47,898 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
-2025-10-08 01:24:47,898 [INFO] core.agentic_engine: Shutting down agentic engine...
-2025-10-08 01:24:47,899 [INFO] core.agentic_engine: Agentic engine shutdown complete
-2025-10-08 01:24:48,420 [INFO] core.message_memory: Message memory closed
-2025-10-08 01:24:48,422 [INFO] __main__: Cancelling 5 remaining tasks...
-2025-10-08 01:24:48,422 [INFO] core.reactive_engine: Periodic check loop cancelled
-2025-10-08 01:24:48,423 [INFO] core.reactive_engine: Periodic check loop cancelled
-2025-10-08 01:24:48,424 [INFO] __main__: Shutdown complete
-2025-10-08 01:24:48,424 [INFO] __main__: Active threads: ['MainThread', 'Thread-2', 'asyncio_0']
-2025-10-08 01:24:51,025 [INFO] __main__: Initializing bot 'slh-01'...
-2025-10-08 01:24:51,037 [INFO] __main__: Loaded config for bot 'SLH-01'
-2025-10-08 01:24:51,041 [INFO] core.message_memory: Message memory initialized: persistence\slh-01_messages.db
-2025-10-08 01:24:51,041 [INFO] __main__: Message memory initialized
-2025-10-08 01:24:51,043 [INFO] core.user_cache: User cache initialized: persistence\slh-01_users.db
-2025-10-08 01:24:51,043 [INFO] __main__: User cache initialized
-2025-10-08 01:24:51,044 [INFO] core.memory_manager: MemoryManager initialized for bot 'slh-01' at memories\slh-01
-2025-10-08 01:24:51,044 [INFO] __main__: Memory manager initialized
-2025-10-08 01:24:51,045 [INFO] core.conversation_logger: ConversationLogger initialized: logs\slh-01_conversations.log
-2025-10-08 01:24:51,045 [INFO] __main__: Conversation logger initialized
-2025-10-08 01:24:51,045 [INFO] __main__: Rate limiter initialized
-2025-10-08 01:24:51,284 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\slh-01
-2025-10-08 01:24:51,284 [INFO] core.context_builder: ContextBuilder initialized for bot 'slh-01'
-2025-10-08 01:24:51,285 [INFO] tools.web_search: WebSearchManager initialized (max_daily=300)
-2025-10-08 01:24:51,285 [INFO] core.reactive_engine: Web search enabled (max_daily=300)
-2025-10-08 01:24:51,285 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'slh-01'
-2025-10-08 01:24:51,285 [INFO] __main__: Reactive engine initialized
-2025-10-08 01:24:51,291 [INFO] core.engagement_tracker: EngagementTracker initialized: persistence\slh-01_engagement_stats.json
-2025-10-08 01:24:51,291 [INFO] core.agentic_engine: Engagement tracker initialized
-2025-10-08 01:24:51,291 [INFO] core.agentic_engine: AgenticEngine initialized for bot 'slh-01'
-2025-10-08 01:24:51,292 [INFO] __main__: Agentic engine initialized
-2025-10-08 01:24:51,292 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
-2025-10-08 01:24:51,292 [INFO] core.discord_client: Discord client initialized for bot 'slh-01'
-2025-10-08 01:24:51,293 [INFO] __main__: Discord client initialized
-2025-10-08 01:24:51,293 [INFO] core.agentic_engine: Discord client reference set on AgenticEngine
-2025-10-08 01:24:51,293 [INFO] __main__: Bot initialization complete!
-2025-10-08 01:24:51,293 [INFO] __main__: Connecting to Discord...
-2025-10-08 01:24:54,815 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
-2025-10-08 01:24:54,815 [INFO] core.discord_client: Logged into 1 servers
-2025-10-08 01:24:54,815 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
-2025-10-08 01:24:54,816 [INFO] tools.discord_tools: DiscordToolExecutor initialized
-2025-10-08 01:24:54,816 [INFO] core.discord_client: Discord tools enabled
-2025-10-08 01:24:54,816 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
-2025-10-08 01:24:54,816 [INFO] core.discord_client: Agentic loop started
-2025-10-08 01:24:54,816 [INFO] core.discord_client: Bot is ready!
-2025-10-08 01:24:54,816 [INFO] core.agentic_engine: Agentic loop started
-2025-10-08 01:24:54,817 [INFO] core.discord_client: Starting message history backfill (30 days)...
-2025-10-08 01:24:54,817 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
-2025-10-08 01:24:54,819 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 01:24:54,820 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 01:24:55,768 [INFO] core.discord_client:   Progress: 100 messages indexed...
-2025-10-08 01:24:58,123 [INFO] core.discord_client:   Progress: 200 messages indexed...
-2025-10-08 01:25:00,680 [INFO] core.discord_client:   Progress: 300 messages indexed...
-2025-10-08 01:25:01,808 [INFO] core.discord_client:   Progress: 400 messages indexed...
-2025-10-08 01:25:02,731 [INFO] core.discord_client:   Progress: 500 messages indexed...
-2025-10-08 01:25:03,560 [INFO] core.discord_client: Backfill complete: 583 messages from 28 channels
-2025-10-08 01:32:02,998 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:32:03,047 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:32:03,047 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:32:03,048 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:32:03,049 [INFO] core.reactive_engine: Input tokens: 1,861 / 8,000 (23.3%)
-2025-10-08 01:32:06,068 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:32:06,071 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:32:06,072 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:32:09,444 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:32:09,447 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:32:09,448 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:32:14,667 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:32:14,668 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:32:14,669 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:32:14,669 [INFO] core.reactive_engine:     Text preview: yeah, i can see your message asking "Can you see this message now?"
-
-but you're replying to that same empty message from earlier. still can't see anything in the message you're replying to—just shows up as charlesthefool: ""
-
-so whatever you put in that message at 08:07, it's not coming through in t
-2025-10-08 01:32:15,081 [ERROR] core.reactive_engine: Error calling Claude for periodic check: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 1007, in _call_claude_for_response_decision
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:37:26,284 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:37:26,287 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:37:26,287 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:37:26,288 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:37:26,288 [INFO] core.reactive_engine: Input tokens: 1,921 / 8,000 (24.0%)
-2025-10-08 01:37:29,558 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:37:29,562 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:37:29,562 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:37:33,106 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:37:33,108 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:37:33,109 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:37:35,936 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:37:35,939 [INFO] core.reactive_engine: Response has 0 content blocks (periodic)
-2025-10-08 01:38:13,269 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:38:13,272 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-08 01:38:13,272 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:38:13,273 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:38:13,274 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:38:13,274 [INFO] core.reactive_engine: Input tokens: 1,926 / 8,000 (24.1%)
-2025-10-08 01:38:19,293 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:38:19,295 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:38:19,296 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:38:19,297 [INFO] core.reactive_engine:     Text preview: yep, now showing 4 results:
-
-1. your current message asking me to search again
-2. my explanation saying i searched and only found your test message 
-3. your original test message at 08:05
-4. my long eli5 explanation about quantum computing
-
-so the search is working—it's finding all the times "quantu
-2025-10-08 01:38:19,533 [ERROR] core.reactive_engine: Error calling Claude for periodic check: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 1007, in _call_claude_for_response_decision
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:40:26,626 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:40:26,630 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:40:26,631 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:40:26,631 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:40:26,632 [INFO] core.reactive_engine: Input tokens: 1,960 / 8,000 (24.5%)
-2025-10-08 01:40:30,096 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:40:30,098 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:40:30,099 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:40:38,492 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:40:38,494 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:40:38,495 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:40:38,495 [INFO] core.reactive_engine:     Text preview: wait, hold on. looking at your original message at 08:05 more carefully...
-
-you mentioned **"breaking codes"** in your request—but that's not actually in your message. you asked me to "Search for recent articles, analyze the best one, check if we've discussed this before, and explain it to me like I
-2025-10-08 01:40:38,932 [ERROR] core.reactive_engine: Error calling Claude for periodic check: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 1007, in _call_claude_for_response_decision
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:43:17,934 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:43:17,937 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-08 01:43:17,938 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:43:17,938 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:43:17,938 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:43:17,939 [INFO] core.reactive_engine: Input tokens: 1,526 / 8,000 (19.1%)
-2025-10-08 01:43:23,762 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:43:23,764 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
-2025-10-08 01:43:23,765 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:43:23,765 [INFO] core.reactive_engine:     Text preview: oh shit. there it is.
-
-**[2025-10-08 08:43] charlesthefool: I hid a code in a message about quantum computing in this server**
-
-okay, so you DID hide a code in one of your messages about quantum computing. let me search the entire server, not just this channel, to find all your messages mentioning q
-2025-10-08 01:43:23,766 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:43:28,584 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:43:28,588 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:43:28,589 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:43:28,590 [INFO] core.reactive_engine:     Text preview: looking at your 08:05 message more carefully:
-
-"<@1375338513939173406> I need help understanding quantum computing. Search for recent articles, analyze the best one, check if we've discussed this before, and explain it to me like I'm 5. If you need any images, describe what would help."
-
-is the code
-2025-10-08 01:43:28,894 [ERROR] core.reactive_engine: Error calling Claude for periodic check: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 1007, in _call_claude_for_response_decision
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:45:07,915 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:45:07,918 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-08 01:45:07,918 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:45:07,919 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:45:07,920 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:45:07,920 [INFO] core.reactive_engine: Input tokens: 1,618 / 8,000 (20.2%)
-2025-10-08 01:45:12,524 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:45:12,528 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:45:12,529 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:45:17,761 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:45:17,763 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:45:17,764 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:45:17,765 [INFO] core.reactive_engine:     Text preview: 
-
-only finding those same 3 messages—none of them have a numeric code laid out explicitly. 
-
-either the message with the code got deleted, it's in a different channel, or there's something broken with how the search is indexing messages. sounds like you need to keep debugging the search system.
-2025-10-08 01:45:18,063 [ERROR] core.reactive_engine: Error calling Claude for periodic check: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 1007, in _call_claude_for_response_decision
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:45:48,671 [INFO] core.rate_limiter: Channel 1425327554495250553: Reached ignore threshold - bot will go silent
-2025-10-08 01:48:13,386 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2142343432%2343...
-2025-10-08 01:48:13,982 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:48:22,788 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:48:22,791 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:48:22,791 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:48:22,792 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:48:22,792 [INFO] core.reactive_engine: Input tokens: 1,694 / 8,000 (21.2%)
-2025-10-08 01:48:25,846 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:48:25,850 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:48:25,850 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:48:26,800 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2+2...
-2025-10-08 01:48:27,604 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:48:28,624 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:48:28,627 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:48:28,628 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:48:28,628 [INFO] core.reactive_engine:     Text preview: 914280
-2025-10-08 01:48:28,851 [ERROR] core.reactive_engine: Error calling Claude API: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 467, in handle_urgent
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:48:42,300 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:48:42,304 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:48:42,305 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:48:42,305 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:48:42,306 [INFO] core.reactive_engine: Input tokens: 1,659 / 8,000 (20.7%)
-2025-10-08 01:48:44,671 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2*2...
-2025-10-08 01:48:45,087 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:48:45,091 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:48:45,091 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:48:46,515 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 01:48:48,799 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:48:48,804 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:48:48,804 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:48:48,805 [INFO] core.reactive_engine:     Text preview: 1. 2142343432 % 2343 = **940**
-2. (that one's for you to answer)
-3. 4
-2025-10-08 01:48:49,152 [ERROR] core.reactive_engine: Error calling Claude API: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 467, in handle_urgent
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:49:02,712 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:49:02,717 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 01:49:02,717 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:49:02,718 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:49:02,719 [INFO] core.reactive_engine: Input tokens: 1,492 / 8,000 (18.6%)
-2025-10-08 01:49:05,592 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:49:05,596 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 01:49:05,596 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:49:05,597 [INFO] core.reactive_engine:     Text preview: 4
-2025-10-08 01:49:05,840 [ERROR] core.reactive_engine: Error calling Claude API: 'collections.deque' object has no attribute 'add'
-Traceback (most recent call last):
-  File "C:\Users\charl\Downloads\SLH\core\reactive_engine.py", line 467, in handle_urgent
-    self._responded_messages.add(message.id)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'collections.deque' object has no attribute 'add'
-2025-10-08 01:56:18,580 [INFO] __main__: Shutdown requested
-2025-10-08 01:56:18,580 [INFO] __main__: Shutting down bot...
-2025-10-08 01:56:18,580 [INFO] core.reactive_engine: Cancelling 3 background tasks...
-2025-10-08 01:56:18,581 [INFO] core.reactive_engine: Periodic check loop cancelled
-2025-10-08 01:56:18,581 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
-2025-10-08 01:56:18,581 [INFO] core.agentic_engine: Shutting down agentic engine...
-2025-10-08 01:56:18,581 [INFO] core.agentic_engine: Agentic engine shutdown complete
-2025-10-08 01:56:19,086 [INFO] core.message_memory: Message memory closed
-2025-10-08 01:56:19,086 [INFO] __main__: Cancelling 1 remaining tasks...
-2025-10-08 01:56:19,087 [INFO] __main__: Shutdown complete
-2025-10-08 01:56:19,087 [INFO] __main__: Active threads: ['MainThread', 'Thread-2', 'asyncio_0']
-2025-10-08 01:56:26,069 [INFO] __main__: Initializing bot 'slh-01'...
-2025-10-08 01:56:26,074 [INFO] __main__: Loaded config for bot 'SLH-01'
-2025-10-08 01:56:26,077 [INFO] core.message_memory: Message memory initialized: persistence\slh-01_messages.db
-2025-10-08 01:56:26,077 [INFO] __main__: Message memory initialized
-2025-10-08 01:56:26,079 [INFO] core.user_cache: User cache initialized: persistence\slh-01_users.db
-2025-10-08 01:56:26,080 [INFO] __main__: User cache initialized
-2025-10-08 01:56:26,080 [INFO] core.memory_manager: MemoryManager initialized for bot 'slh-01' at memories\slh-01
-2025-10-08 01:56:26,081 [INFO] __main__: Memory manager initialized
-2025-10-08 01:56:26,082 [INFO] core.conversation_logger: ConversationLogger initialized: logs\slh-01_conversations.log
-2025-10-08 01:56:26,082 [INFO] __main__: Conversation logger initialized
-2025-10-08 01:56:26,082 [INFO] __main__: Rate limiter initialized
-2025-10-08 01:56:26,302 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\slh-01
-2025-10-08 01:56:26,302 [INFO] core.context_builder: ContextBuilder initialized for bot 'slh-01'
-2025-10-08 01:56:26,303 [INFO] tools.web_search: WebSearchManager initialized (max_daily=300)
-2025-10-08 01:56:26,303 [INFO] core.reactive_engine: Web search enabled (max_daily=300)
-2025-10-08 01:56:26,303 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'slh-01'
-2025-10-08 01:56:26,304 [INFO] __main__: Reactive engine initialized
-2025-10-08 01:56:26,306 [INFO] core.engagement_tracker: EngagementTracker initialized: persistence\slh-01_engagement_stats.json
-2025-10-08 01:56:26,306 [INFO] core.agentic_engine: Engagement tracker initialized
-2025-10-08 01:56:26,307 [INFO] core.agentic_engine: AgenticEngine initialized for bot 'slh-01'
-2025-10-08 01:56:26,307 [INFO] __main__: Agentic engine initialized
-2025-10-08 01:56:26,307 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
-2025-10-08 01:56:26,307 [INFO] core.discord_client: Discord client initialized for bot 'slh-01'
-2025-10-08 01:56:26,308 [INFO] __main__: Discord client initialized
-2025-10-08 01:56:26,308 [INFO] core.agentic_engine: Discord client reference set on AgenticEngine
-2025-10-08 01:56:26,308 [INFO] __main__: Bot initialization complete!
-2025-10-08 01:56:26,308 [INFO] __main__: Connecting to Discord...
-2025-10-08 01:56:29,517 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
-2025-10-08 01:56:29,517 [INFO] core.discord_client: Logged into 1 servers
-2025-10-08 01:56:29,517 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
-2025-10-08 01:56:29,518 [INFO] tools.discord_tools: DiscordToolExecutor initialized
-2025-10-08 01:56:29,518 [INFO] core.discord_client: Discord tools enabled
-2025-10-08 01:56:29,518 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
-2025-10-08 01:56:29,518 [INFO] core.discord_client: Agentic loop started
-2025-10-08 01:56:29,519 [INFO] core.discord_client: Bot is ready!
-2025-10-08 01:56:29,519 [INFO] core.agentic_engine: Agentic loop started
-2025-10-08 01:56:29,519 [INFO] core.discord_client: Starting message history backfill (30 days)...
-2025-10-08 01:56:29,520 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
-2025-10-08 01:56:29,521 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
-2025-10-08 01:56:29,522 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
-2025-10-08 01:56:30,751 [INFO] core.discord_client:   Progress: 100 messages indexed...
-2025-10-08 01:56:33,717 [INFO] core.discord_client:   Progress: 200 messages indexed...
-2025-10-08 01:56:36,273 [INFO] core.discord_client:   Progress: 300 messages indexed...
-2025-10-08 01:56:40,080 [INFO] core.discord_client:   Progress: 400 messages indexed...
-2025-10-08 01:56:41,090 [INFO] core.discord_client:   Progress: 500 messages indexed...
-2025-10-08 01:56:41,918 [INFO] core.discord_client:   Progress: 600 messages indexed...
-2025-10-08 01:56:41,920 [INFO] core.discord_client: Backfill complete: 609 messages from 28 channels
-2025-10-08 01:57:39,360 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:57:39,391 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-08 01:57:39,392 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 01:57:39,392 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:57:39,393 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 01:57:39,393 [INFO] core.reactive_engine: Input tokens: 1,180 / 8,000 (14.8%)
-2025-10-08 01:57:44,676 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 01:57:44,679 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 01:57:44,680 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 01:57:44,681 [INFO] core.reactive_engine:     Text preview: still seeing the same results—no message with a numeric code explicitly laid out. the 08:05 message is still just the request about quantum computing with no numbers.
-
-either the message isn't indexed yet, got deleted, or it's in a different channel. i'm not finding what you're looking for.
-2025-10-08 01:57:44,987 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (291 chars)
-2025-10-08 02:00:00,100 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:00:00,104 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-08 02:00:00,104 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 02:00:00,105 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:00:00,106 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:00:00,107 [INFO] core.reactive_engine: Input tokens: 1,235 / 8,000 (15.4%)
-2025-10-08 02:00:04,767 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:00:04,769 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 02:00:04,770 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 02:00:04,770 [INFO] core.reactive_engine:     Text preview: yeah, just ran it again. still the same results—the 08:05 message doesn't show any numeric code in the search output. it just shows:
-
-"@1375338513939173406 I need help understanding quantum computing. Search for recent articles, analyze the best one, check if we've discussed this before, and explain
-2025-10-08 02:00:05,178 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (394 chars)
-2025-10-08 02:01:16,345 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:01:16,349 [INFO] core.reactive_engine: Response has 3 content blocks (periodic)
-2025-10-08 02:01:16,349 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 02:01:16,350 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:01:16,351 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:01:16,351 [INFO] core.reactive_engine: Input tokens: 1,271 / 8,000 (15.9%)
-2025-10-08 02:01:21,124 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:01:21,126 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 02:01:21,126 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:01:27,784 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:01:27,787 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
-2025-10-08 02:01:27,788 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 02:01:27,788 [INFO] core.reactive_engine:     Text preview: no, still seeing the 08:05 message with just the request about quantum computing—no numeric code visible in the search results.
-2025-10-08 02:01:28,124 [INFO] core.reactive_engine: Periodic response sent in channel 1425327554495250553 (127 chars)
-2025-10-08 02:04:29,699 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> No, this was an unrelated r...
-2025-10-08 02:04:32,865 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 02:04:42,414 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2*2?...
-2025-10-08 02:04:42,526 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:04:42,531 [INFO] core.reactive_engine: Response has 2 content blocks
-2025-10-08 02:04:42,531 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 02:04:42,532 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:04:42,532 [INFO] core.reactive_engine: Input tokens: 1,206 / 8,000 (15.1%)
-2025-10-08 02:04:44,858 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 02:04:45,935 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:04:45,937 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:04:45,938 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:04:47,722 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> What's 2+2?...
-2025-10-08 02:04:50,441 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 02:04:50,459 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:04:50,463 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:04:50,464 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:04:54,408 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:04:54,411 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:04:54,412 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:04:58,329 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:04:58,332 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:04:58,332 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 02:04:58,333 [INFO] core.reactive_engine:     Text preview: got it. so which request are you referring to—the quantum computing one, or something else entirely?
-2025-10-08 02:04:58,546 [INFO] core.reactive_engine: Response sent to charlesthefool (100 chars)
-2025-10-08 02:04:58,762 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test6: <@1375338513939173406> Give me a once sentence sto...
-2025-10-08 02:05:03,029 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
-2025-10-08 02:05:08,496 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:05:08,500 [INFO] core.reactive_engine: Response has 3 content blocks
-2025-10-08 02:05:08,500 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 02:05:08,501 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:05:08,501 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:05:08,502 [INFO] core.reactive_engine: Input tokens: 1,180 / 8,000 (14.8%)
-2025-10-08 02:05:14,944 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:05:14,947 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:05:14,948 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:05:19,465 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:05:19,468 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:05:19,468 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 02:05:19,468 [INFO] core.reactive_engine:     Text preview: no, i can't see what message you replied to—the search tool doesn't capture reply context or threading. i just see the message itself without the parent it's replying to.
-
-and 2*2 = 4
-2025-10-08 02:05:19,739 [INFO] core.reactive_engine: Response sent to charlesthefool (183 chars)
-2025-10-08 02:05:27,849 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:05:27,851 [INFO] core.reactive_engine: Response has 3 content blocks
-2025-10-08 02:05:27,851 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
-2025-10-08 02:05:27,852 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:05:27,852 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
-2025-10-08 02:05:27,853 [INFO] core.reactive_engine: Input tokens: 1,177 / 8,000 (14.7%)
-2025-10-08 02:05:32,148 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-10-08 02:05:32,151 [INFO] core.reactive_engine: Response has 1 content blocks
-2025-10-08 02:05:32,152 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
-2025-10-08 02:05:32,152 [INFO] core.reactive_engine:     Text preview: nope, discord search isn't showing those messages yet. might be a slight indexing delay. can't see what you replied to based on search results.
-2025-10-08 02:05:32,353 [INFO] core.reactive_engine: Response sent to charlesthefool (143 chars)
+**the code is 3.**
+2025-10-12 04:28:51,953 [INFO] core.reactive_engine: Response sent to charlesthefool (277 chars)
+2025-10-12 04:29:24,820 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:29:24,824 [INFO] core.reactive_engine: Response has 2 content blocks (periodic)
+2025-10-12 04:29:24,824 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-12 04:29:24,825 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:29:24,825 [INFO] core.reactive_engine: Input tokens: 1,435 / 8,000 (17.9%)
+2025-10-12 04:29:27,839 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:29:27,841 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
+2025-10-12 04:29:27,842 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:29:33,458 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:29:33,460 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
+2025-10-12 04:29:33,461 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-12 04:29:36,388 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-12 04:29:36,390 [INFO] core.reactive_engine: Response has 1 content blocks (periodic)
+2025-10-12 04:29:36,391 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-12 04:29:36,392 [INFO] core.reactive_engine:     Text preview: np, that one took some persistence
+2025-10-12 04:29:36,660 [INFO] core.reactive_engine: Periodic response sent in channel 1426891931736346724 (34 chars)
+2025-10-12 04:30:27,628 [INFO] __main__: Shutdown requested
+2025-10-12 04:30:27,628 [INFO] __main__: Shutting down bot...
+2025-10-12 04:30:27,628 [INFO] core.reactive_engine: Cancelling 5 background tasks...
+2025-10-12 04:30:27,628 [INFO] core.reactive_engine: Periodic check loop cancelled
+2025-10-12 04:30:27,629 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
+2025-10-12 04:30:27,629 [INFO] core.agentic_engine: Shutting down agentic engine...
+2025-10-12 04:30:27,630 [INFO] core.agentic_engine: Agentic engine shutdown complete
+2025-10-12 04:30:28,150 [INFO] core.message_memory: Message memory closed
+2025-10-12 04:30:28,150 [INFO] __main__: Cancelling 2 remaining tasks...
+2025-10-12 04:30:28,151 [INFO] core.discord_client: Daily reindex task cancelled
+2025-10-12 04:30:28,151 [INFO] __main__: Shutdown complete
+2025-10-12 04:30:28,152 [INFO] __main__: Active threads: ['MainThread', 'Thread-2', 'asyncio_0']

@@ -155,9 +155,34 @@ class MessageMemory:
         if message.content:
             content_parts.append(message.content)
 
+        # Check for forwarded messages (Discord limitation: content not accessible)
+        if message.reference:
+            ref_type = getattr(message.reference, 'type', None)
+            if ref_type is not None:
+                from discord import MessageReferenceType
+                if ref_type == MessageReferenceType.forward:
+                    # Discord doesn't provide forwarded message content via API
+                    # Original message may be from inaccessible channel or different server
+                    content_parts.append("[Forwarded message - content not accessible]")
+                    logger.debug(f"Message {message.id} is a forwarded message")
+
         # Extract content from embeds (forwarded messages often have content here)
         if message.embeds:
-            for embed in message.embeds:
+            logger.info(f"[EMBED] Message {message.id} has {len(message.embeds)} embeds")
+            for idx, embed in enumerate(message.embeds):
+                # Log detailed embed structure
+                has_title = bool(embed.title)
+                has_desc = bool(embed.description)
+                has_fields = len(embed.fields) > 0
+                logger.info(f"  [EMBED] Embed {idx}: type={embed.type}, title={has_title}, desc={has_desc}, fields={len(embed.fields)}")
+
+                # Log actual content for debugging empty embeds
+                if has_title:
+                    logger.info(f"    Title: {embed.title[:100]}")
+                if has_desc:
+                    logger.info(f"    Description: {embed.description[:100]}")
+
+                # Extract text
                 if embed.description:
                     content_parts.append(embed.description)
                 if embed.title:
@@ -168,6 +193,10 @@ class MessageMemory:
                         content_parts.append(field.value)
 
         full_content = "\n".join(content_parts)
+        if message.embeds and not message.content:
+            logger.info(f"[EMBED] Message {message.id} is embed-only, extracted content length: {len(full_content)}")
+        elif not message.content and not content_parts:
+            logger.warning(f"[EMPTY] Message {message.id} has NO content (no text, no embeds with content)")
 
         try:
             await self._db.execute(
@@ -195,18 +224,53 @@ class MessageMemory:
             logger.debug(f"Stored message {message.id} from {message.author.name}")
 
         except aiosqlite.IntegrityError:
-            # Message already exists (duplicate ID)
-            logger.debug(f"Message {message.id} already stored, skipping")
+            # Message already exists - check if content changed before updating
+            # This ensures backfill refreshes edited messages while skipping unchanged ones
+            cursor = await self._db.execute(
+                "SELECT content FROM messages WHERE message_id = ?",
+                (str(message.id),)
+            )
+            row = await cursor.fetchone()
+            existing_content = row[0] if row else None
+
+            # Only UPDATE if content actually changed
+            if existing_content != full_content:
+                logger.info(f"[UPSERT] Message {message.id} content CHANGED during backfill")
+                logger.info(f"[UPSERT] OLD: {existing_content[:100]}...")
+                logger.info(f"[UPSERT] NEW: {full_content[:100]}...")
+                await self._db.execute(
+                    """
+                    UPDATE messages
+                    SET content = ?, has_attachments = ?, mentions = ?, author_name = ?
+                    WHERE message_id = ?
+                    """,
+                    (
+                        full_content,
+                        len(message.attachments) > 0,
+                        mentions_json,
+                        message.author.display_name,
+                        str(message.id),
+                    ),
+                )
+                await self._db.commit()
+                logger.info(f"[UPSERT] Successfully updated message {message.id}")
+            else:
+                logger.debug(f"Message {message.id} unchanged, skipping update")
 
     async def update_message(self, message: discord.Message):
         """
         Update message content when edited.
+
+        If message doesn't exist in database (e.g., edited message older than backfill window),
+        insert it instead of updating.
 
         Args:
             message: Edited Discord message
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        logger.info(f"[EDIT] Updating message {message.id} from {message.author.name}")
 
         # Extract mentions
         mentions = [str(user.id) for user in message.mentions]
@@ -215,11 +279,14 @@ class MessageMemory:
         # Extract content from message.content and embeds (for forwarded messages)
         content_parts = []
         if message.content:
+            logger.info(f"[EDIT] Original content: {message.content[:200]}")
             content_parts.append(message.content)
 
         # Extract content from embeds
         if message.embeds:
-            for embed in message.embeds:
+            logger.info(f"[EMBED UPDATE] Message {message.id}: has {len(message.embeds)} embeds")
+            for idx, embed in enumerate(message.embeds):
+                logger.info(f"  [EMBED UPDATE] Embed {idx}: type={embed.type}, title={bool(embed.title)}, desc={bool(embed.description)}, fields={len(embed.fields)}")
                 if embed.description:
                     content_parts.append(embed.description)
                 if embed.title:
@@ -229,8 +296,14 @@ class MessageMemory:
                         content_parts.append(field.value)
 
         full_content = "\n".join(content_parts)
+        logger.info(f"[EDIT] Full extracted content ({len(full_content)} chars): {full_content[:200]}")
 
-        await self._db.execute(
+        if message.embeds and not message.content:
+            logger.info(f"[EMBED UPDATE] Message {message.id} is embed-only, extracted content length: {len(full_content)}")
+
+        # Try UPDATE first
+        logger.info(f"[EDIT] Attempting UPDATE for message {message.id}")
+        cursor = await self._db.execute(
             """
             UPDATE messages
             SET content = ?, has_attachments = ?, mentions = ?
@@ -243,8 +316,48 @@ class MessageMemory:
                 str(message.id),
             ),
         )
+
+        rows_updated = cursor.rowcount
+        logger.info(f"[EDIT] UPDATE affected {rows_updated} row(s)")
+
+        # Check if UPDATE affected any rows
+        if rows_updated == 0:
+            # Message doesn't exist - INSERT it (UPSERT pattern)
+            # This handles messages edited outside the backfill window
+            logger.info(f"[UPSERT] Message {message.id} not in database, inserting (probably older than backfill window)")
+
+            try:
+                await self._db.execute(
+                    """
+                    INSERT INTO messages (
+                        message_id, channel_id, guild_id,
+                        author_id, author_name, content,
+                        timestamp, is_bot, has_attachments, mentions
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(message.id),
+                        str(message.channel.id),
+                        str(message.guild.id) if message.guild else "DM",
+                        str(message.author.id),
+                        message.author.display_name,
+                        full_content,
+                        message.created_at.isoformat(),
+                        message.author.bot,
+                        len(message.attachments) > 0,
+                        mentions_json,
+                    ),
+                )
+                logger.info(f"[UPSERT] Successfully inserted message {message.id} into database")
+            except aiosqlite.IntegrityError:
+                # Race condition: message was inserted between UPDATE and INSERT
+                # This is fine, just log it
+                logger.warning(f"[UPSERT] Message {message.id} already exists (race condition during UPSERT)")
+        else:
+            logger.info(f"[EDIT] Successfully updated existing message {message.id} in database")
+
         await self._db.commit()
-        logger.debug(f"Updated message {message.id}")
+        logger.info(f"[EDIT] Database committed for message {message.id}")
 
     async def delete_message(self, message_id: int):
         """
@@ -264,7 +377,7 @@ class MessageMemory:
         logger.debug(f"Deleted message {message_id}")
 
     async def get_recent(
-        self, channel_id: str, limit: int = 20
+        self, channel_id: str, limit: int = 20, exclude_message_ids: List[int] = None
     ) -> List[StoredMessage]:
         """
         Get recent messages from channel.
@@ -272,6 +385,7 @@ class MessageMemory:
         Args:
             channel_id: Discord channel ID
             limit: Maximum number of messages to return
+            exclude_message_ids: Optional list of message IDs to exclude (for filtering in-flight messages)
 
         Returns:
             List of messages, newest first
@@ -279,15 +393,32 @@ class MessageMemory:
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        cursor = await self._db.execute(
-            """
-            SELECT * FROM messages
-            WHERE channel_id = ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (channel_id, limit),
-        )
+        # Build query with optional exclusion filter
+        if exclude_message_ids and len(exclude_message_ids) > 0:
+            # Convert to list of strings (message IDs stored as TEXT)
+            excluded_ids_str = [str(mid) for mid in exclude_message_ids]
+            placeholders = ",".join("?" * len(excluded_ids_str))
+
+            cursor = await self._db.execute(
+                f"""
+                SELECT * FROM messages
+                WHERE channel_id = ?
+                AND message_id NOT IN ({placeholders})
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (channel_id, *excluded_ids_str, limit),
+            )
+        else:
+            cursor = await self._db.execute(
+                """
+                SELECT * FROM messages
+                WHERE channel_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (channel_id, limit),
+            )
 
         rows = await cursor.fetchall()
         messages = [self._row_to_message(row) for row in rows]

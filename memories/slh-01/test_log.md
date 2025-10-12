@@ -3,7 +3,7 @@
 ## 2025-10-08 08:05 UTC - Comprehensive Test
 
 Charles is running a comprehensive multi-part test:
-1. Search for recent articles on quantum computing ✓
+1. Search for recent articles on [REDACTED]]
 2. Analyze the best one (web_fetch unavailable, using search results)
 3. Check if we've discussed this before ✓ (only this current message)
 4. Explain like I'm 5
