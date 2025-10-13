@@ -388,7 +388,7 @@ class MessageMemory:
             exclude_message_ids: Optional list of message IDs to exclude (for filtering in-flight messages)
 
         Returns:
-            List of messages, newest first
+            List of messages, oldest first (chronological order)
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
@@ -425,6 +425,37 @@ class MessageMemory:
 
         # Return in chronological order (oldest first)
         return list(reversed(messages))
+
+    async def get_first_messages(
+        self, channel_id: str, limit: int = 20
+    ) -> List[StoredMessage]:
+        """
+        Get first (oldest) messages from channel.
+
+        Useful for understanding channel history and purpose.
+
+        Args:
+            channel_id: Discord channel ID
+            limit: Maximum number of messages to return
+
+        Returns:
+            List of messages, oldest first (chronological order)
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        cursor = await self._db.execute(
+            """
+            SELECT * FROM messages
+            WHERE channel_id = ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+            """,
+            (channel_id, limit),
+        )
+
+        rows = await cursor.fetchall()
+        return [self._row_to_message(row) for row in rows]
 
     async def get_since(
         self, channel_id: str, since: datetime
@@ -610,6 +641,73 @@ class MessageMemory:
         row = await cursor.fetchone()
         await cursor.close()
         return row[0] > 0 if row else False
+
+    async def get_message_context(
+        self,
+        message_id: str,
+        channel_id: str,
+        before: int = 2,
+        after: int = 2
+    ) -> Dict[str, List[StoredMessage]]:
+        """
+        Get messages surrounding a specific message for context.
+
+        Args:
+            message_id: Target message ID
+            channel_id: Channel ID to search in
+            before: Number of messages before target (default 2)
+            after: Number of messages after target (default 2)
+
+        Returns:
+            Dictionary with 'before', 'match', and 'after' lists of messages
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        # Get the target message first to know its timestamp
+        cursor = await self._db.execute(
+            "SELECT * FROM messages WHERE message_id = ? AND channel_id = ?",
+            (message_id, channel_id)
+        )
+        target_row = await cursor.fetchone()
+
+        if not target_row:
+            return {"before": [], "match": None, "after": []}
+
+        target_msg = self._row_to_message(target_row)
+        target_timestamp = target_msg.timestamp
+
+        # Get messages before
+        cursor = await self._db.execute(
+            """
+            SELECT * FROM messages
+            WHERE channel_id = ? AND timestamp < ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (channel_id, target_timestamp.isoformat(), before)
+        )
+        before_rows = await cursor.fetchall()
+        before_messages = [self._row_to_message(row) for row in reversed(before_rows)]
+
+        # Get messages after
+        cursor = await self._db.execute(
+            """
+            SELECT * FROM messages
+            WHERE channel_id = ? AND timestamp > ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+            """,
+            (channel_id, target_timestamp.isoformat(), after)
+        )
+        after_rows = await cursor.fetchall()
+        after_messages = [self._row_to_message(row) for row in after_rows]
+
+        return {
+            "before": before_messages,
+            "match": target_msg,
+            "after": after_messages
+        }
 
     async def search_messages(
         self,

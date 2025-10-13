@@ -296,18 +296,27 @@ class DiscordClient(discord.Client):
             )
 
             # Check for reindex command trigger (manual backfill)
-            if "reindex" in message.content.lower() or "backfill" in message.content.lower():
+            if "reindex" in message.content.lower():
                 logger.info(f"Manual reindex triggered by {message.author.name}")
-                await message.channel.send("Starting manual re-backfill... This may take a minute.")
+
+                # Send start confirmation
+                start_msg = "🔄 Starting reindex... This will take ~10-15 seconds."
+                await message.channel.send(start_msg)
+                logger.info(f"Sent Discord message: {start_msg}")
+
                 try:
                     total = await self.backfill_message_history(
                         days_back=self.config.discord.backfill_days,
                         unlimited=self.config.discord.backfill_unlimited
                     )
-                    await message.channel.send(f"✓ Re-backfill complete! Indexed {total} messages.")
+                    complete_msg = f"✓ Reindex complete! Updated {total} messages.\n*Note: If you edited messages during reindex, run again to catch them.*"
+                    await message.channel.send(complete_msg)
+                    logger.info(f"Sent Discord message: {complete_msg[:80]}...")
                 except Exception as e:
                     logger.error(f"Manual reindex error: {e}", exc_info=True)
-                    await message.channel.send(f"✗ Re-backfill failed: {e}")
+                    error_msg = f"✗ Reindex failed: {e}"
+                    await message.channel.send(error_msg)
+                    logger.error(f"Sent Discord error message: {error_msg}")
                 return
 
             # Handle immediately (Phase 1: only @mentions)
