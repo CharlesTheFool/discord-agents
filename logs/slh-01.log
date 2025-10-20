@@ -1224,3 +1224,997 @@ my bad, thought i was being clever but just couldn't alphabetize vowels in my he
 2025-10-12 20:00:10,824 [INFO] core.discord_client: Next daily reindex scheduled for 2025-10-14 03:00:00 UTC (in 24.0 hours)
 2025-10-12 20:45:10,180 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
 2025-10-12 20:45:10,183 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-12 22:02:56,100 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-12 22:02:56,104 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-12 22:03:04,088 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
+2025-10-12 22:03:04,090 [INFO] core.discord_client: Logged into 1 servers
+2025-10-12 22:03:04,091 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
+2025-10-12 22:03:04,099 [INFO] tools.discord_tools: DiscordToolExecutor initialized
+2025-10-12 22:03:04,099 [INFO] core.discord_client: Discord tools enabled
+2025-10-12 22:03:04,105 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
+2025-10-12 22:03:04,106 [INFO] core.discord_client: Agentic loop started
+2025-10-12 22:03:04,107 [INFO] core.discord_client: Daily re-backfill task started (will run at 3 AM UTC)
+2025-10-12 22:03:04,107 [INFO] core.discord_client: Bot is ready!
+2025-10-12 22:03:04,108 [INFO] core.agentic_engine: Agentic loop started
+2025-10-12 22:03:04,110 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-12 22:03:04,110 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-12 22:03:04,115 [INFO] core.discord_client: Daily reindex task initialized
+2025-10-12 22:03:04,117 [INFO] core.discord_client: Next daily reindex scheduled for 2025-10-14 03:00:00 UTC (in 21.9 hours)
+2025-10-12 22:03:04,119 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-12 22:03:04,121 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-12 22:03:05,281 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-12 22:03:07,239 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-12 22:03:09,168 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-12 22:03:09,969 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-12 22:03:10,166 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-12 22:03:10,167 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,167 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-12 22:03:10,168 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-12 22:03:10,168 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:10,168 [INFO] core.message_memory:     Title: News
+2025-10-12 22:03:10,168 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-12 22:03:10,168 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,168 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 22:03:10,168 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 22:03:10,169 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,169 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-12 22:03:10,169 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-12 22:03:10,169 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-12 22:03:10,169 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:10,169 [INFO] core.message_memory:     Title: World
+2025-10-12 22:03:10,169 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-12 22:03:10,172 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-12 22:03:10,172 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,172 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:10,173 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:10,392 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-12 22:03:10,392 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,392 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-12 22:03:10,393 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-12 22:03:10,394 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-12 22:03:10,394 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,394 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-12 22:03:10,394 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-12 22:03:10,394 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,394 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-12 22:03:10,394 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-12 22:03:10,395 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,395 [INFO] core.message_memory:     Title: 2025
+2025-10-12 22:03:10,395 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-12 22:03:10,756 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-12 22:03:10,756 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,756 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-12 22:03:10,756 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-12 22:03:10,757 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-12 22:03:10,757 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,757 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:10,757 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:10,758 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-12 22:03:10,758 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,758 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:10,758 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:10,760 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-12 22:03:10,760 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:10,760 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:10,760 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,095 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-12 22:03:11,095 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,095 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,095 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,098 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-12 22:03:11,098 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,099 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-12 22:03:11,099 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-12 22:03:11,099 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,099 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-12 22:03:11,099 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-12 22:03:11,099 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:11,099 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-12 22:03:11,099 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-12 22:03:11,099 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:11,100 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-12 22:03:11,100 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-12 22:03:11,102 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-12 22:03:11,102 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-12 22:03:11,102 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,102 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,103 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,719 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-12 22:03:11,719 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,719 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,719 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,723 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-12 22:03:11,723 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,723 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,724 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,725 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-12 22:03:11,725 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-12 22:03:11,725 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-12 22:03:11,726 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-12 22:03:11,726 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,727 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,727 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,727 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-12 22:03:11,728 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,728 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,728 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,729 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-12 22:03:11,729 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,729 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-12 22:03:11,729 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-12 22:03:11,730 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-12 22:03:11,730 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,730 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-12 22:03:11,731 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-12 22:03:11,982 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-12 22:03:11,983 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,983 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-12 22:03:11,983 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-12 22:03:11,983 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:11,984 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-12 22:03:11,984 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-12 22:03:11,988 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-12 22:03:11,988 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,988 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-12 22:03:11,988 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-12 22:03:11,988 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,988 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-12 22:03:11,988 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-12 22:03:11,989 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,989 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-12 22:03:11,989 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-12 22:03:11,989 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,989 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-12 22:03:11,989 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-12 22:03:11,989 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:11,989 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-12 22:03:11,989 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-12 22:03:11,993 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-12 22:03:11,993 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:11,993 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-12 22:03:11,993 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-12 22:03:11,999 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-12 22:03:12,543 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-12 22:03:12,554 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-12 22:03:12,820 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-12 22:03:12,821 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:12,821 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-12 22:03:12,821 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-12 22:03:12,821 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:12,821 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-12 22:03:12,821 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-12 22:03:12,822 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-12 22:03:12,822 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-12 22:03:12,822 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-12 22:03:12,822 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-12 22:03:12,822 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-12 22:03:12,822 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-12 22:03:12,822 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-12 22:03:12,822 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-12 22:03:12,822 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-12 22:03:13,594 [INFO] core.discord_client:   Progress: 800 messages indexed...
+2025-10-12 22:03:13,824 [INFO] core.discord_client: Backfill complete: 834 messages from 32 channels
+2025-10-12 23:02:56,146 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-12 23:02:56,166 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-12 23:03:04,134 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-12 23:03:04,137 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-13 00:31:26,472 [WARNING] discord.gateway: Shard ID None has stopped responding to the gateway. Closing and restarting.
+2025-10-13 00:31:26,537 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-13 00:31:26,538 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-13 00:31:26,560 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-13 00:31:26,562 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-13 00:31:34,630 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
+2025-10-13 00:31:34,630 [INFO] core.discord_client: Logged into 1 servers
+2025-10-13 00:31:34,631 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
+2025-10-13 00:31:34,632 [INFO] tools.discord_tools: DiscordToolExecutor initialized
+2025-10-13 00:31:34,633 [INFO] core.discord_client: Discord tools enabled
+2025-10-13 00:31:34,633 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
+2025-10-13 00:31:34,634 [INFO] core.discord_client: Agentic loop started
+2025-10-13 00:31:34,635 [INFO] core.discord_client: Daily re-backfill task started (will run at 3 AM UTC)
+2025-10-13 00:31:34,635 [INFO] core.discord_client: Bot is ready!
+2025-10-13 00:31:34,636 [INFO] core.agentic_engine: Agentic loop started
+2025-10-13 00:31:34,636 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-13 00:31:34,637 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-13 00:31:34,639 [INFO] core.discord_client: Daily reindex task initialized
+2025-10-13 00:31:34,640 [INFO] core.discord_client: Next daily reindex scheduled for 2025-10-14 03:00:00 UTC (in 19.5 hours)
+2025-10-13 00:31:34,642 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-13 00:31:34,647 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-13 00:31:35,821 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-13 00:31:38,369 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-13 00:31:42,213 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-13 00:31:45,081 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-13 00:31:45,538 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-13 00:31:45,539 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,539 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-13 00:31:45,541 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-13 00:31:45,542 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:45,542 [INFO] core.message_memory:     Title: News
+2025-10-13 00:31:45,543 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-13 00:31:45,544 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,545 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:31:45,546 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:31:45,547 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,547 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-13 00:31:45,548 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-13 00:31:45,549 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:31:45,549 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:45,550 [INFO] core.message_memory:     Title: World
+2025-10-13 00:31:45,551 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-13 00:31:45,563 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-13 00:31:45,563 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,564 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:45,564 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:45,829 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-13 00:31:45,830 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,830 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-13 00:31:45,831 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-13 00:31:45,839 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-13 00:31:45,839 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,840 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-13 00:31:45,841 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-13 00:31:45,842 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,842 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:31:45,842 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:31:45,843 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:45,843 [INFO] core.message_memory:     Title: 2025
+2025-10-13 00:31:45,844 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-13 00:31:46,131 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-13 00:31:46,132 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,132 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-13 00:31:46,133 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-13 00:31:46,136 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-13 00:31:46,137 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,137 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,138 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,142 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-13 00:31:46,143 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,143 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,143 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,155 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-13 00:31:46,156 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,156 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,157 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,542 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-13 00:31:46,542 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,542 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,543 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,559 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-13 00:31:46,559 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,560 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-13 00:31:46,560 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-13 00:31:46,560 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,561 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-13 00:31:46,561 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-13 00:31:46,561 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:46,561 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-13 00:31:46,562 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-13 00:31:46,562 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:46,562 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-13 00:31:46,563 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-13 00:31:46,571 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-13 00:31:46,571 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-13 00:31:46,572 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,572 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,572 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,899 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-13 00:31:46,900 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,900 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,900 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,908 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-13 00:31:46,908 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,908 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,908 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,910 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-13 00:31:46,910 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-13 00:31:46,910 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-13 00:31:46,913 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-13 00:31:46,913 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,913 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,913 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,915 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-13 00:31:46,915 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,916 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,916 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,918 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-13 00:31:46,918 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,918 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:31:46,918 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:31:46,921 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-13 00:31:46,921 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:46,921 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-13 00:31:46,922 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-13 00:31:47,364 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-13 00:31:47,365 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:47,365 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-13 00:31:47,366 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-13 00:31:47,366 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:47,366 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-13 00:31:47,366 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-13 00:31:47,375 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-13 00:31:47,375 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:47,376 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-13 00:31:47,376 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-13 00:31:47,376 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:47,377 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-13 00:31:47,377 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-13 00:31:47,377 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:47,378 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-13 00:31:47,378 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-13 00:31:47,378 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:47,378 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-13 00:31:47,378 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-13 00:31:47,380 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:47,380 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-13 00:31:47,380 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-13 00:31:47,386 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-13 00:31:47,386 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:47,386 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-13 00:31:47,387 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-13 00:31:47,402 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-13 00:31:47,888 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-13 00:31:47,918 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-13 00:31:48,248 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-13 00:31:48,248 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:48,248 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-13 00:31:48,249 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-13 00:31:48,249 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:48,249 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-13 00:31:48,249 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-13 00:31:48,250 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-13 00:31:48,250 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-13 00:31:48,250 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:31:48,251 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-13 00:31:48,251 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-13 00:31:48,251 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:31:48,251 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-13 00:31:48,252 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-13 00:31:48,252 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:31:49,418 [INFO] core.discord_client:   Progress: 800 messages indexed...
+2025-10-13 00:31:49,724 [INFO] core.discord_client: Backfill complete: 834 messages from 32 channels
+2025-10-13 00:32:28,120 [INFO] __main__: Shutdown requested
+2025-10-13 00:32:28,122 [INFO] __main__: Shutting down bot...
+2025-10-13 00:32:28,124 [INFO] core.reactive_engine: Cancelling 0 background tasks...
+2025-10-13 00:32:28,126 [INFO] core.reactive_engine: Periodic check loop cancelled
+2025-10-13 00:32:28,138 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
+2025-10-13 00:32:28,139 [INFO] core.agentic_engine: Shutting down agentic engine...
+2025-10-13 00:32:28,140 [INFO] core.agentic_engine: Agentic engine shutdown complete
+2025-10-13 00:32:28,667 [INFO] core.message_memory: Message memory closed
+2025-10-13 00:32:28,669 [INFO] __main__: Cancelling 8 remaining tasks...
+2025-10-13 00:32:28,670 [INFO] core.reactive_engine: Periodic check loop cancelled
+2025-10-13 00:32:28,670 [INFO] core.reactive_engine: Periodic check loop cancelled
+2025-10-13 00:32:28,670 [INFO] core.discord_client: Daily reindex task cancelled
+2025-10-13 00:32:28,670 [INFO] core.discord_client: Daily reindex task cancelled
+2025-10-13 00:32:28,671 [INFO] core.discord_client: Daily reindex task cancelled
+2025-10-13 00:32:28,672 [INFO] __main__: Shutdown complete
+2025-10-13 00:32:28,672 [INFO] __main__: Active threads: ['MainThread', 'Thread-2', 'asyncio_0']
+2025-10-13 00:32:35,257 [INFO] __main__: Initializing bot 'slh-01'...
+2025-10-13 00:32:35,320 [INFO] __main__: Loaded config for bot 'SLH-01'
+2025-10-13 00:32:35,325 [INFO] core.message_memory: Message memory initialized: persistence\slh-01_messages.db
+2025-10-13 00:32:35,325 [INFO] __main__: Message memory initialized
+2025-10-13 00:32:35,328 [INFO] core.user_cache: User cache initialized: persistence\slh-01_users.db
+2025-10-13 00:32:35,329 [INFO] __main__: User cache initialized
+2025-10-13 00:32:35,329 [INFO] core.memory_manager: MemoryManager initialized for bot 'slh-01' at memories\slh-01
+2025-10-13 00:32:35,330 [INFO] __main__: Memory manager initialized
+2025-10-13 00:32:35,335 [INFO] core.conversation_logger: ConversationLogger initialized: logs\slh-01_conversations.log
+2025-10-13 00:32:35,335 [INFO] __main__: Conversation logger initialized
+2025-10-13 00:32:35,335 [INFO] __main__: Rate limiter initialized
+2025-10-13 00:32:35,841 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\slh-01
+2025-10-13 00:32:35,842 [INFO] core.context_builder: ContextBuilder initialized for bot 'slh-01'
+2025-10-13 00:32:35,843 [INFO] tools.web_search: WebSearchManager initialized (max_daily=300)
+2025-10-13 00:32:35,843 [INFO] core.reactive_engine: Web search enabled (max_daily=300)
+2025-10-13 00:32:35,844 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'slh-01'
+2025-10-13 00:32:35,844 [INFO] __main__: Reactive engine initialized
+2025-10-13 00:32:35,853 [INFO] core.engagement_tracker: EngagementTracker initialized: persistence\slh-01_engagement_stats.json
+2025-10-13 00:32:35,853 [INFO] core.agentic_engine: Engagement tracker initialized
+2025-10-13 00:32:35,853 [INFO] core.agentic_engine: AgenticEngine initialized for bot 'slh-01'
+2025-10-13 00:32:35,854 [INFO] __main__: Agentic engine initialized
+2025-10-13 00:32:35,855 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
+2025-10-13 00:32:35,855 [INFO] core.discord_client: Discord client initialized for bot 'slh-01'
+2025-10-13 00:32:35,855 [INFO] __main__: Discord client initialized
+2025-10-13 00:32:35,856 [INFO] core.agentic_engine: Discord client reference set on AgenticEngine
+2025-10-13 00:32:35,856 [INFO] __main__: Bot initialization complete!
+2025-10-13 00:32:35,856 [INFO] __main__: Connecting to Discord...
+2025-10-13 00:32:38,990 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
+2025-10-13 00:32:38,991 [INFO] core.discord_client: Logged into 1 servers
+2025-10-13 00:32:38,997 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
+2025-10-13 00:32:38,998 [INFO] tools.discord_tools: DiscordToolExecutor initialized
+2025-10-13 00:32:38,999 [INFO] core.discord_client: Discord tools enabled
+2025-10-13 00:32:39,000 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
+2025-10-13 00:32:39,000 [INFO] core.discord_client: Agentic loop started
+2025-10-13 00:32:39,000 [INFO] core.discord_client: Daily re-backfill task started (will run at 3 AM UTC)
+2025-10-13 00:32:39,001 [INFO] core.discord_client: Bot is ready!
+2025-10-13 00:32:39,001 [INFO] core.agentic_engine: Agentic loop started
+2025-10-13 00:32:39,009 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-13 00:32:39,011 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-13 00:32:39,013 [INFO] core.discord_client: Daily reindex task initialized
+2025-10-13 00:32:39,014 [INFO] core.discord_client: Next daily reindex scheduled for 2025-10-14 03:00:00 UTC (in 19.5 hours)
+2025-10-13 00:32:39,017 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-13 00:32:39,025 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-13 00:32:40,446 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-13 00:32:43,386 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-13 00:32:45,917 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-13 00:32:46,835 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-13 00:32:47,179 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-13 00:32:47,180 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,181 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-13 00:32:47,182 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-13 00:32:47,183 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:47,183 [INFO] core.message_memory:     Title: News
+2025-10-13 00:32:47,183 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-13 00:32:47,184 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,185 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:32:47,185 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:32:47,186 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,186 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-13 00:32:47,189 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-13 00:32:47,190 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:32:47,191 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:47,192 [INFO] core.message_memory:     Title: World
+2025-10-13 00:32:47,193 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-13 00:32:47,197 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-13 00:32:47,198 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,199 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:47,203 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:47,615 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-13 00:32:47,615 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,616 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-13 00:32:47,616 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-13 00:32:47,619 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-13 00:32:47,619 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,619 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-13 00:32:47,620 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-13 00:32:47,620 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,623 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:32:47,623 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:32:47,625 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,626 [INFO] core.message_memory:     Title: 2025
+2025-10-13 00:32:47,630 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-13 00:32:47,925 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-13 00:32:47,926 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,926 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-13 00:32:47,926 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-13 00:32:47,930 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-13 00:32:47,931 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,931 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:47,931 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:47,939 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-13 00:32:47,939 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,940 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:47,942 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:47,954 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-13 00:32:47,955 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:47,956 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:47,956 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,244 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-13 00:32:48,245 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,245 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,245 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,264 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-13 00:32:48,265 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,266 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-13 00:32:48,268 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-13 00:32:48,269 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,269 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-13 00:32:48,270 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-13 00:32:48,270 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:48,272 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-13 00:32:48,272 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-13 00:32:48,273 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:48,273 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-13 00:32:48,275 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-13 00:32:48,288 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-13 00:32:48,288 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-13 00:32:48,290 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,292 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,293 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,594 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-13 00:32:48,595 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,595 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,596 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,609 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-13 00:32:48,609 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,610 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,610 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,612 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-13 00:32:48,613 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-13 00:32:48,613 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-13 00:32:48,616 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-13 00:32:48,617 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,617 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,618 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,621 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-13 00:32:48,621 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,622 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,622 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,625 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-13 00:32:48,626 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,627 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:32:48,627 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:32:48,632 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-13 00:32:48,632 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:48,633 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-13 00:32:48,634 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-13 00:32:49,123 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-13 00:32:49,123 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:49,124 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-13 00:32:49,125 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-13 00:32:49,125 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:49,126 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-13 00:32:49,127 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-13 00:32:49,154 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-13 00:32:49,155 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:49,155 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-13 00:32:49,156 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-13 00:32:49,157 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:49,157 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-13 00:32:49,158 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-13 00:32:49,158 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:49,159 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-13 00:32:49,160 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-13 00:32:49,161 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:49,161 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-13 00:32:49,162 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-13 00:32:49,162 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:49,163 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-13 00:32:49,163 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-13 00:32:49,191 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-13 00:32:49,192 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:49,192 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-13 00:32:49,193 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-13 00:32:49,247 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-13 00:32:49,875 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-13 00:32:49,933 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-13 00:32:50,263 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-13 00:32:50,268 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:50,269 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-13 00:32:50,270 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-13 00:32:50,271 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:50,271 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-13 00:32:50,271 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-13 00:32:50,272 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-13 00:32:50,272 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-13 00:32:50,273 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:32:50,275 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-13 00:32:50,275 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-13 00:32:50,276 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:32:50,277 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-13 00:32:50,277 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-13 00:32:50,278 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:32:51,496 [INFO] core.discord_client:   Progress: 800 messages indexed...
+2025-10-13 00:32:51,820 [INFO] core.discord_client: Backfill complete: 834 messages from 32 channels
+2025-10-13 00:45:41,998 [INFO] __main__: Shutdown requested
+2025-10-13 00:45:42,004 [INFO] __main__: Shutting down bot...
+2025-10-13 00:45:42,004 [INFO] core.reactive_engine: Cancelling 0 background tasks...
+2025-10-13 00:45:42,005 [INFO] core.reactive_engine: Periodic check loop cancelled
+2025-10-13 00:45:42,005 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
+2025-10-13 00:45:42,006 [INFO] core.agentic_engine: Shutting down agentic engine...
+2025-10-13 00:45:42,007 [INFO] core.agentic_engine: Agentic engine shutdown complete
+2025-10-13 00:45:42,516 [INFO] core.message_memory: Message memory closed
+2025-10-13 00:45:42,517 [INFO] __main__: Cancelling 2 remaining tasks...
+2025-10-13 00:45:42,517 [INFO] core.discord_client: Daily reindex task cancelled
+2025-10-13 00:45:42,518 [INFO] __main__: Shutdown complete
+2025-10-13 00:45:42,519 [INFO] __main__: Active threads: ['MainThread', 'Thread-2', 'asyncio_0']
+2025-10-13 00:45:48,009 [INFO] __main__: Initializing bot 'slh-01'...
+2025-10-13 00:45:48,022 [INFO] __main__: Loaded config for bot 'SLH-01'
+2025-10-13 00:45:48,028 [INFO] core.message_memory: Message memory initialized: persistence\slh-01_messages.db
+2025-10-13 00:45:48,029 [INFO] __main__: Message memory initialized
+2025-10-13 00:45:48,033 [INFO] core.user_cache: User cache initialized: persistence\slh-01_users.db
+2025-10-13 00:45:48,034 [INFO] __main__: User cache initialized
+2025-10-13 00:45:48,035 [INFO] core.memory_manager: MemoryManager initialized for bot 'slh-01' at memories\slh-01
+2025-10-13 00:45:48,035 [INFO] __main__: Memory manager initialized
+2025-10-13 00:45:48,038 [INFO] core.conversation_logger: ConversationLogger initialized: logs\slh-01_conversations.log
+2025-10-13 00:45:48,038 [INFO] __main__: Conversation logger initialized
+2025-10-13 00:45:48,039 [INFO] __main__: Rate limiter initialized
+2025-10-13 00:45:48,605 [INFO] core.memory_tool_executor: MemoryToolExecutor initialized at memories\slh-01
+2025-10-13 00:45:48,606 [INFO] core.context_builder: ContextBuilder initialized for bot 'slh-01'
+2025-10-13 00:45:48,607 [INFO] tools.web_search: WebSearchManager initialized (max_daily=300)
+2025-10-13 00:45:48,607 [INFO] core.reactive_engine: Web search enabled (max_daily=300)
+2025-10-13 00:45:48,608 [INFO] core.reactive_engine: ReactiveEngine initialized for bot 'slh-01'
+2025-10-13 00:45:48,608 [INFO] __main__: Reactive engine initialized
+2025-10-13 00:45:48,615 [INFO] core.engagement_tracker: EngagementTracker initialized: persistence\slh-01_engagement_stats.json
+2025-10-13 00:45:48,616 [INFO] core.agentic_engine: Engagement tracker initialized
+2025-10-13 00:45:48,616 [INFO] core.agentic_engine: AgenticEngine initialized for bot 'slh-01'
+2025-10-13 00:45:48,616 [INFO] __main__: Agentic engine initialized
+2025-10-13 00:45:48,617 [WARNING] discord.client: PyNaCl is not installed, voice will NOT be supported
+2025-10-13 00:45:48,618 [INFO] core.discord_client: Discord client initialized for bot 'slh-01'
+2025-10-13 00:45:48,618 [INFO] __main__: Discord client initialized
+2025-10-13 00:45:48,618 [INFO] core.agentic_engine: Discord client reference set on AgenticEngine
+2025-10-13 00:45:48,619 [INFO] __main__: Bot initialization complete!
+2025-10-13 00:45:48,619 [INFO] __main__: Connecting to Discord...
+2025-10-13 00:45:52,040 [INFO] core.discord_client: Bot connected: SLH-01 (ID: 1375338513939173406)
+2025-10-13 00:45:52,041 [INFO] core.discord_client: Logged into 1 servers
+2025-10-13 00:45:52,042 [INFO] core.discord_client:   - SLH-Testing Server (ID: 1423428836921573406, Members: 3)
+2025-10-13 00:45:52,043 [INFO] tools.discord_tools: DiscordToolExecutor initialized
+2025-10-13 00:45:52,043 [INFO] core.discord_client: Discord tools enabled
+2025-10-13 00:45:52,044 [INFO] core.reactive_engine: Periodic check started (interval: 30s)
+2025-10-13 00:45:52,044 [INFO] core.discord_client: Agentic loop started
+2025-10-13 00:45:52,044 [INFO] core.discord_client: Daily re-backfill task started (will run at 3 AM UTC)
+2025-10-13 00:45:52,045 [INFO] core.discord_client: Bot is ready!
+2025-10-13 00:45:52,045 [INFO] core.agentic_engine: Agentic loop started
+2025-10-13 00:45:52,045 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-13 00:45:52,046 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-13 00:45:52,048 [INFO] core.discord_client: Daily reindex task initialized
+2025-10-13 00:45:52,048 [INFO] core.discord_client: Next daily reindex scheduled for 2025-10-14 03:00:00 UTC (in 19.2 hours)
+2025-10-13 00:45:52,050 [INFO] core.agentic_engine: Found 0 due follow-ups for server 1423428836921573406
+2025-10-13 00:45:52,057 [INFO] core.agentic_engine: Found 0 proactive engagement opportunities
+2025-10-13 00:45:53,036 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-13 00:45:55,478 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-13 00:45:58,133 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-13 00:45:59,466 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-13 00:45:59,773 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-13 00:45:59,778 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:45:59,779 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-13 00:45:59,780 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-13 00:45:59,780 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:45:59,781 [INFO] core.message_memory:     Title: News
+2025-10-13 00:45:59,781 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-13 00:45:59,782 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:45:59,783 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:45:59,791 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:45:59,794 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:45:59,795 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-13 00:45:59,795 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-13 00:45:59,799 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:45:59,800 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-13 00:45:59,801 [INFO] core.message_memory:     Title: World
+2025-10-13 00:45:59,801 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-13 00:45:59,807 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-13 00:45:59,808 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:45:59,809 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:45:59,809 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:00,078 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-13 00:46:00,079 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,080 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-13 00:46:00,080 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-13 00:46:00,086 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-13 00:46:00,086 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,087 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-13 00:46:00,087 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-13 00:46:00,088 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,089 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:46:00,090 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:46:00,091 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,091 [INFO] core.message_memory:     Title: 2025
+2025-10-13 00:46:00,092 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-13 00:46:00,486 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-13 00:46:00,487 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,488 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-13 00:46:00,488 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-13 00:46:00,491 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-13 00:46:00,492 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,492 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:00,493 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:00,502 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-13 00:46:00,502 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,503 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:00,503 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:00,514 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-13 00:46:00,515 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,515 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:00,516 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:00,897 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-13 00:46:00,898 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,899 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:00,899 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:00,921 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-13 00:46:00,922 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,923 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-13 00:46:00,923 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-13 00:46:00,924 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,925 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-13 00:46:00,925 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-13 00:46:00,926 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-13 00:46:00,927 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-13 00:46:00,927 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-13 00:46:00,928 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:46:00,929 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-13 00:46:00,929 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-13 00:46:00,944 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-13 00:46:00,945 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-13 00:46:00,946 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:00,946 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:00,947 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:01,208 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-13 00:46:01,209 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,209 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:01,210 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:01,218 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-13 00:46:01,218 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,219 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:01,220 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:01,224 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-13 00:46:01,224 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-13 00:46:01,225 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-13 00:46:01,229 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-13 00:46:01,230 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,230 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:01,231 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:01,235 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-13 00:46:01,236 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,236 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:01,237 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:01,240 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-13 00:46:01,240 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,241 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:46:01,242 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:46:01,249 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-13 00:46:01,249 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,250 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-13 00:46:01,250 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-13 00:46:01,731 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-13 00:46:01,732 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,733 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-13 00:46:01,734 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-13 00:46:01,734 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:46:01,735 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-13 00:46:01,735 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-13 00:46:01,759 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-13 00:46:01,760 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,761 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-13 00:46:01,761 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-13 00:46:01,762 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,762 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-13 00:46:01,763 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-13 00:46:01,764 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,764 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-13 00:46:01,765 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-13 00:46:01,765 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,766 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-13 00:46:01,766 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-13 00:46:01,768 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:01,768 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-13 00:46:01,769 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-13 00:46:01,801 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-13 00:46:01,801 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-13 00:46:01,802 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-13 00:46:01,803 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-13 00:46:01,843 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-13 00:46:02,887 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-13 00:46:02,960 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-13 00:46:03,483 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-13 00:46:03,484 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:03,484 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-13 00:46:03,485 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-13 00:46:03,485 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:46:03,486 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-13 00:46:03,486 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-13 00:46:03,487 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-13 00:46:03,487 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-13 00:46:03,487 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:46:03,488 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-13 00:46:03,488 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-13 00:46:03,489 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:46:03,490 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-13 00:46:03,491 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-13 00:46:03,491 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:46:04,510 [INFO] core.discord_client:   Progress: 800 messages indexed...
+2025-10-13 00:46:04,933 [INFO] core.discord_client: Backfill complete: 834 messages from 32 channels
+2025-10-13 00:57:18,108 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test10: <@1375338513939173406> reindex...
+2025-10-13 00:57:18,109 [INFO] core.discord_client: Manual reindex triggered by charlesthefool
+2025-10-13 00:57:18,630 [INFO] core.discord_client: Starting message history backfill (30 days)...
+2025-10-13 00:57:18,631 [INFO] core.discord_client: Backfilling server: SLH-Testing Server
+2025-10-13 00:57:19,214 [INFO] core.message_memory: [UPSERT] Message 1423847118207975508 content CHANGED during backfill
+2025-10-13 00:57:19,215 [INFO] core.message_memory: [UPSERT] OLD: I've modified this message that was actually written days ago just for the final comprehensive test....
+2025-10-13 00:57:19,215 [INFO] core.message_memory: [UPSERT] NEW: I've modified this message that was actually written days ago just for the final comprehensive test....
+2025-10-13 00:57:19,226 [INFO] core.message_memory: [UPSERT] Successfully updated message 1423847118207975508
+2025-10-13 00:57:19,774 [INFO] core.discord_client:   Progress: 100 messages indexed...
+2025-10-13 00:57:22,205 [INFO] core.discord_client:   Progress: 200 messages indexed...
+2025-10-13 00:57:23,124 [INFO] core.message_memory: [UPSERT] Message 1424893780930330706 content CHANGED during backfill
+2025-10-13 00:57:23,124 [INFO] core.message_memory: [UPSERT] OLD: It's really urgent...
+2025-10-13 00:57:23,125 [INFO] core.message_memory: [UPSERT] NEW: This error was silly tho, will test it out again soon. Also, Nuclear Energy. YOU FOUND IT! But the s...
+2025-10-13 00:57:23,137 [INFO] core.message_memory: [UPSERT] Successfully updated message 1424893780930330706
+2025-10-13 00:57:24,378 [INFO] core.discord_client:   Progress: 300 messages indexed...
+2025-10-13 00:57:25,277 [INFO] core.discord_client:   Progress: 400 messages indexed...
+2025-10-13 00:57:25,539 [INFO] core.message_memory: [EMBED] Message 1425238308354523216 has 6 embeds
+2025-10-13 00:57:25,540 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:25,540 [INFO] core.message_memory:     Title: Day one of Israel and Hamas indirect talks ends on ‘positive’ n...
+2025-10-13 00:57:25,541 [INFO] core.message_memory:     Description: Sources familiar with the talks say there was progress on Monday, and negotiations will continue on 
+2025-10-13 00:57:25,541 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:25,542 [INFO] core.message_memory:     Title: News
+2025-10-13 00:57:25,542 [INFO] core.message_memory:     Description: NPR news, audio, and podcasts. Coverage of breaking stories, national and world news, politics, busi
+2025-10-13 00:57:25,543 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:25,543 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:57:25,544 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:57:25,544 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:25,544 [INFO] core.message_memory:     Title: At least 5 dead in large-scale nighttime Russian strike on Ukraine
+2025-10-13 00:57:25,544 [INFO] core.message_memory:     Description: At least five civilians died after Russia launched a major nighttime attack on Ukraine overnight int
+2025-10-13 00:57:25,545 [INFO] core.message_memory:   [EMBED] Embed 4: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:57:25,546 [INFO] core.message_memory:   [EMBED] Embed 5: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:25,546 [INFO] core.message_memory:     Title: World
+2025-10-13 00:57:25,547 [INFO] core.message_memory:     Description: NPR world news, international art and culture, world business and financial markets, world economy, 
+2025-10-13 00:57:25,552 [INFO] core.message_memory: [EMBED] Message 1425239705443897417 has 1 embeds
+2025-10-13 00:57:25,553 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:25,553 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:25,554 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,059 [INFO] core.message_memory: [EMBED] Message 1425255118265127053 has 1 embeds
+2025-10-13 00:57:26,059 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,060 [INFO] core.message_memory:     Title: Introducing Claude Sonnet 4.5
+2025-10-13 00:57:26,060 [INFO] core.message_memory:     Description: Claude Sonnet 4.5 is the best coding model in the world, strongest model for building complex agents
+2025-10-13 00:57:26,065 [INFO] core.message_memory: [EMBED] Message 1425255935856607282 has 3 embeds
+2025-10-13 00:57:26,066 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,067 [INFO] core.message_memory:     Title: Portal:Current events/October 2025
+2025-10-13 00:57:26,068 [INFO] core.message_memory:     Description: October 2025 is the tenth month of the current common year. The month, which began on a Wednesday, w
+2025-10-13 00:57:26,068 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,069 [INFO] core.message_memory:     Title: The Biggest News Stories Of 2025
+2025-10-13 00:57:26,069 [INFO] core.message_memory:     Description: As 2025 unfolds, the world is witnessing a dynamic mix of political, economic, and cultural shifts s
+2025-10-13 00:57:26,070 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,070 [INFO] core.message_memory:     Title: 2025
+2025-10-13 00:57:26,071 [INFO] core.message_memory:     Description: 2025 (MMXXV) is the current year, and is a common year starting on Wednesday of the Gregorian calend
+2025-10-13 00:57:26,358 [INFO] core.message_memory: [EMBED] Message 1425278138971324428 has 1 embeds
+2025-10-13 00:57:26,359 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,360 [INFO] core.message_memory:     Title: Five takeaways from Pam Bondi's tense, partisan Senate testimony
+2025-10-13 00:57:26,360 [INFO] core.message_memory:     Description: Nerves were raw in a hearing that covered much ground, and saw Trump's attorney general go on the at
+2025-10-13 00:57:26,364 [INFO] core.message_memory: [EMBED] Message 1425278462503030864 has 1 embeds
+2025-10-13 00:57:26,365 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,365 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,366 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,371 [INFO] core.message_memory: [EMBED] Message 1425278864736784456 has 1 embeds
+2025-10-13 00:57:26,371 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,372 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,373 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,384 [INFO] core.message_memory: [EMBED] Message 1425279569413275779 has 1 embeds
+2025-10-13 00:57:26,385 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,385 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,386 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,647 [INFO] core.message_memory: [EMBED] Message 1425286400617615430 has 1 embeds
+2025-10-13 00:57:26,648 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,649 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,649 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,668 [INFO] core.message_memory: [EMBED] Message 1425288995402940566 has 4 embeds
+2025-10-13 00:57:26,669 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,670 [INFO] core.message_memory:     Title: Fushimi Inari Shrine
+2025-10-13 00:57:26,670 [INFO] core.message_memory:     Description: Visitor guide for Fushimi Inari Shrine, a Shinto shrine in Kyoto.
+2025-10-13 00:57:26,671 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,672 [INFO] core.message_memory:     Title: Fushimi Inari Taisha Shrine | Travel Japan - Japan National Tourism...
+2025-10-13 00:57:26,672 [INFO] core.message_memory:     Description: Dedicated to Inari, deity of a good harvest and success in business, Fushimi Inari Taisha is the hea
+2025-10-13 00:57:26,673 [INFO] core.message_memory:   [EMBED] Embed 2: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:26,673 [INFO] core.message_memory:     Title: Fushimi Inari Taisha - Kyoto Attractions - Japan Travel
+2025-10-13 00:57:26,674 [INFO] core.message_memory:     Description: Fushimi Inari Shrine is the head shrine of the Inari god, famous for its thousands of vermillion tor
+2025-10-13 00:57:26,675 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:26,676 [INFO] core.message_memory:     Title: [Kyoto] Fushimi Inari Taisha Shrine: A Spiritual Hike Through the ...
+2025-10-13 00:57:26,676 [INFO] core.message_memory:     Description: Explore Fushimi Inari Taisha Shrine in Kyoto, famous for its stunning torii gate tunnels, scenic hik
+2025-10-13 00:57:26,689 [INFO] core.discord_client:   Progress: 500 messages indexed...
+2025-10-13 00:57:26,690 [INFO] core.message_memory: [EMBED] Message 1425291107373420638 has 1 embeds
+2025-10-13 00:57:26,691 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,691 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,692 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,936 [INFO] core.message_memory: [EMBED] Message 1425300037738692659 has 1 embeds
+2025-10-13 00:57:26,937 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,937 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,938 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,951 [INFO] core.message_memory: [EMBED] Message 1425309542937395301 has 1 embeds
+2025-10-13 00:57:26,952 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,953 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,954 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,958 [INFO] core.message_memory: [EMBED] Message 1425314613284831263 has 1 embeds
+2025-10-13 00:57:26,959 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=False, fields=0
+2025-10-13 00:57:26,959 [INFO] core.message_memory:     Title: Web fetch tool - Claude Docs
+2025-10-13 00:57:26,962 [INFO] core.message_memory: [EMBED] Message 1425314921759113246 has 1 embeds
+2025-10-13 00:57:26,962 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,963 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,964 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,968 [INFO] core.message_memory: [EMBED] Message 1425315713219821709 has 1 embeds
+2025-10-13 00:57:26,969 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,969 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,970 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,973 [INFO] core.message_memory: [EMBED] Message 1425318026588192848 has 1 embeds
+2025-10-13 00:57:26,974 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,974 [INFO] core.message_memory:     Title: Claude Sonnet 4.5
+2025-10-13 00:57:26,975 [INFO] core.message_memory:     Description: Hybrid reasoning model with superior intelligence for agents, and 200K context window.
+2025-10-13 00:57:26,981 [INFO] core.message_memory: [EMBED] Message 1425325045743484990 has 1 embeds
+2025-10-13 00:57:26,981 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:26,982 [INFO] core.message_memory:     Title: Messages - Claude Docs
+2025-10-13 00:57:26,982 [INFO] core.message_memory:     Description: Send a structured list of input messages with text and/or image content, and the model will generate
+2025-10-13 00:57:27,464 [INFO] core.message_memory: [EMBED] Message 1425330451433652275 has 2 embeds
+2025-10-13 00:57:27,465 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:27,465 [INFO] core.message_memory:     Title: Ukraine says Russia drone attack hits Chernobyl nuclear plant, radi...
+2025-10-13 00:57:27,466 [INFO] core.message_memory:     Description: A Russian drone struck the former nuclear power plant at Chernobyl in an attack overnight into Frida
+2025-10-13 00:57:27,466 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:27,467 [INFO] core.message_memory:     Title: Ukraine: Current status of nuclear power installations
+2025-10-13 00:57:27,467 [INFO] core.message_memory:     Description: Information note on nuclear power installations in Ukraine, updated periodically.
+2025-10-13 00:57:27,487 [INFO] core.message_memory: [EMBED] Message 1425364495336734814 has 5 embeds
+2025-10-13 00:57:27,488 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:27,489 [INFO] core.message_memory:     Title: Apple unveils iPhone 17 Pro and iPhone 17 Pro Max
+2025-10-13 00:57:27,489 [INFO] core.message_memory:     Description: Apple today introduced iPhone 17 Pro and iPhone 17 Pro Max with a striking new design that delivers 
+2025-10-13 00:57:27,490 [INFO] core.message_memory:   [EMBED] Embed 1: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:27,490 [INFO] core.message_memory:     Title: Learn all about the iPhone 17, Air, 17 Pro and Pro Max in our guide
+2025-10-13 00:57:27,491 [INFO] core.message_memory:     Description: Here’s the lowdown on the new 2025 iPhones including specs, price, new features, design, dimensions 
+2025-10-13 00:57:27,491 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:27,491 [INFO] core.message_memory:     Title: iPhone 17:  Everything We Know | MacRumors
+2025-10-13 00:57:27,492 [INFO] core.message_memory:     Description: The iPhone 17 is Apple's most affordable flagship iPhone, featuring a 6.3-inch display, A19 chip, Pr
+2025-10-13 00:57:27,496 [INFO] core.message_memory:   [EMBED] Embed 3: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:27,496 [INFO] core.message_memory:     Title: Introducing iPhone Air, a powerful new iPhone with a breakthrough d...
+2025-10-13 00:57:27,498 [INFO] core.message_memory:     Description: Apple today debuted the all-new iPhone Air, the thinnest iPhone ever made, with pro performance.
+2025-10-13 00:57:27,498 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:27,499 [INFO] core.message_memory:     Title: Best iPhone in 2025: Here's Which Apple Phone You Should Buy
+2025-10-13 00:57:27,499 [INFO] core.message_memory:     Description: We've tested and reviewed the iPhone Air and iPhone 17 series and have new recommendations for which
+2025-10-13 00:57:27,521 [INFO] core.message_memory: [EMBED] Message 1425393822619144224 has 1 embeds
+2025-10-13 00:57:27,522 [INFO] core.message_memory:   [EMBED] Embed 0: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:27,523 [INFO] core.message_memory:     Title: IBM Sets the Course to Build World's First Large-Scale, Fault-Toler...
+2025-10-13 00:57:27,523 [INFO] core.message_memory:     Description: IBM Quantum roadmap, processors, and infrastructure outline clear path to IBM Quantum Starling, expe
+2025-10-13 00:57:27,563 [INFO] core.discord_client:   Progress: 600 messages indexed...
+2025-10-13 00:57:28,051 [WARNING] core.message_memory: [EMPTY] Message 1426126369217052784 has NO content (no text, no embeds with content)
+2025-10-13 00:57:28,104 [INFO] core.discord_client:   Progress: 700 messages indexed...
+2025-10-13 00:57:28,445 [INFO] core.message_memory: [EMBED] Message 1426885089681473536 has 6 embeds
+2025-10-13 00:57:28,446 [INFO] core.message_memory:   [EMBED] Embed 0: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:28,446 [INFO] core.message_memory:     Title: Sleep Deprivation
+2025-10-13 00:57:28,447 [INFO] core.message_memory:     Description: Sleep deprivation can come with serious consequences, including a higher risk of car crashes. Learn 
+2025-10-13 00:57:28,447 [INFO] core.message_memory:   [EMBED] Embed 1: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:28,448 [INFO] core.message_memory:     Title: Sleep Deprivation: What It Is, Symptoms, Treatment & Stages
+2025-10-13 00:57:28,449 [INFO] core.message_memory:     Description: Sleep deprivation is when you aren’t getting enough sleep, or your sleep is of poor quality. When se
+2025-10-13 00:57:28,449 [INFO] core.message_memory:   [EMBED] Embed 2: type=article, title=True, desc=False, fields=0
+2025-10-13 00:57:28,450 [INFO] core.message_memory:     Title: Why Sleep Matters: Consequences of Sleep Deficiency
+2025-10-13 00:57:28,451 [INFO] core.message_memory:   [EMBED] Embed 3: type=link, title=True, desc=True, fields=0
+2025-10-13 00:57:28,451 [INFO] core.message_memory:     Title: Extent and Health Consequences of Chronic Sleep Loss and Sleep Diso...
+2025-10-13 00:57:28,452 [INFO] core.message_memory:     Description: Sleep loss and sleep disorders are among the most common yet frequently overlooked and readily treat
+2025-10-13 00:57:28,452 [INFO] core.message_memory:   [EMBED] Embed 4: type=article, title=True, desc=True, fields=0
+2025-10-13 00:57:28,453 [INFO] core.message_memory:     Title: Sleep Deprived? Here Is What Lack of Sleep Does to Your Body
+2025-10-13 00:57:28,454 [INFO] core.message_memory:     Description: Sleep deprivation not only affects how you feel the next day, it can also impact your entire body. H
+2025-10-13 00:57:28,454 [INFO] core.message_memory:   [EMBED] Embed 5: type=rich, title=False, desc=False, fields=0
+2025-10-13 00:57:29,350 [INFO] core.discord_client:   Progress: 800 messages indexed...
+2025-10-13 00:57:29,663 [INFO] core.discord_client: Backfill complete: 836 messages from 32 channels
+2025-10-13 00:58:48,228 [INFO] core.discord_client: @mention from charlesthefool in #phase4-test10: <@1375338513939173406> So, I made some changes to ...
+2025-10-13 00:58:48,231 [INFO] core.reactive_engine: Calling Claude API for @mention from charlesthefool
+2025-10-13 00:58:57,675 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:58:57,732 [INFO] core.reactive_engine: Response has 3 content blocks
+2025-10-13 00:58:57,732 [INFO] core.reactive_engine:   Block 0: type=thinking (type class: str, repr: 'thinking')
+2025-10-13 00:58:57,732 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:58:57,733 [INFO] core.reactive_engine:   Block 2: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:58:57,733 [INFO] core.reactive_engine: Input tokens: 1,714 / 8,000 (21.4%)
+2025-10-13 00:59:02,741 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:02,745 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-13 00:59:02,746 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:07,656 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:07,659 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-13 00:59:07,660 [INFO] core.reactive_engine:   Block 0: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:12,369 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:12,373 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-13 00:59:12,374 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:12,375 [INFO] core.reactive_engine:     Text preview: okay so the maverick message says: "find the message containing the key 'nuclear energy' that hides the code you want."
+
+let me search for actual messages that contain nuclear energy as *content* not just asking about it:
+2025-10-13 00:59:12,375 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:17,593 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:17,597 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-13 00:59:17,597 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:17,598 [INFO] core.reactive_engine:     Text preview: hmm, that's just him asking me about nuclear energy, not containing a code. let me view my actual response to see if i embedded a code somehow:
+2025-10-13 00:59:17,599 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:23,120 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:23,124 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-13 00:59:23,125 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:23,125 [INFO] core.reactive_engine:     Text preview: wait, that nuclear energy message is just my response. let me look for messages that actually *contain* "nuclear energy" AND have a code hidden in them. let me check older channels or look at the oldest reference that came up in the previous hunt:
+2025-10-13 00:59:23,126 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:27,858 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:27,863 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-13 00:59:27,864 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:27,865 [INFO] core.reactive_engine:     Text preview: perfect! so the maverick message says to find the message with "nuclear energy" that hides the code. let me view that specific message now:
+2025-10-13 00:59:27,865 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:32,337 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:32,341 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-13 00:59:32,342 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:32,342 [INFO] core.reactive_engine:     Text preview: interesting! so the maverick message is telling me to find *another* message that contains "nuclear energy" which will have the actual code. let me search for messages with "nuclear energy" specifically:
+2025-10-13 00:59:32,342 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:39,418 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:39,421 [INFO] core.reactive_engine: Response has 2 content blocks
+2025-10-13 00:59:39,422 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:39,422 [INFO] core.reactive_engine:     Text preview: great! i can see references to an old message that previously had a code. let me look for that specific october 6th message that says "YOU FOUND IT! But the search doesn't end here!!" - that one looks promising:
+2025-10-13 00:59:39,423 [INFO] core.reactive_engine:   Block 1: type=tool_use (type class: str, repr: 'tool_use')
+2025-10-13 00:59:47,286 [INFO] httpx: HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
+2025-10-13 00:59:47,291 [INFO] core.reactive_engine: Response has 1 content blocks
+2025-10-13 00:59:47,291 [INFO] core.reactive_engine:   Block 0: type=text (type class: str, repr: 'text')
+2025-10-13 00:59:47,291 [INFO] core.reactive_engine:     Text preview: perfect! found it. the message with "nuclear energy" says:
+
+"This error was silly tho, will test it out again soon. Also, Nuclear Energy. YOU FOUND IT! But the search doesn't end here!! The final CODE is a two-digit sequence. The first digit is the number of words of the message that comes before th
+2025-10-13 00:59:47,599 [INFO] core.reactive_engine: Response sent to charlesthefool (955 chars)
+2025-10-13 01:09:35,671 [INFO] __main__: Shutdown requested
+2025-10-13 01:09:35,672 [INFO] __main__: Shutting down bot...
+2025-10-13 01:09:35,672 [INFO] core.reactive_engine: Cancelling 1 background tasks...
+2025-10-13 01:09:35,673 [INFO] core.reactive_engine: Periodic check loop cancelled
+2025-10-13 01:09:35,674 [INFO] core.reactive_engine: ReactiveEngine shutdown complete
+2025-10-13 01:09:35,674 [INFO] core.agentic_engine: Shutting down agentic engine...
+2025-10-13 01:09:35,675 [INFO] core.agentic_engine: Agentic engine shutdown complete
+2025-10-13 01:09:36,191 [INFO] core.message_memory: Message memory closed
+2025-10-13 01:09:36,207 [INFO] __main__: Cancelling 2 remaining tasks...
+2025-10-13 01:09:36,226 [INFO] core.discord_client: Daily reindex task cancelled
+2025-10-13 01:09:36,248 [INFO] __main__: Shutdown complete
+2025-10-13 01:09:36,249 [INFO] __main__: Active threads: ['MainThread', 'Thread-2', 'asyncio_0']
