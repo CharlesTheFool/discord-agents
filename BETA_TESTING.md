@@ -24,27 +24,41 @@ Thank you for participating in the closed beta test of the Discord-Claude Bot Fr
 
 ## How to Report Issues
 
-**Use GitHub Issues with this format:**
+We've created structured issue templates to make reporting easy!
 
-```
-**Title:** [Component] Brief description
+### Bug Reports
+**Found a bug?** Use the [Bug Report template](../../issues/new?template=bug_report.yml)
 
-**Description:**
-What happened? What did you expect?
+The template will guide you through providing:
+- Bug description and expected behavior
+- Steps to reproduce
+- Environment details (OS, Python version, bot config)
+- Relevant logs
 
-**Steps to Reproduce:**
-1. Step one
-2. Step two
-3. ...
+### Feature Requests
+**Have an idea?** Use the [Feature Request template](../../issues/new?template=feature_request.yml)
 
-**Environment:**
-- OS: (Windows/Linux/Mac)
-- Python version: `python3 --version`
-- Bot ID: (alpha/beta/custom)
+Share your:
+- Problem statement and use case
+- Proposed solution
+- Examples of how you'd use the feature
 
-**Logs:**
-(Attach relevant logs from logs/ directory)
-```
+### General Beta Feedback
+**Want to share broader feedback?** Use the [Beta Feedback template](../../issues/new?template=beta_feedback.yml)
+
+This template is for:
+- Overall impressions and observations
+- Documentation feedback
+- Setup and onboarding experience
+- Performance and reliability notes
+
+### Security Issues
+**🚨 Found a security vulnerability?**
+
+**DO NOT** create a public GitHub issue. Instead:
+- Use [GitHub Security Advisories](../../security/advisories/new) to report privately
+- See [SECURITY.md](SECURITY.md) for detailed reporting instructions
+- We'll respond within 48 hours
 
 ## Beta Testing Timeline
 

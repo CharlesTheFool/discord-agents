@@ -7,6 +7,18 @@ Agentic Discord bot framework powered by Anthropic's Claude Sonnet 4.5. Build in
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Discord.py](https://img.shields.io/badge/discord.py-2.3+-blue.svg)](https://discordpy.readthedocs.io/)
+[![Security](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
+
+---
+
+## ⚠️ Closed Beta Notice
+
+This is a **closed beta release** (v0.4.0-beta). The framework is feature-complete but undergoing community testing.
+
+- **Expect changes:** API and configuration may evolve between beta versions
+- **Report issues:** Use [GitHub Issues](../../issues) with provided templates
+- **Beta testing:** See [BETA_TESTING.md](BETA_TESTING.md) for testing guidelines
+- **Security:** Report vulnerabilities via [GitHub Security Advisories](SECURITY.md)
 
 ---
 
@@ -184,19 +196,29 @@ python bot_manager.py spawn alpha
 
 ## 🔒 Security & Safety
 
+**📋 Full Security Policy:** See [SECURITY.md](SECURITY.md) for complete security guidelines and best practices.
+
+### Reporting Security Vulnerabilities
+
+**🚨 Found a security issue?** Please report it responsibly:
+
+- **GitHub Security Advisories** (preferred): [Report vulnerability](../../security/advisories/new)
+- **Do NOT** create public GitHub issues for security vulnerabilities
+- See [SECURITY.md](SECURITY.md) for detailed reporting instructions
+
 ### API Key Management
-✅ **Never commit `.env` files**
-✅ **Use environment variables only**
-✅ **Rotate keys immediately if exposed**
-✅ **One key per bot (optional isolation)**
+✅ **Never commit `.env` files** - Already git-ignored
+✅ **Use environment variables only** - No hardcoded keys
+✅ **Rotate keys immediately if exposed** - Regenerate Discord token & Anthropic key
+✅ **One key per bot** - Optional isolation for multi-bot setups
 
 ### Rate Limiting
 ✅ **Per-channel limits:** 20 messages/5 min, 200 messages/60 min
 ✅ **Prevents spam and quota exhaustion**
-✅ **Engagement-aware backoff**
+✅ **Engagement-aware backoff** - Bot learns when users are less responsive
 
 ### Quota Management
-✅ **Web search:** 300/day default (configurable)
+✅ **Web search:** 300/day default (configurable in bot YAML)
 ✅ **Image processing:** 5 per message max
 ✅ **Tracked in:** `persistence/{bot}_web_search_stats.json`
 
@@ -206,17 +228,22 @@ python bot_manager.py spawn alpha
 ✅ **Background tasks** cancelled cleanly
 
 ### Memory Isolation
-✅ **Per-server separation**
-✅ **Per-channel isolation**
-✅ **No cross-contamination**
+✅ **Per-server separation** - No data leakage between communities
+✅ **Per-channel isolation** - Channel-specific memory contexts
+✅ **No cross-contamination** - Each server has isolated memory files
+
+**📖 For comprehensive security guidelines, hardening recommendations, and deployment best practices, see [SECURITY.md](SECURITY.md).**
 
 ---
 
 ## 📚 Documentation
 
 ### Main Documentation
+- **[README.md](README.md)** - This file: Quick start and overview
+- **[BETA_TESTING.md](BETA_TESTING.md)** - Beta testing guide and feedback channels
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical reference and system design
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and roadmap
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and planned features
+- **[SECURITY.md](SECURITY.md)** - Security policy and vulnerability reporting
 - **[TESTING.md](TESTING.md)** - Test suite documentation
 
 ### Reference Documentation
@@ -227,7 +254,8 @@ python bot_manager.py spawn alpha
   - Preserved Algorithms
 
 ### Historical Documentation
-- **[docs/phases/](docs/phases/)** - Development phase documentation
+- **[docs/archive/](docs/archive/)** - Development history
+  - PROJECT_SPEC.md (archived development spec)
   - Phase 2 Complete (v0.2.0 - Intelligence)
   - Phase 3 Complete (v0.3.0 - Autonomy)
   - Phase 4 Complete (v0.4.0-beta - Tools & Polish)
@@ -333,26 +361,18 @@ See [CHANGELOG.md](CHANGELOG.md#known-issues) for current issues.
 
 ---
 
-## 📝 License
+## License
 
 [Your License Here - e.g., MIT]
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built with:
 - [Anthropic Claude](https://www.anthropic.com/) - AI foundation
 - [discord.py](https://discordpy.readthedocs.io/) - Discord integration
 - [aiosqlite](https://github.com/omnilib/aiosqlite) - Async SQLite
-
----
-
-## ⚠️ Closed Beta Disclaimer
-
-This is a **beta release**. Expect changes. API may evolve. Configuration format may change between versions. Use in production at your own risk.
-
-For questions or feedback: [Your Contact]
 
 ---
 

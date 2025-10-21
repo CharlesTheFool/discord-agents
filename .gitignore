@@ -1,4 +1,4 @@
-# Secrets - NEVER commit these
+# Secrets: NEVER EVER commit these
 .env
 
 # Personal deployment data

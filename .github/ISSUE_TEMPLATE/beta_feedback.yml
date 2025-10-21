@@ -1,0 +1,158 @@
+name: Beta Feedback
+description: Feedback from closed beta testing (v0.4.0-beta)
+title: "[Beta]: "
+labels: ["beta-feedback", "v0.4.0"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for participating in the v0.4.0-beta testing! Your feedback is invaluable.
+
+        This template is for general feedback, suggestions, and observations. For bugs, please use the **Bug Report** template.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feedback Category
+      description: What aspect of the framework is this feedback about?
+      options:
+        - Setup & Onboarding
+        - Documentation (README, ARCHITECTURE, templates)
+        - Configuration System
+        - Discord Integration
+        - Memory System
+        - Web Search & Tools
+        - Autonomous Behaviors
+        - Performance & Reliability
+        - Developer Experience
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Your Feedback
+      description: Share your thoughts, observations, or suggestions
+      placeholder: |
+        Example: The setup process was straightforward, but I found the YAML configuration confusing because...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sentiment
+    attributes:
+      label: Overall Sentiment
+      description: How do you feel about this aspect?
+      options:
+        - Very positive - Works great, exceeded expectations
+        - Positive - Works well with minor issues
+        - Neutral - Works but needs improvement
+        - Negative - Significant issues or frustration
+        - Blocker - Cannot use the framework because of this
+    validations:
+      required: true
+
+  - type: textarea
+    id: positive
+    attributes:
+      label: What Worked Well
+      description: What aspects did you particularly enjoy or find valuable?
+      placeholder: "The export/import tool made it easy to..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: negative
+    attributes:
+      label: What Could Be Improved
+      description: What caused friction, confusion, or frustration?
+      placeholder: "I struggled with... because..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggestions for Improvement
+      description: How could we make this better?
+      placeholder: "It would be helpful if..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: use-case
+    attributes:
+      label: Your Use Case
+      description: How are you using the framework?
+      options:
+        - Community server bot (casual)
+        - Community server bot (large/active)
+        - Personal assistant bot
+        - Development/testing
+        - Educational purposes
+        - Other
+    validations:
+      required: false
+
+  - type: input
+    id: server-size
+    attributes:
+      label: Server Size (if applicable)
+      description: Approximate number of members in your Discord server
+      placeholder: "~500 members"
+    validations:
+      required: false
+
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Comparison to Alternatives (if applicable)
+      description: If you've used other Discord bot frameworks, how does this compare?
+      placeholder: "Compared to discord.js bots I've built..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: testing-checklist
+    attributes:
+      label: Features Tested
+      description: Which features have you tested? (Check all that apply)
+      options:
+        - label: Basic message handling and responses
+        - label: Memory system (creating and viewing memories)
+        - label: Discord message search
+        - label: Web search integration
+        - label: Image processing
+        - label: Proactive engagement
+        - label: Follow-up system
+        - label: Export/import tool
+        - label: Multi-bot configuration
+        - label: Rate limiting behavior
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Testing Environment
+      description: Brief description of your setup (OS, deployment method, bot config)
+      placeholder: "Ubuntu 22.04 on DigitalOcean droplet, using systemd service"
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Comments
+      description: Anything else you'd like to share?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: follow-up
+    attributes:
+      label: Follow-up
+      options:
+        - label: I'm available for follow-up questions about this feedback
+        - label: I'd be interested in testing future versions

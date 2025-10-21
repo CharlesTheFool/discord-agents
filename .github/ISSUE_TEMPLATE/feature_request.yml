@@ -1,0 +1,120 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "needs-review"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! We value your input and ideas for improving the framework.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What use case does it address?
+      placeholder: "As a bot operator, I want to... so that I can..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work?
+      placeholder: "Add a new configuration option that allows..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered other approaches? What are their trade-offs?
+      placeholder: "I also considered... but that would require..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which part of the framework would this affect?
+      options:
+        - Core (Discord client, state management)
+        - Reactive Engine (message handling)
+        - Agentic Engine (autonomous behaviors)
+        - Memory System (persistence, memory tool)
+        - Tools (Discord, web search, image processing)
+        - Configuration (YAML, validation)
+        - Documentation
+        - Other
+      multiple: true
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical - Blocking my use case
+        - High - Would significantly improve my workflow
+        - Medium - Nice to have
+        - Low - Minor improvement
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: breaking
+    attributes:
+      label: Breaking Changes
+      description: Would this feature require breaking changes?
+      options:
+        - label: This feature would require breaking changes to existing configurations
+        - label: This feature would be backward compatible
+        - label: Not sure
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example Use Cases
+      description: Provide 2-3 concrete examples of how you would use this feature
+      placeholder: |
+        1. In a community server, bot could automatically...
+        2. For moderation purposes, bot would...
+    validations:
+      required: false
+
+  - type: textarea
+    id: mockup
+    attributes:
+      label: Configuration Example (if applicable)
+      description: If this involves configuration changes, show what it might look like
+      render: yaml
+      placeholder: |
+        # Example config for new feature
+        new_feature:
+          enabled: true
+          option: value
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to contribute this feature (with guidance)
+        - label: I can help test this feature once implemented
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information (links to related discussions, similar features in other projects)
+    validations:
+      required: false

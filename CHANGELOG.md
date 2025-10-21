@@ -25,84 +25,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Status:** Closed beta release - framework feature-complete
 
 ### Added
-- **Discord Tools** - Agentic search & view architecture
-  - `search_messages`: FTS5 full-text search returning message IDs only
-  - `view_messages`: 4 viewing modes (recent, around, first, range)
-  - Token-efficient two-step workflow for context retrieval
-  - Cross-channel search across all accessible channels
-  - Files: `tools/discord_tools.py`
 
-- **Message Reindexing System** - Keep search index current
-  - Daily automatic reindex at 3 AM UTC
-  - Manual trigger via `@bot reindex` command
-  - UPSERT logic for handling edited messages
-  - Background execution without blocking bot
-  - Files: `core/discord_client.py` (daily task), `core/message_memory.py` (UPSERT)
+**Tools & Integrations**
+- **Discord Message Search** - Full-text search across conversation history with multiple viewing modes (recent, around message, first messages, date range)
+- **Automatic Message Reindexing** - Daily reindex at 3 AM UTC keeps search current, with manual `@bot reindex` command support
+- **Image Processing** - Automatic compression for up to 5 images per message with smart fallback strategies to stay within API token limits
+- **Web Search Integration** - Anthropic server tools for web search and fetching with automatic citation extraction and daily quota management (300 searches default)
 
-- **Image Processing Pipeline** - 6-strategy compression cascade
-  - Automatic token limit compliance (max 1600 tokens per image)
-  - Base64 encoding for Claude API
-  - Support up to 5 images per message
-  - Maintains aspect ratios during resize
-  - Fallback strategies for optimal compression
-  - Files: `tools/image_processor.py`
-
-- **Web Search Integration** - Anthropic server tools
-  - `web_search_20250305` with beta headers
-  - `web_fetch_20250910` with citations enabled
-  - Daily quota management (300 searches default)
-  - Citation extraction and display in responses
-  - Server tool usage tracking (monitors `server_tool_use` blocks)
-  - Files: `tools/web_search.py`, `core/reactive_engine.py`
-
-- **Configuration System Enhancements**
-  - Basic config validation on startup (checks env vars, validates ranges)
-  - Support for deployment/ submodule configs
-  - Template files for public distribution (.env.example, alpha.yaml.example)
-  - Deployment path resolution (deployment/ → bots/ → templates)
-  - Files: `core/config.py`, `bot_manager.py`
-
-- **Deployment Support**
-  - Git submodule approach for private configs
-  - .gitignore updated for framework vs deployment separation
-  - Template files for easy onboarding
+**Configuration & Deployment**
+- **Config Validation** - Startup validation checks for missing environment variables and invalid configuration values
+- **Template Files** - Pre-configured examples (`.env.example`, `alpha.yaml.example`) for easy setup
+- **Export/Import Tool** - Portable zip-based backups for syncing bot data across machines without git complexity
 
 ### Fixed
-- **Race Condition in Context Building** - Bot sent 4 combined responses
-  - Solution: Moved context building inside semaphore with `exclude_message_ids`
-  - Files: `core/context_builder.py` lines 163-176
-
-- **UPSERT Bug in Message Backfill** - Edited messages not searchable
-  - Problem: `INSERT OR IGNORE` skipped updates on collision
-  - Solution: Changed to `INSERT OR REPLACE` for proper UPSERT behavior
-  - Files: `core/message_memory.py` lines 281-311
-
-- **Forwarded Message Handling** - Exception on inaccessible content
-  - Solution: Added clear marker for forwarded messages
-  - Files: `core/context_builder.py` lines 115-120
-
-- **Discord Tools Execution** - Silent failures when returning None
-  - Solution: Added None check and warning logging
-  - Files: `core/reactive_engine.py` lines 406-411
-
-- **Server Tool Tracking** - Quota tracking checked wrong block type
-  - Problem: Checked `tool_use` blocks instead of `server_tool_use`
-  - Solution: Track server tools after API response in response.content
-  - Files: `core/reactive_engine.py` lines 262-269, 815-822
+- **Context Builder Race Condition** - Bot no longer sends multiple combined responses when processing rapid messages
+- **Edited Message Search** - Fixed bug where edited messages weren't searchable in message history
+- **Forwarded Messages** - Bot now handles forwarded messages gracefully without exceptions
+- **Discord Tools Errors** - Silent failures in Discord search/view tools now log warnings properly
+- **Web Search Quota Tracking** - Fixed incorrect tracking of server tool usage for web search quota management
 
 ### Changed
-- Documentation restructure (docs/ARCHITECTURE.md + CHANGELOG.md replace PROJECT_SPEC.md)
-- Simplified config loading (removed deployment submodule complexity)
-- Semantic versioning instead of phase naming
-- Config validation returns list of errors instead of raising exceptions
-- Added export/import tool for portable backups
+- **Documentation Structure** - Consolidated into ARCHITECTURE.md (technical reference) and CHANGELOG.md (version history)
+- **Simplified Configuration** - Streamlined config loading removes deployment submodule complexity
+- **Version Numbering** - Switched to semantic versioning (0.x.0) instead of phase-based naming
+- **Error Handling** - Config validation now returns detailed error list instead of raising exceptions
 
 ### Security
-- API key isolation via environment variables
-- Per-channel rate limiting (20/min, 100/hour)
-- Web search quota tracking for cost management
-- Memory isolation per server/channel
-- Environment variable validation on startup
+- **API Key Isolation** - All sensitive credentials managed via environment variables only
+- **Rate Limiting** - Per-channel limits (20 messages per 5 min, 100 per hour) prevent spam and quota exhaustion
+- **Quota Management** - Web search daily limits with tracking to control API costs
+- **Memory Isolation** - Per-server and per-channel memory prevents data leakage between communities
+- **Startup Validation** - Environment variable validation catches missing credentials before bot starts
 
 ---
 
@@ -111,41 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Focus:** Autonomous agentic behaviors
 
 ### Added
-- **Agentic Engine** - Background autonomous loop
-  - Hourly check cycle (configurable interval)
-  - Follow-up system with event tracking
-  - Proactive engagement in idle channels
-  - Quiet hours support (configurable time window)
-  - Files: `core/agentic_engine.py`
-
-- **Follow-Up System** - Automated user event tracking
-  - Manual creation via memory tool prompting
-  - Natural language check-ins (not robotic "following up on X")
-  - Configurable delay (default 1 day)
-  - Automatic cleanup of completed follow-ups
-  - Priority-based execution
-  - Files: `core/agentic_engine.py`
-
-- **Proactive Engagement** - Initiate conversations in idle channels
-  - Idle channel detection (configurable threshold: 1-8 hours)
-  - Channel context analysis for relevance
-  - Success rate tracking per channel
-  - Adaptive learning (backs off from low-engagement channels)
-  - Three delivery methods: standalone, woven into reply, deferred
-  - Per-channel and global daily limits
-  - Files: `core/agentic_engine.py`, `core/proactive_action.py`
-
-- **Engagement Tracking** - Analytics and metrics
-  - Track proactive message attempts per channel
-  - Success rate calculation (reactions, replies, continued conversation)
-  - Persistent stats storage (JSON files per channel)
-  - Learning window for adaptive behavior
-  - Files: `core/engagement_tracker.py`
+- **Autonomous Background Loop** - Bot runs hourly checks for follow-ups and proactive engagement opportunities with configurable quiet hours support
+- **Follow-Up System** - Bot remembers to check in on users after events (e.g., "how did that presentation go?") with natural conversational language
+- **Proactive Engagement** - Bot initiates conversations in idle channels based on context analysis and learns from success rates to improve over time
+- **Engagement Analytics** - Tracks proactive message performance per channel with adaptive learning that reduces attempts in low-engagement areas
 
 ### Changed
-- Engagement detection now "loose" (any user activity counts as engagement)
-- Memory maintenance integrated into agentic loop
-- Background tasks managed via asyncio
+- **Engagement Detection** - Any user activity now counts as engagement (more lenient tracking)
+- **Memory Maintenance** - Integrated into autonomous loop for automatic cleanup
+- **Background Processing** - All autonomous tasks managed via asyncio for non-blocking execution
 
 ---
 
@@ -154,49 +81,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Focus:** Intelligent context and memory
 
 ### Added
-- **Smart Context Building** - Reply chain threading
-  - Recursive reply chain traversal (up to 5 levels deep)
-  - Temporal context ordering (chronological message flow)
-  - Recent message inclusion (last 10 messages)
-  - Bot identity awareness (knows its Discord name)
-  - Files: `core/context_builder.py`
-
-- **Memory Tool Integration** - Anthropic's official memory tool
-  - All 6 commands: view, create, str_replace, insert, delete, rename
-  - Client-side execution via MemoryToolExecutor
-  - Per-server/channel memory isolation
-  - Markdown-based file structure in `memories/{bot_id}/servers/{server_id}/`
-  - Files: `core/memory_manager.py`, `core/memory_tool_executor.py`
-
-- **Context Editing** - Prompt caching for token efficiency
-  - Automatic activation at 8k input tokens (configurable)
-  - Memory tool results preserved (excluded from cache clear)
-  - Other tool results cleared on next turn
-  - Token usage logging for monitoring
-  - Files: `core/reactive_engine.py`, `core/config.py`
-
-- **Temporal Awareness** - Time context for Claude
-  - Current timestamp in system prompt
-  - Message timestamps in context
-  - Enables time-sensitive responses (e.g., "earlier today", "yesterday")
-  - Files: `core/context_builder.py`
-
-- **@Mention Resolution** - Readable user references
-  - Converts Discord user IDs to display names
-  - Prevents Claude seeing raw `<@123456789>` syntax
-  - Improves context clarity for the model
-  - Files: `core/context_builder.py`
-
-- **User Cache System** - Fast user lookups
-  - SQLite-based caching of user data
-  - Updated on every message for accuracy
-  - Reduces Discord API calls
-  - Files: `core/user_cache.py`
+- **Smart Context Building** - Bot follows reply chains up to 5 levels deep and includes recent messages for natural conversation flow
+- **Persistent Memory** - Anthropic's official memory tool with full CRUD operations (create, view, edit, delete) stored per-server in Markdown files
+- **Prompt Caching** - Automatic activation at 8k tokens reduces API costs while preserving memory tool results
+- **Temporal Awareness** - Bot understands time context and can reference "earlier today", "yesterday", etc. in responses
+- **@Mention Resolution** - Converts Discord user IDs to readable names so bot understands who's being referenced
+- **User Cache** - SQLite-based caching reduces Discord API calls and improves response time
 
 ### Changed
-- Message batching window extended to 10 seconds
-- Context building now prioritizes recent activity
-- Tool execution moved to dedicated executor class
+- **Message Batching** - Extended to 10 seconds to better group rapid-fire messages
+- **Context Priority** - Recent activity now prioritized in conversation context
+- **Tool Execution** - Dedicated executor class for cleaner separation of concerns
 
 ---
 
@@ -205,60 +100,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Focus:** Core framework foundation
 
 ### Added
-- **Core Message Handling** - Discord.py integration
-  - @mention detection and response
-  - Extended thinking integration (step-by-step reasoning)
-  - Message content intent enabled
-  - Multi-server support
-  - Files: `core/discord_client.py`, `core/reactive_engine.py`
+- **Discord Integration** - @mention detection, response handling, and multi-server support with message content intent
+- **Rate Limiting** - Per-channel limits (20 per 5 min, 200 per hour) with engagement-aware backoff to prevent spam
+- **Message Storage** - SQLite-based persistent message history with async operations for non-blocking database access
+- **Multi-Bot Support** - YAML configuration system allows running multiple isolated bots with separate databases and memory
+- **Bot Manager CLI** - Simple `spawn <bot_id>` command with graceful shutdown and environment variable loading
+- **Extended Thinking** - Claude's step-by-step reasoning for complex questions (configurable 10k token budget)
 
-- **Rate Limiting** - Per-channel limits
-  - Short window: 20 messages per 5 minutes
-  - Long window: 200 messages per 60 minutes
-  - Engagement-aware backoff
-  - Preserved algorithm from v1 prototype (battle-tested)
-  - Files: `core/rate_limiter.py`
-
-- **SQLite Message Storage** - Persistent message history
-  - aiosqlite for async operations
-  - Message and user caching
-  - Foundation for future FTS5 full-text search
-  - Files: `core/message_memory.py`
-
-- **Multi-Bot Support** - YAML-based configuration
-  - Per-bot config files in `bots/` directory
-  - Per-bot memory isolation
-  - Per-bot databases in `persistence/`
-  - Concurrent bot execution support
-  - Files: `core/config.py`
-
-- **Bot Manager CLI** - Simple process management
-  - `spawn <bot_id>` command to start bot
-  - Graceful shutdown on SIGTERM/SIGINT
-  - Environment variable loading from .env
-  - Files: `bot_manager.py`
-
-- **Extended Thinking** - Claude's step-by-step reasoning
-  - Configurable thinking budget (default 10k tokens)
-  - Exposed in API responses for transparency
-  - Improves response quality for complex questions
-  - Files: `core/reactive_engine.py`
-
-### Technical Details
-- **Requirements:**
-  - Python 3.10+
-  - discord.py 2.3+
-  - anthropic SDK
-  - aiosqlite for async database
-  - PyYAML for config parsing
-
-- **Project Structure:**
-  - `core/` - Framework components
-  - `tools/` - Tool implementations
-  - `bots/` - Bot configurations
-  - `memories/` - Memory tool storage
-  - `persistence/` - SQLite databases
-  - `logs/` - Bot logs
+### Requirements
+- Python 3.10+
+- discord.py 2.3+
+- anthropic SDK
+- aiosqlite
+- PyYAML
 
 ---
 
