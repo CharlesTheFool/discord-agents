@@ -1,73 +1,63 @@
 # Discord-Claude Bot Framework
 
-Generalized framework for building agentic Discord bots powered by Claude AI.
+**Version:** 0.4.0-beta (Closed Beta)
 
-## Project Structure
+Agentic Discord bot framework powered by Anthropic's Claude Sonnet 4.5. Build intelligent, autonomous bots with memory, proactive engagement, web search, and multi-modal capabilities.
 
-```
-discord-claude-framework/
-├── core/                      # Core framework components
-│   ├── config.py             # Configuration system
-│   ├── rate_limiter.py       # Rate limiting (preserved algorithm)
-│   ├── message_memory.py     # SQLite message storage
-│   ├── memory_manager.py     # Memory tool wrapper
-│   ├── memory_tool_executor.py # Client-side memory tool operations (Phase 2)
-│   ├── context_builder.py    # Smart context assembly (Phase 2)
-│   ├── reactive_engine.py    # Message handling engine
-│   ├── agentic_engine.py     # Autonomous behaviors (Phase 3)
-│   ├── proactive_action.py   # Proactive action data class (Phase 3)
-│   ├── conversation_logger.py # Enhanced logging
-│   └── discord_client.py     # Discord.py integration
-│
-├── tools/                     # Tool implementations
-│
-├── bots/                      # Bot configurations
-│   ├── alpha.yaml            # Example bot config
-│   └── beta.yaml             # Second bot for testing
-│
-├── memories/                  # Memory tool storage (git committed)
-│   └── {bot_id}/
-│       └── servers/...
-│
-├── persistence/               # SQLite databases (git committed)
-│   └── {bot_id}_messages.db
-│
-├── logs/                      # Bot logs (git committed)
-│   ├── {bot_id}.log
-│   └── {bot_id}_conversations.log
-│
-├── prototype/                 # v1 prototype (reference only)
-│   └── slh.py
-│
-├── docs/                      # Documentation
-│   ├── PROJECT_SPEC.md       # Complete framework specification
-│   ├── PHASE_2_COMPLETE.md   # Phase 2 completion summary
-│   ├── PHASE_3_COMPLETE.md   # Phase 3 completion summary
-│   ├── api_memory_tool.md
-│   ├── api_context_editing.md
-│   ├── discord_patterns.md
-│   └── preserved_algorithms.md
-│
-├── bot_manager.py             # CLI entry point
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Discord.py](https://img.shields.io/badge/discord.py-2.3+-blue.svg)](https://discordpy.readthedocs.io/)
 
-## Quick Start (Phase 1)
+---
 
-### 1. Setup Environment
+## 🚀 Features
 
-Copy `.env.example` to `.env` and fill in your API keys:
+### ✅ Complete Feature Set (v0.4.0-beta)
+
+**Core Intelligence**
+- 🧠 **Extended Thinking** - Step-by-step reasoning for complex questions
+- 💾 **Memory Tool** - Persistent per-server knowledge storage (Markdown-based)
+- 🔍 **Discord Message Search** - FTS5 full-text indexing with agentic search & view
+- 🌐 **Web Search** - Anthropic server tools with automatic citation extraction
+- 🖼️ **Image Processing** - 6-strategy compression pipeline, up to 5 images per message
+- ⏰ **Temporal Awareness** - Time-sensitive responses with message timestamps
+- 🔗 **Smart Context** - Reply chain threading (up to 5 levels deep)
+
+**Autonomous Behaviors**
+- 🤖 **Proactive Engagement** - Initiates conversations in idle channels
+- 📅 **Follow-Up System** - Auto-track events and check in naturally
+- 📊 **Adaptive Learning** - Learns channel success rates and adapts behavior
+- 🌙 **Quiet Hours** - Configurable time windows for reduced activity
+- 🎯 **Delivery Intelligence** - Standalone, woven, or deferred message delivery
+
+**Production Ready**
+- ⚡ **Rate Limiting** - Per-channel limits (20/min, 100/hour)
+- 💰 **Quota Management** - Web search daily limits (300/day default)
+- 🔄 **Daily Reindexing** - Automatic message reindex at 3 AM UTC
+- 🛡️ **Security** - API key isolation, environment variable validation
+- 📝 **Comprehensive Logging** - Structured logs with conversation tracking
+- 🔧 **Multi-Bot Support** - Run multiple bots with isolated configs
+
+---
+
+## 📋 Prerequisites
+
+- **Python 3.10+** - [Download](https://www.python.org/downloads/)
+- **Discord Bot** - [Create application](https://discord.com/developers/applications)
+  - Enable "Message Content Intent" in Bot settings
+- **Anthropic API Key** - [Get key](https://console.anthropic.com/)
+- **Git** (optional, for deployment submodule)
+
+---
+
+## 🎯 Quick Start
+
+### 1. Clone Repository
 
 ```bash
-cp .env.example .env
-# Edit .env and add your DISCORD_BOT_TOKEN and ANTHROPIC_API_KEY
+git clone <repository-url>
+cd discord-claude-framework
 ```
-
-Required keys:
-- `DISCORD_BOT_TOKEN` - Get from [Discord Developer Portal](https://discord.com/developers/applications)
-- `ANTHROPIC_API_KEY` - Get from [Anthropic Console](https://console.anthropic.com/)
 
 ### 2. Install Dependencies
 
@@ -75,101 +65,287 @@ Required keys:
 pip install -r requirements.txt
 ```
 
-### 3. Configure Your Bot
+### 3. Configure Environment
+
+Copy the template and add your API keys:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```bash
+ALPHA_BOT_TOKEN=your_discord_bot_token_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+```
+
+### 4. Configure Your Bot
+
+Copy the template and customize:
+
+```bash
+cp bots/alpha.yaml.example bots/alpha.yaml
+```
 
 Edit `bots/alpha.yaml`:
-
 ```yaml
 discord:
   servers:
-    - "YOUR_SERVER_ID_HERE"  # Replace with your Discord server ID
+    - "YOUR_SERVER_ID_HERE"  # Right-click server → Copy ID
 
 personality:
   base_prompt: |
-    # Customize your bot's personality here
+    Customize your bot's personality here.
+    Define tone, expertise, behavior preferences.
 ```
 
-### 4. Run Your Bot
+### 5. Run Your Bot
 
 ```bash
 python bot_manager.py spawn alpha
 ```
 
-The bot will connect to Discord and respond to @mentions!
+**The bot will:**
+- ✅ Connect to Discord
+- ✅ Backfill message history
+- ✅ Start autonomous background loop
+- ✅ Respond to @mentions
 
-## Features
+---
 
-✅ **Phase 1: Foundation Complete**
-- Responds to @mentions with Claude Sonnet 4.5
-- Extended thinking integration (step-by-step reasoning)
-- SQLite message storage
-- Rate limiting with engagement tracking
-- Multi-bot support via YAML configs
-- Git-friendly state management
+## 🚀 Deployment (Self-Hosted)
 
-✅ **Phase 2: Intelligence Complete**
-- Smart context building with reply chain threading (up to 5 levels)
-- Memory tool integration (all 6 official commands)
-- @Mention resolution to readable names
-- Temporal awareness (current time + message timestamps)
-- Bot identity awareness (knows its Discord name)
-- Loose engagement detection (any user message counts)
-- Context editing for token efficiency (full integration)
+### Option 1: Systemd Service (Linux VPS)
 
-✅ **Phase 3: Autonomy Complete**
-- Agentic engine with hourly background loop
-- Follow-up system (auto-track user events, natural check-ins)
-- Proactive engagement (initiates conversations in idle channels)
-- Adaptive learning (learns channel success rates)
-- Memory maintenance (cleanup old follow-ups)
-- Configurable quiet hours and rate limits
-- Delivery method intelligence (standalone/woven/deferred)
+Create `/etc/systemd/system/discord-bot.service`:
 
-🚧 **Coming in Phase 4**
-- Image processing
-- Web search
-- Discord tools (query server state)
-- Production deployment
+```ini
+[Unit]
+Description=Discord-Claude Bot
+After=network.target
 
-## Documentation
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/discord-claude-framework
+ExecStart=/usr/bin/python3 bot_manager.py spawn alpha
+Restart=always
+RestartSec=10
 
-- **[Project Specification](docs/PROJECT_SPEC.md)** - Complete framework architecture
-- **[Memory Tool API](docs/api_memory_tool.md)** - Anthropic memory tool reference
-- **[Context Editing API](docs/api_context_editing.md)** - Token management reference
-- **[Discord Patterns](docs/discord_patterns.md)** - Discord.py patterns and examples
-- **[Preserved Algorithms](docs/preserved_algorithms.md)** - Battle-tested algorithms from v1
-- **[Beta Features Tracking](docs/BETA_FEATURES_TRACKING.md)** - Beta API features in use and migration guide
+[Install]
+WantedBy=multi-user.target
+```
 
-## Current Status
+Enable and start:
+```bash
+sudo systemctl enable discord-bot
+sudo systemctl start discord-bot
+sudo systemctl status discord-bot
+```
 
-**Phase 1: Foundation** - ✅ Complete (2025-09-30)
-- Bot connects to Discord
-- Responds to @mentions
-- Stores messages in SQLite
-- Extended thinking enabled
-- Rate limiting works
+### Option 2: PM2 (Process Manager)
 
-**Phase 2: Intelligence** - ✅ Complete (2025-10-04)
-- Smart context building with reply chains
-- Memory tool (6 commands: view, create, str_replace, insert, delete, rename)
-- Temporal awareness (timestamps + current time)
-- Bot identity awareness
-- Loose engagement detection
-- Context editing fully integrated
+```bash
+pm2 start bot_manager.py --name discord-bot --interpreter python3 -- spawn alpha
+pm2 save
+pm2 startup  # Follow instructions for auto-start
+```
 
-**Phase 3: Autonomy** - ✅ Complete (2025-10-04)
-- AgenticEngine with background loop
-- Follow-up system (tracking + natural check-ins)
-- Proactive engagement (idle channel detection)
-- Adaptive learning (channel success rates)
-- Memory maintenance tasks
-- Complete configuration system
+### Option 3: Docker
 
-**Phase 4: Tools & Polish** - 🔮 Future
-- Image processing
-- Web search
-- Production ready
+Create `Dockerfile`:
+```dockerfile
+FROM python:3.10-slim
 
-## Development
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-This is a generalized framework converted from a working prototype. The `prototype/` folder contains the original v1 bot for reference. Phase 1 establishes the foundation - core infrastructure that future phases will build upon.
+COPY . .
+
+CMD ["python3", "bot_manager.py", "spawn", "alpha"]
+```
+
+Build and run:
+```bash
+docker build -t discord-claude-bot .
+docker run -d --name bot --env-file .env discord-claude-bot
+```
+
+### Option 4: Screen/Tmux (Simple)
+
+```bash
+screen -S discord-bot
+python bot_manager.py spawn alpha
+# Ctrl+A, D to detach
+```
+
+---
+
+## 🔒 Security & Safety
+
+### API Key Management
+✅ **Never commit `.env` files**
+✅ **Use environment variables only**
+✅ **Rotate keys immediately if exposed**
+✅ **One key per bot (optional isolation)**
+
+### Rate Limiting
+✅ **Per-channel limits:** 20 messages/5 min, 200 messages/60 min
+✅ **Prevents spam and quota exhaustion**
+✅ **Engagement-aware backoff**
+
+### Quota Management
+✅ **Web search:** 300/day default (configurable)
+✅ **Image processing:** 5 per message max
+✅ **Tracked in:** `persistence/{bot}_web_search_stats.json`
+
+### Resource Cleanup
+✅ **Graceful shutdown** on SIGTERM/SIGINT
+✅ **Database connections** closed properly
+✅ **Background tasks** cancelled cleanly
+
+### Memory Isolation
+✅ **Per-server separation**
+✅ **Per-channel isolation**
+✅ **No cross-contamination**
+
+---
+
+## 📚 Documentation
+
+### Main Documentation
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical reference and system design
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and roadmap
+- **[TESTING.md](TESTING.md)** - Test suite documentation
+
+### Reference Documentation
+- **[docs/reference/](docs/reference/)** - API references
+  - Memory Tool API
+  - Context Editing API
+  - Discord Patterns
+  - Preserved Algorithms
+
+### Historical Documentation
+- **[docs/phases/](docs/phases/)** - Development phase documentation
+  - Phase 2 Complete (v0.2.0 - Intelligence)
+  - Phase 3 Complete (v0.3.0 - Autonomy)
+  - Phase 4 Complete (v0.4.0-beta - Tools & Polish)
+
+---
+
+## 🔧 Configuration Guide
+
+### Quick Configuration
+
+**Minimal setup** (just get started):
+```yaml
+bot_id: mybot
+name: "My Bot"
+
+discord:
+  token_env_var: "DISCORD_BOT_TOKEN"
+  servers: ["YOUR_SERVER_ID"]
+
+personality:
+  base_prompt: "Your bot's personality"
+```
+
+**Full configuration** - See `bots/alpha.yaml.example` for all options:
+- Personality and engagement rates
+- Reactive engine settings
+- Agentic behaviors (proactive, follow-ups)
+- API configuration (thinking, context editing, tools)
+- Rate limiting
+- Logging
+
+---
+
+## 🤝 Multi-Machine Development
+
+### Using Private Deployment Submodule
+
+Keep your personal configs synced across machines:
+
+```bash
+# 1. Create private GitHub repo: discord-claude-deployment
+# 2. In framework repo:
+git submodule add <your-private-repo-url> deployment
+
+# 3. Copy personal files to deployment/
+cp .env deployment/
+cp bots/*.yaml deployment/bots/
+
+# 4. On other machines:
+git clone <framework-repo>
+cd <framework-repo>
+git submodule update --init
+```
+
+**Framework reads configs in priority order:**
+1. `deployment/bots/{bot}.yaml` (private submodule)
+2. `bots/{bot}.yaml` (local override)
+3. `bots/{bot}.yaml.example` (template fallback)
+
+---
+
+## 🐛 Known Issues
+
+See [CHANGELOG.md](CHANGELOG.md#known-issues) for current issues.
+
+**Report bugs:** [GitHub Issues](repository-url/issues)
+
+---
+
+## 📊 Project Stats
+
+**Current Version:** 0.4.0-beta (Closed Beta)
+
+**Framework Components:**
+- 12 core modules
+- 3 tool integrations (discord, web, image)
+- 6 test suites
+- 3,000+ lines of code
+
+**Bot Capabilities:**
+- Message handling (reactive)
+- Autonomous behaviors (proactive)
+- Full-text search (FTS5)
+- Web search with citations
+- Image processing (6 strategies)
+- Memory management (Markdown)
+
+---
+
+## 📝 License
+
+[Your License Here - e.g., MIT]
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Anthropic Claude](https://www.anthropic.com/) - AI foundation
+- [discord.py](https://discordpy.readthedocs.io/) - Discord integration
+- [aiosqlite](https://github.com/omnilib/aiosqlite) - Async SQLite
+
+---
+
+## ⚠️ Closed Beta Disclaimer
+
+This is a **beta release**. Expect changes. API may evolve. Configuration format may change between versions. Use in production at your own risk.
+
+For questions or feedback: [Your Contact]
+
+---
+
+## 🔮 Roadmap
+
+### Planned for v0.5.0
+- Enhanced analytics dashboard
+- Thread and voice channel support
+- Performance optimizations
+- Community feedback integration
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history and planned features.

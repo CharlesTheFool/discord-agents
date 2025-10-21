@@ -1,0 +1,161 @@
+# Alpha Bot Configuration Template
+# Copy to deployment/bots/alpha.yaml or bots/alpha.yaml and customize
+
+bot_id: alpha
+name: "Claude (Alpha)"
+description: "Helpful, thoughtful Discord bot powered by Claude"
+
+# ===== DISCORD CONFIGURATION =====
+discord:
+  # Environment variable containing your Discord bot token
+  token_env_var: "ALPHA_BOT_TOKEN"
+
+  # Discord server IDs (guild IDs) where this bot operates
+  # Right-click server → Copy ID (requires Developer Mode enabled)
+  servers:
+    - "YOUR_SERVER_ID_HERE"  # Replace with your Discord server ID
+
+  # Historical message backfill
+  backfill_enabled: true          # Fetch message history on startup
+  backfill_days: 30               # Days of history (ignored if unlimited=true)
+  backfill_unlimited: false       # Fetch ALL history (can be slow!)
+  backfill_in_background: true    # Don't block bot startup
+
+# ===== PERSONALITY CONFIGURATION =====
+personality:
+  # Base personality prompt - customize to define your bot's character
+  base_prompt: |
+    You are a helpful, knowledgeable AI assistant in a Discord server.
+    You provide clear, accurate information and engage naturally in conversations.
+    You're friendly but professional, and you know when to step back and let
+    users continue their discussions without your input.
+
+  # Response style settings
+  formality: 0.3              # 0=very casual, 1=very formal
+  emoji_usage: "moderate"     # never | rare | moderate | frequent
+  reaction_usage: "moderate"  # never | rare | moderate | frequent
+  formatting: "minimal"       # minimal | moderate | rich
+
+  # Engagement rates (0.0 to 1.0) - probability of responding in different contexts
+  mention_response_rate: 1.0      # Always respond to @mentions
+  technical_help_rate: 0.8        # Respond to technical questions
+  humor_response_rate: 0.5        # Join in humorous conversations
+  cold_conversation_rate: 0.1     # Jump into unrelated conversations
+  warm_conversation_rate: 0.3     # Join ongoing relevant discussions
+  hot_conversation_rate: 0.5      # Participate in active discussions
+
+# ===== REACTIVE ENGINE =====
+# Handles direct message responses (@mentions, replies)
+reactive:
+  enabled: true
+  check_interval_seconds: 30  # How often to check for new messages
+  context_window: 20          # Recent messages to include in context
+
+  # Cooldown periods to avoid spam
+  cooldowns:
+    per_user: 40          # Seconds between responses to same user
+    single_message: 45    # Single message context
+    multi_message: 75     # Multiple message context
+    heavy_activity: 105   # High activity context
+
+# ===== AGENTIC ENGINE =====
+# Autonomous behaviors (proactive engagement, follow-ups)
+agentic:
+  enabled: true                # Enable autonomous behaviors
+  check_interval_hours: 1.0    # Background loop frequency
+
+  # Follow-up system - track events and check in later
+  followups:
+    enabled: true
+    auto_create: true          # Automatically detect events to follow up on
+    max_pending: 20            # Maximum pending follow-ups
+    priority_threshold: "medium"  # Minimum priority to act on
+    follow_up_delay_days: 1    # Days to wait before checking in
+    max_age_days: 14           # Auto-cleanup old follow-ups
+
+  # Proactive engagement - initiate conversations in idle channels
+  proactive:
+    enabled: true
+    min_idle_hours: 1.0                  # Minimum idle time before considering
+    max_idle_hours: 8.0                  # Maximum idle time (too old = not relevant)
+    min_provocation_gap_hours: 1.0       # Time between proactive messages
+    max_per_day_global: 10               # Total proactive messages per day
+    max_per_day_per_channel: 3           # Per-channel limit
+    engagement_threshold: 0.3            # Minimum success rate to continue
+    learning_window_days: 7              # Track success over N days
+    quiet_hours: [0, 1, 2, 3, 4, 5, 6]   # UTC hours to stay quiet (midnight-7am)
+    allowed_channels: []                 # Specific channels (empty = all channels)
+
+# ===== API CONFIGURATION =====
+api:
+  model: "claude-sonnet-4-5-20250929"
+  max_tokens: 16000  # Total tokens (thinking + response)
+
+  # Extended Thinking - Step-by-step reasoning for better responses
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000  # Max thinking tokens (leaves ~6k for response)
+
+  # Context Editing - Automatic cache management for token efficiency
+  context_editing:
+    enabled: true
+    trigger_tokens: 8000    # Activate when context exceeds this
+    keep_tool_uses: 3       # Keep last N tool uses
+    exclude_tools: ["memory"]  # Never clear these tool results
+
+  # API throttling
+  throttling:
+    min_delay_seconds: 1.0
+    max_concurrent: 10
+
+  # Web Search - Anthropic server tools
+  web_search:
+    enabled: true
+    max_daily: 300              # Daily quota limit
+    max_per_request: 3          # Max searches per API call
+    citations_enabled: true     # Show sources (required for compliance)
+
+# ===== DISCORD TOOLS =====
+# Search and view Discord messages
+discord_tools:
+  enabled: true
+  max_search_results: 50   # Max message IDs from search
+  max_view_messages: 100   # Max messages to retrieve
+
+# ===== MEMORY TOOL =====
+# Persistent markdown-based memory
+memory_tool:
+  enabled: true
+  max_file_size_kb: 32
+
+# ===== MESSAGE BACKFILL =====
+# Daily reindexing for search
+message_backfill:
+  enabled: true
+  daily_reindex_hour: 3  # UTC hour for daily reindex (0-23)
+
+# ===== RATE LIMITING =====
+# Per-channel message limits to prevent spam
+rate_limiting:
+  short:
+    duration_minutes: 5
+    max_responses: 20
+  long:
+    duration_minutes: 60
+    max_responses: 200
+  ignore_threshold: 5                  # Ignores before going silent
+  engagement_tracking_delay: 900       # Seconds (15 min) to track engagement
+
+# ===== IMAGE PROCESSING =====
+# Image compression and handling
+images:
+  enabled: true
+  max_per_message: 5
+  compression_target: 0.73  # 73% of API limit
+
+# ===== LOGGING =====
+logging:
+  level: "INFO"  # DEBUG | INFO | WARNING | ERROR
+  file: "logs/{bot_id}.log"
+  max_size_mb: 50
+  backup_count: 3

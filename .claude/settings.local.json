@@ -4,7 +4,8 @@
       "Bash(python3:*)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(git -C /mnt/c/Users/charl/Downloads/SLH branch -a)"
     ],
     "deny": [],
     "ask": []

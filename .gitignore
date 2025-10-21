@@ -1,5 +1,13 @@
 # Secrets - NEVER commit these
 .env
+!deployment/  # Deployment submodule is tracked
+
+# Deployment data (when not using submodule)
+logs/
+memories/
+persistence/
+bots/*.yaml
+!bots/*.yaml.example
 
 # Python cache
 __pycache__/

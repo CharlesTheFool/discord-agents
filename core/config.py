@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Dict
 import yaml
+import os
+import logging
 
 
 @dataclass
@@ -389,23 +391,44 @@ class BotConfig:
             logging=logging_config,
         )
 
-    def validate(self) -> None:
+    def validate(self) -> List[str]:
         """
-        Validate configuration values.
+        Basic configuration validation for production readiness.
 
-        Raises:
-            ValueError: If configuration is invalid
+        Returns:
+            List of error messages (empty if valid)
         """
-        # Validate bot_id
+        errors = []
+
+        # Required fields
         if not self.bot_id or not self.bot_id.strip():
-            raise ValueError("bot_id cannot be empty")
+            errors.append("bot_id is required and cannot be empty")
 
-        # Validate name
         if not self.name or not self.name.strip():
-            raise ValueError("name cannot be empty")
+            errors.append("name is required and cannot be empty")
+
+        # Environment variable checks
+        if not self.discord.token_env_var:
+            errors.append("discord.token_env_var is required")
+        elif not os.getenv(self.discord.token_env_var):
+            errors.append(f"Missing environment variable: {self.discord.token_env_var}")
+
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            errors.append("Missing ANTHROPIC_API_KEY in environment")
+
+        # Type validation
+        if not isinstance(self.discord.servers, list):
+            errors.append("discord.servers must be a list")
+
+        # Warn for empty servers (not error, just warning)
+        if not self.discord.servers:
+            logging.warning(f"[{self.bot_id}] No servers configured - bot won't join any servers")
 
         # Validate personality rates
         if self.personality:
+            if not (0 <= self.personality.formality <= 1):
+                errors.append("personality.formality must be between 0 and 1")
+
             rates = [
                 ("mention_response_rate", self.personality.mention_response_rate),
                 ("technical_help_rate", self.personality.technical_help_rate),
@@ -415,18 +438,24 @@ class BotConfig:
                 ("hot_conversation_rate", self.personality.hot_conversation_rate),
             ]
             for name, rate in rates:
-                if not 0 <= rate <= 1:
-                    raise ValueError(f"{name} must be between 0 and 1")
+                if not (0 <= rate <= 1):
+                    errors.append(f"personality.{name} must be between 0 and 1, got {rate}")
+
+        # Validate API config
+        if self.api.max_tokens <= 0:
+            errors.append("api.max_tokens must be positive")
 
         # Validate rate limiting
         if self.rate_limiting.short.max_responses < 1:
-            raise ValueError("short window max_responses must be >= 1")
+            errors.append("rate_limiting.short.max_responses must be >= 1")
         if self.rate_limiting.long.max_responses < 1:
-            raise ValueError("long window max_responses must be >= 1")
+            errors.append("rate_limiting.long.max_responses must be >= 1")
         if self.rate_limiting.ignore_threshold < 1:
-            raise ValueError("ignore_threshold must be >= 1")
+            errors.append("rate_limiting.ignore_threshold must be >= 1")
 
         # Validate logging level
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         if self.logging.level not in valid_levels:
-            raise ValueError(f"logging.level must be one of: {valid_levels}")
+            errors.append(f"logging.level must be one of {valid_levels}, got '{self.logging.level}'")
+
+        return errors

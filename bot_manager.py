@@ -31,6 +31,76 @@ from core.discord_client import DiscordClient
 from core.user_cache import UserCache
 
 
+# Helper functions for deployment submodule support
+def resolve_config_path(bot_id: str) -> Path:
+    """
+    Resolve bot config path. Checks (in order):
+    1. deployment/bots/{bot_id}.yaml (private submodule)
+    2. bots/{bot_id}.yaml (local override)
+    3. bots/{bot_id}.yaml.example (template fallback)
+
+    Args:
+        bot_id: Bot identifier
+
+    Returns:
+        Path to config file
+
+    Raises:
+        FileNotFoundError: If no config found
+    """
+    logger = logging.getLogger(__name__)
+
+    deployment_path = Path("deployment/bots") / f"{bot_id}.yaml"
+    local_path = Path("bots") / f"{bot_id}.yaml"
+    template_path = Path("bots") / f"{bot_id}.yaml.example"
+
+    if deployment_path.exists():
+        logger.info(f"Using deployment config: {deployment_path}")
+        return deployment_path
+    elif local_path.exists():
+        logger.info(f"Using local config: {local_path}")
+        return local_path
+    elif template_path.exists():
+        logger.warning(
+            f"Using template config for {bot_id}. "
+            f"Copy to deployment/bots/{bot_id}.yaml or bots/{bot_id}.yaml and customize."
+        )
+        return template_path
+    else:
+        raise FileNotFoundError(
+            f"No config found for {bot_id}. Tried:\n"
+            f"  - {deployment_path}\n"
+            f"  - {local_path}\n"
+            f"  - {template_path}"
+        )
+
+
+def load_environment():
+    """
+    Load .env file. Checks (in order):
+    1. deployment/.env (private submodule)
+    2. .env (root)
+
+    Logs which file was loaded.
+    """
+    logger = logging.getLogger(__name__)
+
+    deployment_env = Path("deployment/.env")
+    root_env = Path(".env")
+
+    if deployment_env.exists():
+        load_dotenv(deployment_env)
+        logger.info("Loaded environment from deployment/.env")
+    elif root_env.exists():
+        load_dotenv(root_env)
+        logger.info("Loaded environment from .env")
+    else:
+        logger.error(
+            "No .env file found! Copy .env.example to .env or deployment/.env and configure."
+        )
+        sys.exit(1)
+
+
 class BotManager:
     """
     Manages bot lifecycle.
@@ -85,31 +155,29 @@ class BotManager:
         logger = logging.getLogger(__name__)
         logger.info(f"Initializing bot '{self.bot_id}'...")
 
-        # Load environment variables
-        load_dotenv()
+        # Load environment variables (deployment/.env or .env)
+        load_environment()
 
-        # Load bot configuration first (to get token_env_var)
-        config_path = Path(f"bots/{self.bot_id}.yaml")
-        if not config_path.exists():
-            raise FileNotFoundError(f"Bot config not found: {config_path}")
+        # Resolve config path (deployment/bots/, bots/, or template)
+        config_path = resolve_config_path(self.bot_id)
 
+        # Load bot configuration
         self.config = BotConfig.load(config_path)
-        self.config.validate()
         logger.info(f"Loaded config for bot '{self.config.name}'")
 
-        # Check required environment variables
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        if not anthropic_key:
-            raise ValueError("ANTHROPIC_API_KEY not set in .env file")
+        # Validate configuration
+        validation_errors = self.config.validate()
+        if validation_errors:
+            logger.error(f"[{self.bot_id}] Configuration validation failed:")
+            for error in validation_errors:
+                logger.error(f"  - {error}")
+            sys.exit(1)
 
-        # Get Discord token from environment variable specified in config
-        token_env_var = self.config.discord.token_env_var
-        discord_token = os.getenv(token_env_var)
-        if not discord_token:
-            raise ValueError(
-                f"{token_env_var} not set in .env file. "
-                f"This bot's config requires a Discord token in the {token_env_var} environment variable."
-            )
+        logger.info(f"[{self.bot_id}] Configuration validated successfully")
+
+        # Get environment variables (already validated by config.validate())
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        discord_token = os.getenv(self.config.discord.token_env_var)
 
         # Update log level from config
         log_level = getattr(logging, self.config.logging.level)
