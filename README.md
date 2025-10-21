@@ -215,7 +215,7 @@ python bot_manager.py spawn alpha
 ## 📚 Documentation
 
 ### Main Documentation
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical reference and system design
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical reference and system design
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and roadmap
 - **[TESTING.md](TESTING.md)** - Test suite documentation
 
@@ -261,31 +261,47 @@ personality:
 
 ---
 
-## 🤝 Multi-Machine Development
+## 📦 Backup & Restore
 
-### Using Private Deployment Submodule
+### Export Your Bot Data
 
-Keep your personal configs synced across machines:
+Create a portable backup of your bot configuration and data:
 
 ```bash
-# 1. Create private GitHub repo: discord-claude-deployment
-# 2. In framework repo:
-git submodule add <your-private-repo-url> deployment
+# Export everything
+python deployment_tool.py export
 
-# 3. Copy personal files to deployment/
-cp .env deployment/
-cp bots/*.yaml deployment/bots/
+# Export without logs (smaller backup)
+python deployment_tool.py export --exclude logs
 
-# 4. On other machines:
-git clone <framework-repo>
-cd <framework-repo>
-git submodule update --init
+# Export to specific location
+python deployment_tool.py export --output ~/backups/my-bot.zip
 ```
 
-**Framework reads configs in priority order:**
-1. `deployment/bots/{bot}.yaml` (private submodule)
-2. `bots/{bot}.yaml` (local override)
-3. `bots/{bot}.yaml.example` (template fallback)
+This creates a timestamped zip file containing:
+- Bot configurations (`bots/*.yaml`)
+- Environment variables (`.env`)
+- Logs (optional)
+- Memories (optional)
+- Persistence data (optional)
+
+### Import on Another Machine
+
+Restore your bot data from a backup:
+
+```bash
+# Preview what will be imported (safe, no changes)
+python deployment_tool.py import --input backup.zip --dry-run
+
+# Import backup (creates safety backup of existing files first)
+python deployment_tool.py import --input backup.zip
+```
+
+**Benefits:**
+- ✅ Portable (USB drive, Dropbox, cloud storage)
+- ✅ Safe (auto-backup before import)
+- ✅ Selective (choose what to include)
+- ✅ Simple (no git complexity)
 
 ---
 

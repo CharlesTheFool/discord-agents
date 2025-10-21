@@ -1,0 +1,121 @@
+# Beta Bot Configuration
+# Academic, thoughtful Discord scholar
+
+bot_id: beta
+name: "Claude (Beta)"
+description: "Thoughtful academic with curiosity and precision"
+
+# Discord Configuration
+discord:
+  token_env_var: "ALPHA_BOT_TOKEN"  # Shares token with alpha (same Discord bot, different personality)
+  servers:
+    - "1423428836921573406"  # Your Discord server ID
+
+  # Historical message backfill (Phase 4)
+  backfill_enabled: true  # Fetch historical messages on startup
+  backfill_days: 30  # How many days of history to fetch (ignored if backfill_unlimited=true)
+  backfill_unlimited: false  # If true, fetch ALL accessible message history (can be slow!)
+  backfill_in_background: true  # Don't block bot startup
+
+# Personality Configuration
+personality:
+  base_prompt: |
+    You're thoughtful, precise, and genuinely curious about ideas.
+    You approach conversations like an academic discussion - respectful,
+    inquisitive, and focused on understanding nuance.
+
+    You think before you speak. You ask clarifying questions. You're
+    comfortable saying "I'm not sure" or "That's an interesting perspective."
+
+    You value precision over brevity, depth over quips. When you teach,
+    you teach clearly. When you learn, you ask good questions.
+
+  # Response style
+  formality: 0.7  # More formal than alpha
+  emoji_usage: "rare"  # Occasional scholarly emoji
+  reaction_usage: "thoughtful"
+  formatting: "structured"  # Uses headings, lists when explaining
+
+  # Engagement rates (0.0 to 1.0)
+  mention_response_rate: 1.0  # Always respond to mentions
+  technical_help_rate: 0.9  # Loves helping with technical questions
+  humor_response_rate: 0.2  # Occasional dry humor
+  cold_conversation_rate: 0.05  # Rarely jumps in cold
+  warm_conversation_rate: 0.2
+  hot_conversation_rate: 0.35
+
+# Reactive Engine (Phase 1 - Active)
+reactive:
+  enabled: true
+  check_interval_seconds: 30
+  context_window: 25  # Slightly larger context for academic thoroughness
+
+  cooldowns:
+    per_user: 50  # Takes time to craft thoughtful responses
+    single_message: 55
+    multi_message: 85
+    heavy_activity: 120
+
+# Agentic Engine (Phase 3 - Autonomous Behaviors)
+agentic:
+  enabled: true  # Enable when ready to test Phase 3
+  check_interval_hours: 1
+
+  followups:
+    enabled: true
+    auto_create: true
+    max_pending: 20
+    priority_threshold: "medium"
+    follow_up_delay_days: 1
+    max_age_days: 14
+
+  proactive:
+    enabled: false
+    min_idle_hours: 1.0
+    max_idle_hours: 8.0
+    min_provocation_gap_hours: 1.0
+    max_per_day_global: 10
+    max_per_day_per_channel: 3
+    engagement_threshold: 0.3
+    learning_window_days: 7
+    quiet_hours: [0, 1, 2, 3, 4, 5, 6]  # No proactive messages midnight-6am
+    allowed_channels: []  # Add channel IDs when enabling
+
+# API Configuration
+api:
+  model: "claude-sonnet-4-5-20250929"
+  max_tokens: 16000  # Total tokens (thinking + response)
+  # Note: temperature removed - not compatible with extended thinking
+
+  # Extended Thinking - Enables step-by-step reasoning for better responses
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000  # Max tokens for thinking (leaves ~6k for response)
+
+  context_editing:
+    enabled: true
+    trigger_tokens: 100000
+    keep_tool_uses: 3
+    exclude_tools: ["memory"]
+
+  throttling:
+    min_delay_seconds: 1.0
+    max_concurrent: 10
+
+# Rate Limiting (SimpleRateLimiter)
+rate_limiting:
+  short:
+    duration_minutes: 5
+    max_responses: 20
+  long:
+    duration_minutes: 60
+    max_responses: 200
+  ignore_threshold: 5
+  engagement_tracking_delay: 900  # 15 minutes - reasonable time to read/respond
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/beta.log"
+  max_size_mb: 50
+  backup_count: 3

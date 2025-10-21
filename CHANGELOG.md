@@ -91,10 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Files: `core/reactive_engine.py` lines 262-269, 815-822
 
 ### Changed
-- Documentation restructure (ARCHITECTURE.md + CHANGELOG.md replace PROJECT_SPEC.md)
-- Git workflow supports private deployment submodule
+- Documentation restructure (docs/ARCHITECTURE.md + CHANGELOG.md replace PROJECT_SPEC.md)
+- Simplified config loading (removed deployment submodule complexity)
 - Semantic versioning instead of phase naming
 - Config validation returns list of errors instead of raising exceptions
+- Added export/import tool for portable backups
 
 ### Security
 - API key isolation via environment variables
