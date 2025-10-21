@@ -1,5 +1,5 @@
 """
-Configuration system for Discord-Claude Bot Framework.
+Configuration system for Discord Agents.
 
 Loads and validates bot configurations from YAML files.
 """
@@ -50,8 +50,8 @@ class ReactiveConfig:
 
 @dataclass
 class FollowupsConfig:
-    """Follow-up system configuration (Phase 3)"""
-    enabled: bool = False  # Disabled for Phase 1
+    """Follow-up system configuration"""
+    enabled: bool = False
     auto_create: bool = True
     max_pending: int = 20
     priority_threshold: str = "medium"
@@ -61,8 +61,8 @@ class FollowupsConfig:
 
 @dataclass
 class ProactiveConfig:
-    """Proactive engagement configuration (Phase 3)"""
-    enabled: bool = False  # Disabled for Phase 1
+    """Proactive engagement configuration"""
+    enabled: bool = False
     min_idle_hours: float = 1.0
     max_idle_hours: float = 8.0
     min_provocation_gap_hours: float = 1.0
@@ -77,7 +77,7 @@ class ProactiveConfig:
 @dataclass
 class AgenticConfig:
     """Agentic engine configuration"""
-    enabled: bool = False  # Disabled for Phase 1
+    enabled: bool = False
     check_interval_hours: int = 1
     followups: FollowupsConfig = field(default_factory=FollowupsConfig)
     proactive: ProactiveConfig = field(default_factory=ProactiveConfig)
@@ -108,8 +108,8 @@ class ThrottlingConfig:
 
 @dataclass
 class WebSearchConfig:
-    """Web search configuration (Phase 4)"""
-    enabled: bool = False  # Disabled for Phase 1
+    """Web search configuration"""
+    enabled: bool = False
     max_daily: int = 300
     max_per_request: int = 3
     citations_enabled: bool = True  # Required for end-user applications
@@ -149,8 +149,8 @@ class RateLimitingConfig:
 
 @dataclass
 class ImagesConfig:
-    """Image processing configuration (Phase 4)"""
-    enabled: bool = False  # Disabled for Phase 1
+    """Image processing configuration"""
+    enabled: bool = False
     max_per_message: int = 5
     compression_target: float = 0.73  # 73% of API limit
 

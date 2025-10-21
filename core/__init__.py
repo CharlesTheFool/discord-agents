@@ -1,5 +1,5 @@
 """
-Discord-Claude Bot Framework - Core Components
+Discord Agents - Core Components
 """
 
 __version__ = "2.0.0"

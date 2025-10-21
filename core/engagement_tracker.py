@@ -1,8 +1,7 @@
 """
-Engagement Success Tracking - Analytics for Proactive Messages
+Engagement Tracker - Analytics for proactive messages
 
-Tracks success rates of proactive and periodic messages to help inform
-the adaptive learning system about what works.
+Tracks success rates to inform adaptive learning about what works.
 """
 
 import json
@@ -10,33 +9,21 @@ import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
 
 class EngagementTracker:
     """
-    Tracks engagement metrics for proactive and periodic messages.
+    Tracks engagement metrics for proactive messages.
 
-    Stores:
-    - Success rates by channel
-    - Success rates by time of day
-    - Success rates by topic (manual tagging)
-    - Overall success trends
+    Stores success rates by channel, time of day, and topic.
+    Maintains rolling window of last 100 messages for trend analysis.
     """
 
     def __init__(self, stats_file: Path):
-        """
-        Initialize engagement tracker.
-
-        Args:
-            stats_file: Path to JSON file for storing stats
-        """
         self.stats_file = stats_file
         self.stats_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Load or initialize stats
         self.stats = self._load_stats()
         logger.info(f"EngagementTracker initialized: {stats_file}")
 
@@ -49,14 +36,13 @@ class EngagementTracker:
             except Exception as e:
                 logger.error(f"Failed to load engagement stats: {e}")
 
-        # Initialize new stats
         return {
             "total_proactive": 0,
             "total_engaged": 0,
-            "by_channel": {},  # channel_id -> {sent, engaged}
+            "by_channel": {},
             "by_hour": {str(h): {"sent": 0, "engaged": 0} for h in range(24)},
-            "by_topic": {},  # topic -> {sent, engaged}
-            "recent_messages": [],  # Last 100 messages for trend analysis
+            "by_topic": {},
+            "recent_messages": [],  # Last 100 for trend analysis
             "last_updated": datetime.utcnow().isoformat()
         }
 
@@ -75,15 +61,7 @@ class EngagementTracker:
         channel_id: str,
         topic: Optional[str] = None
     ):
-        """
-        Record that a proactive message was sent.
-
-        Args:
-            message_id: Discord message ID
-            channel_id: Discord channel ID
-            topic: Optional topic tag for categorization
-        """
-        # Update totals
+        """Record that a proactive message was sent"""
         self.stats["total_proactive"] += 1
 
         # Update by channel
@@ -95,13 +73,13 @@ class EngagementTracker:
         hour = str(datetime.utcnow().hour)
         self.stats["by_hour"][hour]["sent"] += 1
 
-        # Update by topic if provided
+        # Update by topic
         if topic:
             if topic not in self.stats["by_topic"]:
                 self.stats["by_topic"][topic] = {"sent": 0, "engaged": 0}
             self.stats["by_topic"][topic]["sent"] += 1
 
-        # Add to recent messages
+        # Add to recent messages (keep last 100)
         self.stats["recent_messages"].append({
             "message_id": message_id,
             "channel_id": channel_id,
@@ -110,7 +88,6 @@ class EngagementTracker:
             "engaged": False
         })
 
-        # Keep only last 100
         if len(self.stats["recent_messages"]) > 100:
             self.stats["recent_messages"] = self.stats["recent_messages"][-100:]
 
@@ -123,22 +100,13 @@ class EngagementTracker:
         channel_id: str,
         engagement_type: str = "reply"
     ):
-        """
-        Record that a message received engagement.
-
-        Args:
-            message_id: Discord message ID
-            channel_id: Discord channel ID
-            engagement_type: Type of engagement (reply, reaction, etc.)
-        """
-        # Update totals
+        """Record that a message received engagement"""
         self.stats["total_engaged"] += 1
 
-        # Update by channel
         if channel_id in self.stats["by_channel"]:
             self.stats["by_channel"][channel_id]["engaged"] += 1
 
-        # Find message in recent_messages to update
+        # Find message in recent_messages and update metrics
         for msg in self.stats["recent_messages"]:
             if msg["message_id"] == message_id:
                 msg["engaged"] = True
@@ -157,76 +125,38 @@ class EngagementTracker:
                 break
 
         self._save_stats()
-        logger.debug(f"Recorded engagement for message {message_id}: {engagement_type}")
+        logger.debug(f"Recorded engagement for {message_id}: {engagement_type}")
 
     def get_channel_success_rate(self, channel_id: str) -> Optional[float]:
-        """
-        Get success rate for a specific channel.
-
-        Args:
-            channel_id: Discord channel ID
-
-        Returns:
-            Success rate (0.0 to 1.0) or None if no data
-        """
+        """Get success rate for specific channel"""
         if channel_id not in self.stats["by_channel"]:
             return None
 
         sent = self.stats["by_channel"][channel_id]["sent"]
         engaged = self.stats["by_channel"][channel_id]["engaged"]
 
-        if sent == 0:
-            return None
-
-        return engaged / sent
+        return engaged / sent if sent > 0 else None
 
     def get_hour_success_rate(self, hour: int) -> float:
-        """
-        Get success rate for a specific hour of day.
-
-        Args:
-            hour: Hour (0-23)
-
-        Returns:
-            Success rate (0.0 to 1.0)
-        """
+        """Get success rate for specific hour of day (0-23)"""
         hour_str = str(hour)
         sent = self.stats["by_hour"][hour_str]["sent"]
         engaged = self.stats["by_hour"][hour_str]["engaged"]
 
-        if sent == 0:
-            return 0.0
-
-        return engaged / sent
+        return engaged / sent if sent > 0 else 0.0
 
     def get_topic_success_rate(self, topic: str) -> Optional[float]:
-        """
-        Get success rate for a specific topic.
-
-        Args:
-            topic: Topic tag
-
-        Returns:
-            Success rate (0.0 to 1.0) or None if no data
-        """
+        """Get success rate for specific topic"""
         if topic not in self.stats["by_topic"]:
             return None
 
         sent = self.stats["by_topic"][topic]["sent"]
         engaged = self.stats["by_topic"][topic]["engaged"]
 
-        if sent == 0:
-            return None
-
-        return engaged / sent
+        return engaged / sent if sent > 0 else None
 
     def get_overall_success_rate(self) -> float:
-        """
-        Get overall success rate across all proactive messages.
-
-        Returns:
-            Success rate (0.0 to 1.0)
-        """
+        """Get overall success rate across all proactive messages"""
         if self.stats["total_proactive"] == 0:
             return 0.0
 
@@ -236,11 +166,7 @@ class EngagementTracker:
         """
         Get trend analysis for recent messages.
 
-        Args:
-            days: Number of days to analyze
-
-        Returns:
-            Dictionary with trend statistics
+        Compares recent success rate to overall rate to determine trend.
         """
         cutoff = datetime.utcnow() - timedelta(days=days)
 
@@ -261,7 +187,7 @@ class EngagementTracker:
         engaged = sum(1 for msg in recent if msg["engaged"])
         success_rate = engaged / total
 
-        # Compare to overall rate to determine trend
+        # Compare to overall rate
         overall_rate = self.get_overall_success_rate()
 
         if success_rate > overall_rate * 1.1:
@@ -280,13 +206,10 @@ class EngagementTracker:
 
     def get_best_hours(self, top_n: int = 5) -> List[tuple[int, float]]:
         """
-        Get the most successful hours of day.
+        Get most successful hours of day.
 
-        Args:
-            top_n: Number of hours to return
-
-        Returns:
-            List of (hour, success_rate) tuples, sorted by success rate
+        Only includes hours with at least 5 messages sent.
+        Returns list of (hour, success_rate) tuples sorted by success rate.
         """
         hours_with_rates = []
 
@@ -294,22 +217,15 @@ class EngagementTracker:
             rate = self.get_hour_success_rate(hour)
             sent = self.stats["by_hour"][str(hour)]["sent"]
 
-            # Only include hours with at least 5 messages
+            # Require minimum 5 messages for statistical validity
             if sent >= 5:
                 hours_with_rates.append((hour, rate))
 
-        # Sort by success rate descending
         hours_with_rates.sort(key=lambda x: x[1], reverse=True)
-
         return hours_with_rates[:top_n]
 
     def get_stats_summary(self) -> Dict:
-        """
-        Get comprehensive stats summary.
-
-        Returns:
-            Dictionary with all stats
-        """
+        """Get comprehensive stats summary"""
         return {
             "total_proactive": self.stats["total_proactive"],
             "total_engaged": self.stats["total_engaged"],

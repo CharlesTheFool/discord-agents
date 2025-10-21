@@ -21,35 +21,16 @@ logger = logging.getLogger(__name__)
 class DiscordToolExecutor:
     """
     Executes Discord tool commands for Claude API.
-
-    Provides:
-    - Message history search with FTS5
-    - User info lookup
-    - Channel metadata
+    Routes commands to appropriate handlers.
     """
 
     def __init__(self, message_memory: "MessageMemory", user_cache: "UserCache"):
-        """
-        Initialize Discord tool executor.
-
-        Args:
-            message_memory: Message storage with FTS5 search
-            user_cache: User data cache
-        """
         self.message_memory = message_memory
         self.user_cache = user_cache
         logger.info("DiscordToolExecutor initialized")
 
     async def execute(self, tool_input: dict) -> str:
-        """
-        Execute Discord tool command.
-
-        Args:
-            tool_input: Tool parameters from Claude API
-
-        Returns:
-            Execution result as string
-        """
+        """Route tool command to appropriate handler"""
         command = tool_input.get("command", "")
 
         if command == "search_messages":
@@ -65,21 +46,10 @@ class DiscordToolExecutor:
 
     async def _search_messages(self, params: dict) -> str:
         """
-        Search message history using FTS5 full-text search (pure discovery).
+        Search message history using FTS5 full-text search.
 
-        Returns only matching messages with their IDs for follow-up exploration.
-        Use view_messages to get context around search results.
-
-        Args:
-            params: {
-                "query": str - search query (FTS5 syntax supported),
-                "channel_id": str (optional) - limit to specific channel,
-                "author_id": str (optional) - limit to specific author,
-                "limit": int (optional) - max results (default 20)
-            }
-
-        Returns:
-            Search results formatted as string (message_id, timestamp, author, content)
+        Returns matching messages with IDs for follow-up exploration.
+        Designed for keyword discovery, not context browsing.
         """
         query = params.get("query", "")
         channel_id = params.get("channel_id")
@@ -100,7 +70,6 @@ class DiscordToolExecutor:
             if not results:
                 return f"No messages found matching: {query}"
 
-            # Format results - lightweight discovery format
             lines = [f"Found {len(results)} message(s) matching '{query}':\n"]
 
             for msg in results:
@@ -119,33 +88,17 @@ class DiscordToolExecutor:
 
     async def _view_messages(self, params: dict) -> str:
         """
-        View messages with flexible exploration modes (agentic browsing).
+        View messages with flexible exploration modes.
 
-        Four modes:
-        - "recent": View latest N messages (for "what's being discussed?")
-        - "around": View messages surrounding a message_id (for context after search)
-        - "first": View oldest N messages (for channel history/purpose)
-        - "range": View messages in timestamp range (for temporal exploration)
-
-        Args:
-            params: {
-                "mode": str - viewing mode ("recent", "around", "first", "range"),
-                "channel_id": str - Discord channel ID (required),
-                "limit": int (optional) - max messages (default 30, max 100),
-                # Mode-specific params:
-                "message_id": str - for "around" mode,
-                "before": int - messages before target (default 5, for "around"),
-                "after": int - messages after target (default 5, for "around"),
-                "start_time": str - ISO timestamp (for "range"),
-                "end_time": str - ISO timestamp (for "range")
-            }
-
-        Returns:
-            Formatted messages with timestamps and authors
+        Four modes for different browsing patterns:
+        - "recent": Latest messages (current conversation)
+        - "around": Context surrounding a message (post-search exploration)
+        - "first": Oldest messages (channel history/purpose)
+        - "range": Timestamp window (temporal exploration)
         """
         mode = params.get("mode", "recent")
         channel_id = params.get("channel_id")
-        limit = min(params.get("limit", 30), 100)  # Max 100 messages
+        limit = min(params.get("limit", 30), 100)  # Cap at 100 to avoid overwhelming output
 
         if not channel_id:
             return "Error: channel_id parameter required"
@@ -153,7 +106,6 @@ class DiscordToolExecutor:
         try:
             messages = []
 
-            # Mode 1: Recent messages (current conversation)
             if mode == "recent":
                 messages = await self.message_memory.get_recent(
                     channel_id=channel_id,
@@ -161,7 +113,6 @@ class DiscordToolExecutor:
                 )
                 header = f"Recent {len(messages)} message(s) from channel {channel_id}:\n"
 
-            # Mode 2: Around a specific message (context after search)
             elif mode == "around":
                 message_id = params.get("message_id")
                 if not message_id:
@@ -180,11 +131,9 @@ class DiscordToolExecutor:
                 if not context["match"]:
                     return f"Error: Message {message_id} not found in channel {channel_id}"
 
-                # Combine before + match + after
                 messages = context["before"] + [context["match"]] + context["after"]
                 header = f"Messages around {message_id} (±{before_count}/{after_count}):\n"
 
-            # Mode 3: First messages (channel history)
             elif mode == "first":
                 messages = await self.message_memory.get_first_messages(
                     channel_id=channel_id,
@@ -192,7 +141,6 @@ class DiscordToolExecutor:
                 )
                 header = f"First {len(messages)} message(s) from channel {channel_id}:\n"
 
-            # Mode 4: Range (timestamp window)
             elif mode == "range":
                 start_time_str = params.get("start_time")
                 end_time_str = params.get("end_time")
@@ -206,12 +154,11 @@ class DiscordToolExecutor:
                     since=start_time
                 )
 
-                # Filter by end_time if provided
+                # Apply end_time filter if provided
                 if end_time_str:
                     end_time = datetime.fromisoformat(end_time_str)
                     messages = [msg for msg in messages if msg.timestamp <= end_time]
 
-                # Apply limit
                 messages = messages[:limit]
                 header = f"Messages from {start_time_str} to {end_time_str or 'now'} ({len(messages)} found):\n"
 
@@ -221,7 +168,6 @@ class DiscordToolExecutor:
             if not messages:
                 return f"No messages found for mode '{mode}' in channel {channel_id}"
 
-            # Format output
             lines = [header]
 
             for msg in messages:
@@ -235,17 +181,7 @@ class DiscordToolExecutor:
             return f"Error viewing messages: {str(e)}"
 
     async def _get_user_info(self, params: dict) -> str:
-        """
-        Get user information from cache.
-
-        Args:
-            params: {
-                "user_id": str - Discord user ID
-            }
-
-        Returns:
-            User info formatted as string
-        """
+        """Get user information from cache"""
         user_id = params.get("user_id", "")
         if not user_id:
             return "Error: user_id parameter required"
@@ -256,7 +192,7 @@ class DiscordToolExecutor:
             if not user_info:
                 return f"User {user_id} not found in cache"
 
-            # Get actual total message count from message history (not just session count)
+            # Query actual message count from history (not just session count)
             total_messages = await self.message_memory.get_user_message_count(user_id)
 
             lines = [
@@ -274,17 +210,7 @@ class DiscordToolExecutor:
             return f"Error getting user info: {str(e)}"
 
     async def _get_channel_info(self, params: dict) -> str:
-        """
-        Get channel metadata.
-
-        Args:
-            params: {
-                "channel_id": str - Discord channel ID
-            }
-
-        Returns:
-            Channel info formatted as string
-        """
+        """Get channel metadata from message history"""
         channel_id = params.get("channel_id", "")
         if not channel_id:
             return "Error: channel_id parameter required"
@@ -318,10 +244,9 @@ class DiscordToolExecutor:
 
 def get_discord_tools() -> list:
     """
-    Get Discord tool definitions for Claude API.
+    Generate Discord tool definitions for Claude API.
 
-    Returns:
-        List of tool definitions
+    Designed for agentic exploration: search for keywords, then view context around results.
     """
     return [
         {

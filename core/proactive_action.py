@@ -1,10 +1,7 @@
 """
 Proactive Action - Data class for agentic behaviors
 
-Represents actions the bot can take proactively:
-- Follow-ups
-- Proactive engagement
-- Memory maintenance
+Represents autonomous actions: follow-ups, proactive engagement, maintenance.
 """
 
 from dataclasses import dataclass
@@ -28,45 +25,36 @@ class ProactiveAction:
     message: Optional[str] = None
     context: Optional[str] = None
     delivery_method: str = "standalone"  # "standalone" | "woven" | "deferred"
-    followup_id: Optional[str] = None  # ID of followup (for completion tracking)
-    followup_event: Optional[str] = None  # Event description (for message generation)
+    followup_id: Optional[str] = None
+    followup_event: Optional[str] = None
 
     def __post_init__(self):
         """Validate action fields"""
         valid_types = ["followup", "proactive", "maintenance"]
         if self.type not in valid_types:
-            raise ValueError(f"Invalid action type: {self.type}. Must be one of {valid_types}")
+            raise ValueError(f"Invalid type: {self.type}. Must be {valid_types}")
 
         valid_priorities = ["high", "medium", "low"]
         if self.priority not in valid_priorities:
-            raise ValueError(f"Invalid priority: {self.priority}. Must be one of {valid_priorities}")
+            raise ValueError(f"Invalid priority: {self.priority}. Must be {valid_priorities}")
 
-        valid_delivery_methods = ["standalone", "woven", "deferred"]
-        if self.delivery_method not in valid_delivery_methods:
-            raise ValueError(
-                f"Invalid delivery_method: {self.delivery_method}. Must be one of {valid_delivery_methods}"
-            )
+        valid_delivery = ["standalone", "woven", "deferred"]
+        if self.delivery_method not in valid_delivery:
+            raise ValueError(f"Invalid delivery_method: {self.delivery_method}. Must be {valid_delivery}")
 
     def should_execute_now(self, channel_active: bool) -> bool:
         """
         Determine if action should execute now based on delivery method.
 
-        Args:
-            channel_active: Whether channel has recent activity
-
-        Returns:
-            True if should execute immediately
+        standalone: Execute when channel is idle
+        woven: Execute when channel is active (weave into conversation)
+        deferred: Never execute immediately
         """
         if self.delivery_method == "standalone":
-            # Execute if channel is idle
             return not channel_active
-
         elif self.delivery_method == "woven":
-            # Execute if channel is active (weave into conversation)
             return channel_active
-
         elif self.delivery_method == "deferred":
-            # Never execute immediately, wait for better opportunity
             return False
 
         return False

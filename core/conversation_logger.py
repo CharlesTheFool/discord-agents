@@ -1,8 +1,7 @@
 """
 Conversation Logger - Human-readable conversation tracking
 
-Logs Discord conversations in a minimalistic, parseable format
-for quick inspection and debugging.
+Logs Discord conversations in minimalistic, parseable format.
 """
 
 import logging
@@ -15,37 +14,27 @@ logger = logging.getLogger(__name__)
 
 class ConversationLogger:
     """
-    Logs conversations in a simple, readable format.
+    Logs conversations in simple, readable format.
 
-    Format:
-    ```
+    Example:
     === 2025-10-03 03:15:42 | #general | charlesthefool ===
-    @SLH-01 hello there!
+    [@MENTION] hello there!
 
     [DECISION] Respond: YES (mention detected)
-    [RATE_LIMIT] OK (5min: 3/20, 1hr: 15/200, ignored: 0/5)
+    [RATE_LIMIT] 5min: 3/20, 1hr: 15/200, ignored: 0/5
 
     --- BOT RESPONSE (234 chars) ---
     Hello! How can I help you today?
 
     [ENGAGEMENT] Tracking started (30s delay)
     ============================================================
-    ```
     """
 
     def __init__(self, bot_id: str, log_dir: Path):
-        """
-        Initialize conversation logger.
-
-        Args:
-            bot_id: Bot identifier
-            log_dir: Directory for log files
-        """
         self.bot_id = bot_id
         self.log_file = log_dir / f"{bot_id}_conversations.log"
         self.log_dir = log_dir
         self.log_dir.mkdir(parents=True, exist_ok=True)
-
         logger.info(f"ConversationLogger initialized: {self.log_file}")
 
     def log_user_message(
@@ -55,17 +44,8 @@ class ConversationLogger:
         content: str,
         is_mention: bool = False
     ):
-        """
-        Log incoming user message.
-
-        Args:
-            author: Message author display name
-            channel: Channel name
-            content: Message content
-            is_mention: Whether bot was mentioned
-        """
+        """Log incoming user message"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         mention_marker = "[@MENTION] " if is_mention else ""
 
         entry = f"\n{'='*60}\n"
@@ -80,14 +60,7 @@ class ConversationLogger:
         reason: str,
         rate_limit_stats: Optional[dict] = None
     ):
-        """
-        Log bot decision about responding.
-
-        Args:
-            should_respond: Whether bot will respond
-            reason: Reason for decision
-            rate_limit_stats: Current rate limit stats
-        """
+        """Log bot decision about responding"""
         entry = f"\n[DECISION] Respond: {'YES' if should_respond else 'NO'} ({reason})\n"
 
         if rate_limit_stats:
@@ -104,45 +77,20 @@ class ConversationLogger:
         self._write(entry)
 
     def log_thinking(self, thinking: str, token_count: int):
-        """
-        Log bot's thinking trace.
-
-        Args:
-            thinking: Thinking trace text
-            token_count: Token count
-        """
-        entry = f"\n[THINKING] ({token_count} tokens)\n"
-        entry += f"{thinking}\n"
-
+        """Log bot's thinking trace"""
+        entry = f"\n[THINKING] ({token_count} tokens)\n{thinking}\n"
         self._write(entry)
 
     def log_bot_response(self, content: str, char_count: int):
-        """
-        Log bot's response.
-
-        Args:
-            content: Response text
-            char_count: Character count
-        """
-        entry = f"\n--- BOT RESPONSE ({char_count} chars) ---\n"
-        entry += f"{content}\n"
-
+        """Log bot's response"""
+        entry = f"\n--- BOT RESPONSE ({char_count} chars) ---\n{content}\n"
         self._write(entry)
 
     def log_engagement_tracking(self, started: bool = True, delay_seconds: Optional[int] = None):
-        """
-        Log engagement tracking status.
-
-        Args:
-            started: True if tracking started, False if result recorded
-            delay_seconds: Engagement tracking delay in seconds (shown when started=True)
-        """
+        """Log engagement tracking status"""
         if started:
             if delay_seconds:
-                if delay_seconds >= 60:
-                    delay_str = f"{delay_seconds // 60}min"
-                else:
-                    delay_str = f"{delay_seconds}s"
+                delay_str = f"{delay_seconds // 60}min" if delay_seconds >= 60 else f"{delay_seconds}s"
                 entry = f"\n[ENGAGEMENT] Tracking started ({delay_str} delay)\n"
             else:
                 entry = "\n[ENGAGEMENT] Tracking started\n"
@@ -152,39 +100,21 @@ class ConversationLogger:
         self._write(entry)
 
     def log_engagement_result(self, engaged: bool, method: Optional[str] = None):
-        """
-        Log engagement tracking result.
-
-        Args:
-            engaged: Whether user engaged
-            method: How they engaged (reactions/replies)
-        """
+        """Log engagement tracking result"""
         if engaged:
-            entry = f"\n[ENGAGEMENT] ✓ ENGAGED ({method})\n"
+            entry = f"\n[ENGAGEMENT] ENGAGED ({method})\n"
         else:
-            entry = "\n[ENGAGEMENT] ✗ IGNORED\n"
+            entry = "\n[ENGAGEMENT] IGNORED\n"
 
         self._write(entry)
 
     def log_error(self, error: str):
-        """
-        Log error during processing.
-
-        Args:
-            error: Error message
-        """
+        """Log error during processing"""
         entry = f"\n[ERROR] {error}\n"
         self._write(entry)
 
     def log_memory_tool(self, command: str, path: str, result_preview: str):
-        """
-        Log memory tool operation.
-
-        Args:
-            command: Memory command (view/create/str_replace/delete)
-            path: Memory path
-            result_preview: Brief preview of result (truncated)
-        """
+        """Log memory tool operation"""
         entry = f"\n[MEMORY_TOOL] {command.upper()} {path}\n"
         entry += f"  Result: {result_preview[:100]}"
         if len(result_preview) > 100:
@@ -193,13 +123,7 @@ class ConversationLogger:
         self._write(entry)
 
     def log_tool_use_loop(self, iteration: int, stop_reason: str):
-        """
-        Log tool use loop iteration.
-
-        Args:
-            iteration: Loop iteration number
-            stop_reason: API stop reason
-        """
+        """Log tool use loop iteration"""
         entry = f"\n[TOOL_LOOP] Iteration {iteration}: {stop_reason}\n"
         self._write(entry)
 
@@ -211,16 +135,7 @@ class ConversationLogger:
         reactions_found: int = 0,
         images_processed: int = 0
     ):
-        """
-        Log context building details.
-
-        Args:
-            mentions_resolved: Number of mentions resolved
-            reply_chain_length: Length of reply chain
-            recent_messages: Number of recent messages included
-            reactions_found: Number of messages with reactions
-            images_processed: Number of images processed (Phase 4)
-        """
+        """Log context building details"""
         entry = "\n[CONTEXT] Building context:\n"
         if mentions_resolved > 0:
             entry += f"  - Resolved {mentions_resolved} @mention(s)\n"
@@ -235,13 +150,7 @@ class ConversationLogger:
         self._write(entry)
 
     def log_cache_status(self, enabled: bool, cache_hit: bool = False):
-        """
-        Log prompt caching status.
-
-        Args:
-            enabled: Whether caching is enabled
-            cache_hit: Whether cache was hit (if known)
-        """
+        """Log prompt caching status"""
         if enabled:
             status = "HIT" if cache_hit else "ENABLED"
             entry = f"\n[CACHE] Prompt caching: {status}\n"
@@ -255,14 +164,7 @@ class ConversationLogger:
         tokens_cleared: int,
         original_tokens: int
     ):
-        """
-        Log context management (context editing) statistics.
-
-        Args:
-            tool_uses_cleared: Number of tool uses cleared
-            tokens_cleared: Number of tokens cleared
-            original_tokens: Original token count before clearing
-        """
+        """Log context management (context editing) statistics"""
         if tool_uses_cleared > 0:
             cleared_pct = (tokens_cleared / original_tokens * 100) if original_tokens > 0 else 0
             entry = f"\n[CONTEXT_MGMT] Cleared {tool_uses_cleared} tool use(s), "
@@ -275,12 +177,7 @@ class ConversationLogger:
         self._write(entry)
 
     def _write(self, content: str):
-        """
-        Write to log file.
-
-        Args:
-            content: Content to write
-        """
+        """Write to log file"""
         try:
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(content)

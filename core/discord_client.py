@@ -42,20 +42,15 @@ def split_message(text: str, max_length: int = 2000) -> list[str]:
 
     chunks = []
 
-    # First, check for code blocks and handle them specially
-    code_block_pattern = r'```[\s\S]*?```'
+    # Check for code blocks and handle them specially
     import re
-
-    # Split by code blocks but keep them
     parts = re.split(r'(```[\s\S]*?```)', text)
 
     current_chunk = ""
 
     for part in parts:
-        # Check if this part is a code block
         is_code_block = part.startswith('```') and part.endswith('```')
 
-        # If adding this part would exceed limit
         if len(current_chunk) + len(part) > max_length:
             # Save current chunk if not empty
             if current_chunk.strip():
@@ -64,12 +59,11 @@ def split_message(text: str, max_length: int = 2000) -> list[str]:
 
             # Handle the part
             if is_code_block:
-                # Code block is too large - split it (preserve markers)
+                # Code block too large - split while preserving markers
                 lang_line = part.split('\n')[0]  # ```python or similar
-                code_content = part[len(lang_line):-3]  # Remove ``` markers
+                code_content = part[len(lang_line):-3]
                 close_marker = '```'
 
-                # Split code content by lines
                 code_lines = code_content.split('\n')
                 temp_code = lang_line + '\n'
 
@@ -167,17 +161,17 @@ class DiscordClient(discord.Client):
         Args:
             config: Bot configuration
             reactive_engine: Reactive engine for message handling
-            agentic_engine: Agentic engine for autonomous behaviors (Phase 3)
+            agentic_engine: Agentic engine for autonomous behaviors
             message_memory: Message storage
-            user_cache: User information cache (Phase 4)
+            user_cache: User information cache
             conversation_logger: Conversation logger
         """
         # Setup intents
         intents = discord.Intents.default()
         intents.message_content = True  # Required to read message text
-        intents.reactions = True  # Required to see reactions
-        intents.guilds = True  # Required for server info
-        intents.members = True  # Required for member list
+        intents.reactions = True
+        intents.guilds = True
+        intents.members = True
 
         super().__init__(intents=intents)
 
@@ -191,11 +185,7 @@ class DiscordClient(discord.Client):
         logger.info(f"Discord client initialized for bot '{config.bot_id}'")
 
     async def on_ready(self):
-        """
-        Bot connected to Discord and ready.
-
-        This event fires once on startup.
-        """
+        """Bot connected to Discord and ready"""
         logger.info(f"Bot connected: {self.user.name} (ID: {self.user.id})")
         logger.info(f"Logged into {len(self.guilds)} servers")
 
@@ -207,10 +197,10 @@ class DiscordClient(discord.Client):
         activity = discord.Game(name="Powered by Claude Sonnet 4.5")
         await self.change_presence(activity=activity)
 
-        # Give reactive engine access to Discord client for periodic checks (Phase 3)
+        # Give reactive engine access to Discord client for periodic checks
         self.reactive_engine.discord_client = self
 
-        # Initialize Discord tools executor (Phase 4)
+        # Initialize Discord tools executor
         from tools.discord_tools import DiscordToolExecutor
         self.reactive_engine.discord_tool_executor = DiscordToolExecutor(
             message_memory=self.message_memory,
@@ -218,15 +208,15 @@ class DiscordClient(discord.Client):
         )
         logger.info("Discord tools enabled")
 
-        # Start periodic conversation scanning (Phase 3)
+        # Start periodic conversation scanning
         self.reactive_engine.start_periodic_check()
 
-        # Start agentic loop (Phase 3)
+        # Start agentic loop if enabled
         if self.agentic_engine:
             asyncio.create_task(self.agentic_engine.agentic_loop())
             logger.info("Agentic loop started")
 
-        # Backfill historical messages (Phase 4)
+        # Backfill historical messages if enabled
         if self.config.discord.backfill_enabled:
             if self.config.discord.backfill_in_background:
                 # Run in background - don't block bot startup
@@ -272,7 +262,7 @@ class DiscordClient(discord.Client):
         except Exception as e:
             logger.error(f"Error storing message: {e}")
 
-        # Update user cache (Phase 4)
+        # Update user cache
         try:
             await self.user_cache.update_user(message.author, increment_messages=True)
         except Exception as e:
@@ -299,8 +289,7 @@ class DiscordClient(discord.Client):
             if "reindex" in message.content.lower():
                 logger.info(f"Manual reindex triggered by {message.author.name}")
 
-                # Send start confirmation
-                start_msg = "🔄 Starting reindex... This will take ~10-15 seconds."
+                start_msg = "Starting reindex... This will take ~10-15 seconds."
                 await message.channel.send(start_msg)
                 logger.info(f"Sent Discord message: {start_msg}")
 
@@ -309,17 +298,17 @@ class DiscordClient(discord.Client):
                         days_back=self.config.discord.backfill_days,
                         unlimited=self.config.discord.backfill_unlimited
                     )
-                    complete_msg = f"✓ Reindex complete! Updated {total} messages.\n*Note: If you edited messages during reindex, run again to catch them.*"
+                    complete_msg = f"Reindex complete! Updated {total} messages.\n*Note: If you edited messages during reindex, run again to catch them.*"
                     await message.channel.send(complete_msg)
                     logger.info(f"Sent Discord message: {complete_msg[:80]}...")
                 except Exception as e:
                     logger.error(f"Manual reindex error: {e}", exc_info=True)
-                    error_msg = f"✗ Reindex failed: {e}"
+                    error_msg = f"Reindex failed: {e}"
                     await message.channel.send(error_msg)
                     logger.error(f"Sent Discord error message: {error_msg}")
                 return
 
-            # Handle immediately (Phase 1: only @mentions)
+            # Handle immediately
             try:
                 await self.reactive_engine.handle_urgent(message)
             except Exception as e:
@@ -333,7 +322,7 @@ class DiscordClient(discord.Client):
                     pass
 
         else:
-            # Non-urgent message - add to pending for periodic check (Phase 3)
+            # Non-urgent message - add to pending for periodic check
             channel_id = str(message.channel.id)
             self.reactive_engine.add_pending_channel(channel_id)
             logger.debug(
@@ -373,9 +362,7 @@ class DiscordClient(discord.Client):
 
     async def on_message_delete(self, message: discord.Message):
         """
-        Message deleted.
-
-        Remove from storage to maintain accuracy.
+        Message deleted - remove from storage to maintain accuracy.
 
         Args:
             message: Deleted message
@@ -388,9 +375,7 @@ class DiscordClient(discord.Client):
 
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         """
-        Reaction added to message.
-
-        Used for engagement tracking.
+        Reaction added to message - track engagement.
 
         Args:
             reaction: Reaction object
@@ -411,9 +396,7 @@ class DiscordClient(discord.Client):
 
     async def on_error(self, event: str, *args, **kwargs):
         """
-        Global error handler for events.
-
-        Prevents bot from crashing on unhandled exceptions.
+        Global error handler - prevents bot from crashing on unhandled exceptions.
 
         Args:
             event: Event name that caused error
@@ -480,14 +463,14 @@ class DiscordClient(discord.Client):
                             logger.debug(f"  Skipped message {message.id}: {e}")
 
                     if channel_messages > 0:
-                        logger.debug(f"  ✓ #{channel.name}: {channel_messages} messages")
+                        logger.debug(f"  #{channel.name}: {channel_messages} messages")
                         total_channels += 1
 
                 except discord.Forbidden:
-                    logger.debug(f"  ✗ #{channel.name}: No read permission")
+                    logger.debug(f"  #{channel.name}: No read permission")
                     failed_channels += 1
                 except Exception as e:
-                    logger.warning(f"  ✗ #{channel.name}: {e}")
+                    logger.warning(f"  #{channel.name}: {e}")
                     failed_channels += 1
 
         logger.info(f"Backfill complete: {total_messages} messages from {total_channels} channels")

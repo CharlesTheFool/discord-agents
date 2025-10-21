@@ -1,11 +1,12 @@
 """
-Context Builder - Smart Context Assembly for Claude API
+Context Builder - Smart Assembly for Claude API
 
 Builds rich context from Discord messages with:
-- @mention name resolution
+- @mention resolution to display names
 - Reply chain threading
 - Recent message history
 - Memory system integration
+- Image processing
 """
 
 import discord
@@ -16,7 +17,7 @@ from typing import Optional, List, Dict, Any, TYPE_CHECKING
 import sys
 import os
 
-# Add tools directory to path for imports
+# Add tools directory for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 if TYPE_CHECKING:
@@ -31,13 +32,10 @@ logger = logging.getLogger(__name__)
 
 class ContextBuilder:
     """
-    Builds context for Claude API calls with enhanced features.
+    Assembles rich context for Claude API calls.
 
-    Features:
-    - Resolves @mentions to display names
-    - Threads reply chains for better context
-    - Includes recent message history
-    - Integrates memory system paths
+    Resolves @mentions, threads reply chains, integrates memory paths,
+    and processes images into multimodal content blocks.
     """
 
     def __init__(
@@ -46,14 +44,6 @@ class ContextBuilder:
         message_memory: "MessageMemory",
         memory_manager: "MemoryManager",
     ):
-        """
-        Initialize context builder.
-
-        Args:
-            config: Bot configuration
-            message_memory: Message storage
-            memory_manager: Memory tool manager
-        """
         self.config = config
         self.message_memory = message_memory
         self.memory_manager = memory_manager
@@ -63,14 +53,10 @@ class ContextBuilder:
 
     async def build_context(self, message: discord.Message, exclude_message_ids: List[int] = None) -> dict:
         """
-        Build context for Claude API call.
+        Build context dict for Claude API call.
 
-        Args:
-            message: Discord message to build context for
-            exclude_message_ids: Optional list of message IDs to exclude from context (for filtering in-flight messages)
-
-        Returns:
-            Dictionary with system_prompt, messages, and stats
+        Returns dict with system_prompt, messages array, and stats.
+        Optionally excludes specific message IDs (e.g., filtering in-flight messages).
         """
         # Track stats for logging
         stats = {
@@ -80,28 +66,27 @@ class ContextBuilder:
             "reactions_found": 0,
             "images_processed": 0
         }
+
         # Get bot's Discord display name
         bot_display_name = "Assistant"
         if message.guild and message.guild.me:
             bot_display_name = message.guild.me.display_name
 
-        # Get current time
         current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
 
-        # Get system prompt
+        # Get base personality prompt
         base_prompt = (
             self.config.personality.base_prompt
             if self.config.personality
             else "You are a helpful Discord bot assistant."
         )
 
-        # Check if followups are enabled
+        # Build follow-up instructions if enabled
         followup_instructions = ""
         if self.config.agentic and self.config.agentic.followups.enabled:
             server_id = str(message.guild.id) if message.guild else None
             if server_id:
                 followups_path = self.memory_manager.get_followups_path(server_id)
-                # Get current user and channel IDs for the template
                 current_user_id = str(message.author.id)
                 current_user_name = message.author.display_name
                 current_channel_id = str(message.channel.id)
@@ -158,7 +143,7 @@ Skip follow-ups for:
 **Timing:** Use judgment based on the event. The system checks periodically, so schedule follow-ups for when it would be natural to check in.
 """
 
-        # Add identity, current time, and clarification about conversation history
+        # Assemble system prompt
         system_prompt = f"""You are {bot_display_name}.
 Current time: {current_time}
 
@@ -170,7 +155,7 @@ NOTE: Messages showing "[Forwarded message - content not accessible]" are forwar
 
 CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response."""
 
-        # Get recent messages (excluding current message to avoid duplication)
+        # Get recent messages (excluding current to avoid duplication)
         channel_id = str(message.channel.id)
         all_recent = await self.message_memory.get_recent(
             channel_id,
@@ -178,7 +163,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             exclude_message_ids=exclude_message_ids
         )
 
-        # Filter out current message (it was just saved to DB before this call)
+        # Filter out current message (it was just saved to DB)
         recent_messages = [msg for msg in all_recent if msg.message_id != str(message.id)]
 
         # Trim to configured limit after filtering
@@ -218,17 +203,16 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 else:
                     author_display = msg.author_name
 
-                # Resolve mentions in content
+                # Resolve mentions
                 resolved_content, resolved_count = await self._resolve_mentions(msg.content, message.guild)
                 stats["mentions_resolved"] += resolved_count
 
-                # Format timestamp from database (datetime object)
                 timestamp_str = msg.timestamp.strftime('%H:%M')
                 history_parts.append(f"[{timestamp_str}] **{author_display}**: {resolved_content}")
 
             history_parts.append("")
 
-            # Add current message with resolved mentions and full context
+            # Add current message with context
             resolved_content, resolved_count = await self._resolve_mentions(message.content, message.guild)
             stats["mentions_resolved"] += resolved_count
 
@@ -274,7 +258,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 )
 
         else:
-            # No history, just current message with full context
+            # No history, just current message with context
             resolved_content, resolved_count = await self._resolve_mentions(message.content, message.guild)
             stats["mentions_resolved"] += resolved_count
 
@@ -286,18 +270,16 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             if has_reactions:
                 stats["reactions_found"] += 1
 
-            # Process images from current message
+            # Process images
             images = await self.process_images(message)
             if images:
                 stats["images_processed"] = len(images)
-                # Content becomes array with text and images
                 content_parts = [{"type": "text", "text": message_with_context}]
                 content_parts.extend(images)
                 messages.append(
                     {"role": "user", "content": content_parts}
                 )
             else:
-                # No images, use string content
                 messages.append(
                     {"role": "user", "content": message_with_context}
                 )
@@ -306,14 +288,9 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
 
     async def _resolve_mentions(self, content: str, guild: Optional[discord.Guild]) -> tuple[str, int]:
         """
-        Resolve @mentions in content to display names.
+        Resolve @mentions to display names.
 
-        Args:
-            content: Message content with potential @mentions
-            guild: Discord guild (server) for member lookup
-
-        Returns:
-            Tuple of (content with resolved mentions, count of mentions resolved)
+        Returns tuple of (resolved content, count of mentions resolved).
         """
         if not guild:
             return content, 0
@@ -350,11 +327,8 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         """
         Follow reply chain backwards to build context.
 
-        Args:
-            message: Message that may be a reply
-
-        Returns:
-            List of messages in reply chain (oldest first), empty if not a reply
+        Max 5 messages to prevent excessive context bloat.
+        Returns oldest-first order, empty list if not a reply.
         """
         if not message.reference:
             return []
@@ -362,13 +336,12 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         chain = []
         current = message
 
-        # Follow chain backwards (max 5 messages to prevent excessive context)
+        # Follow chain backwards (max 5 to prevent context bloat)
         for _ in range(5):
             if not current.reference:
                 break
 
             try:
-                # Fetch the message being replied to
                 replied_to = await current.channel.fetch_message(current.reference.message_id)
                 chain.append(replied_to)
                 current = replied_to
@@ -386,17 +359,10 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         self, author: str, content: str, message: discord.Message
     ) -> tuple[str, bool]:
         """
-        Format message with additional context (timestamp, reactions, reply info).
+        Format message with context (timestamp, reactions, reply info).
 
-        Args:
-            author: Author display name
-            content: Message content (already resolved)
-            message: Discord message object
-
-        Returns:
-            Tuple of (formatted message string, has_reactions boolean)
+        Returns tuple of (formatted string, has_reactions boolean).
         """
-        # Add timestamp to message
         timestamp_str = message.created_at.strftime('%H:%M')
         parts = [f"[{timestamp_str}] **{author}**: {content}"]
         has_reactions = False
@@ -418,7 +384,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             replied_msg = message.reference.resolved
             if isinstance(replied_msg, discord.Message):
                 replied_author = "Assistant (you)" if replied_msg.author.bot else replied_msg.author.display_name
-                # Truncate replied content if too long
+                # Truncate long replied content
                 replied_content = replied_msg.content[:100]
                 if len(replied_msg.content) > 100:
                     replied_content += "..."
@@ -428,13 +394,10 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
 
     async def process_images(self, message: discord.Message) -> List[Dict]:
         """
-        Process image attachments from message.
+        Process image attachments into Claude API format.
 
-        Args:
-            message: Discord message with potential attachments
-
-        Returns:
-            List of processed images in Claude API format
+        Filters to image types, limits to 5 images (Claude API limit).
+        Returns list of processed image dicts.
         """
         if not message.attachments:
             return []

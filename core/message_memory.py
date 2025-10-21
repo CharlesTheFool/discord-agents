@@ -1,8 +1,8 @@
 """
 Message Memory - SQLite Storage
 
-Persistent message history for conversation context.
-Stores Discord messages in SQLite for querying and analysis.
+Persistent message history with FTS5 full-text search.
+Handles Discord message storage, updates, and retrieval.
 """
 
 import aiosqlite
@@ -19,22 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StoredMessage:
-    """
-    Stored message representation.
-
-    Attributes:
-        message_id: Discord message ID
-        channel_id: Discord channel ID
-        guild_id: Discord guild/server ID
-        author_id: Discord user ID
-        author_name: Author's display name
-        content: Message text content
-        timestamp: When message was sent (UTC)
-        is_bot: Whether author is a bot
-        has_attachments: Whether message has attachments
-        mentions: List of mentioned user IDs
-    """
-
+    """Message representation in storage"""
     message_id: str
     channel_id: str
     guild_id: str
@@ -49,10 +34,9 @@ class StoredMessage:
 
 class MessageMemory:
     """
-    SQLite-based message storage.
+    SQLite message storage with full-text search.
 
-    Provides persistent, queryable message history.
-    Survives bot restarts.
+    Provides persistent, queryable message history across bot restarts.
     """
 
     SCHEMA = """
@@ -80,7 +64,6 @@ class MessageMemory:
     CREATE INDEX IF NOT EXISTS idx_author
     ON messages(author_id);
 
-    -- FTS5 virtual table for full-text search
     CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
         message_id UNINDEXED,
         content,
@@ -89,7 +72,6 @@ class MessageMemory:
         content_rowid='id'
     );
 
-    -- Triggers to keep FTS5 table in sync
     CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
         INSERT INTO messages_fts(rowid, message_id, content, author_name)
         VALUES (new.id, new.message_id, new.content, new.author_name);
@@ -106,25 +88,15 @@ class MessageMemory:
     """
 
     def __init__(self, db_path: Path):
-        """
-        Initialize message memory.
-
-        Args:
-            db_path: Path to SQLite database file
-        """
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db: Optional[aiosqlite.Connection] = None
 
     async def initialize(self):
-        """
-        Initialize database connection and create tables.
-        Must be called before using the memory.
-        """
+        """Initialize database connection and create tables"""
         self._db = await aiosqlite.connect(str(self.db_path))
         self._db.row_factory = aiosqlite.Row
 
-        # Create tables and indexes
         await self._db.executescript(self.SCHEMA)
         await self._db.commit()
 
@@ -140,54 +112,47 @@ class MessageMemory:
         """
         Store Discord message in database.
 
-        Args:
-            message: Discord message to store
+        Handles forwarded messages and embeds.
+        Updates content if message already exists (UPSERT pattern).
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Extract mentions
         mentions = [str(user.id) for user in message.mentions]
         mentions_json = json.dumps(mentions)
 
-        # Extract content from message.content and embeds (for forwarded messages)
+        # Extract content from message and embeds
         content_parts = []
         if message.content:
             content_parts.append(message.content)
 
-        # Check for forwarded messages (Discord limitation: content not accessible)
+        # Check for forwarded messages (Discord API limitation)
         if message.reference:
             ref_type = getattr(message.reference, 'type', None)
             if ref_type is not None:
                 from discord import MessageReferenceType
                 if ref_type == MessageReferenceType.forward:
-                    # Discord doesn't provide forwarded message content via API
-                    # Original message may be from inaccessible channel or different server
+                    # Discord doesn't provide forwarded content via API
                     content_parts.append("[Forwarded message - content not accessible]")
                     logger.debug(f"Message {message.id} is a forwarded message")
 
-        # Extract content from embeds (forwarded messages often have content here)
+        # Extract embed content
         if message.embeds:
             logger.info(f"[EMBED] Message {message.id} has {len(message.embeds)} embeds")
             for idx, embed in enumerate(message.embeds):
-                # Log detailed embed structure
                 has_title = bool(embed.title)
                 has_desc = bool(embed.description)
-                has_fields = len(embed.fields) > 0
                 logger.info(f"  [EMBED] Embed {idx}: type={embed.type}, title={has_title}, desc={has_desc}, fields={len(embed.fields)}")
 
-                # Log actual content for debugging empty embeds
                 if has_title:
                     logger.info(f"    Title: {embed.title[:100]}")
                 if has_desc:
                     logger.info(f"    Description: {embed.description[:100]}")
 
-                # Extract text
                 if embed.description:
                     content_parts.append(embed.description)
                 if embed.title:
                     content_parts.append(embed.title)
-                # Extract text from fields
                 for field in embed.fields:
                     if field.value:
                         content_parts.append(field.value)
@@ -224,8 +189,7 @@ class MessageMemory:
             logger.debug(f"Stored message {message.id} from {message.author.name}")
 
         except aiosqlite.IntegrityError:
-            # Message already exists - check if content changed before updating
-            # This ensures backfill refreshes edited messages while skipping unchanged ones
+            # Message exists - check if content changed before updating
             cursor = await self._db.execute(
                 "SELECT content FROM messages WHERE message_id = ?",
                 (str(message.id),)
@@ -233,7 +197,7 @@ class MessageMemory:
             row = await cursor.fetchone()
             existing_content = row[0] if row else None
 
-            # Only UPDATE if content actually changed
+            # Only update if content actually changed
             if existing_content != full_content:
                 logger.info(f"[UPSERT] Message {message.id} content CHANGED during backfill")
                 logger.info(f"[UPSERT] OLD: {existing_content[:100]}...")
@@ -261,28 +225,23 @@ class MessageMemory:
         """
         Update message content when edited.
 
-        If message doesn't exist in database (e.g., edited message older than backfill window),
-        insert it instead of updating.
-
-        Args:
-            message: Edited Discord message
+        If message doesn't exist (e.g., edited message older than backfill window),
+        insert it instead (UPSERT pattern).
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
         logger.info(f"[EDIT] Updating message {message.id} from {message.author.name}")
 
-        # Extract mentions
         mentions = [str(user.id) for user in message.mentions]
         mentions_json = json.dumps(mentions)
 
-        # Extract content from message.content and embeds (for forwarded messages)
+        # Extract content
         content_parts = []
         if message.content:
             logger.info(f"[EDIT] Original content: {message.content[:200]}")
             content_parts.append(message.content)
 
-        # Extract content from embeds
         if message.embeds:
             logger.info(f"[EMBED UPDATE] Message {message.id}: has {len(message.embeds)} embeds")
             for idx, embed in enumerate(message.embeds):
@@ -320,10 +279,8 @@ class MessageMemory:
         rows_updated = cursor.rowcount
         logger.info(f"[EDIT] UPDATE affected {rows_updated} row(s)")
 
-        # Check if UPDATE affected any rows
+        # If no rows updated, INSERT instead (UPSERT pattern)
         if rows_updated == 0:
-            # Message doesn't exist - INSERT it (UPSERT pattern)
-            # This handles messages edited outside the backfill window
             logger.info(f"[UPSERT] Message {message.id} not in database, inserting (probably older than backfill window)")
 
             try:
@@ -350,8 +307,7 @@ class MessageMemory:
                 )
                 logger.info(f"[UPSERT] Successfully inserted message {message.id} into database")
             except aiosqlite.IntegrityError:
-                # Race condition: message was inserted between UPDATE and INSERT
-                # This is fine, just log it
+                # Race condition: message inserted between UPDATE and INSERT
                 logger.warning(f"[UPSERT] Message {message.id} already exists (race condition during UPSERT)")
         else:
             logger.info(f"[EDIT] Successfully updated existing message {message.id} in database")
@@ -360,12 +316,7 @@ class MessageMemory:
         logger.info(f"[EDIT] Database committed for message {message.id}")
 
     async def delete_message(self, message_id: int):
-        """
-        Delete message from storage.
-
-        Args:
-            message_id: Discord message ID
-        """
+        """Delete message from storage"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -380,22 +331,15 @@ class MessageMemory:
         self, channel_id: str, limit: int = 20, exclude_message_ids: List[int] = None
     ) -> List[StoredMessage]:
         """
-        Get recent messages from channel.
+        Get recent messages from channel, ordered chronologically.
 
-        Args:
-            channel_id: Discord channel ID
-            limit: Maximum number of messages to return
-            exclude_message_ids: Optional list of message IDs to exclude (for filtering in-flight messages)
-
-        Returns:
-            List of messages, oldest first (chronological order)
+        Optionally exclude specific message IDs (e.g., to filter in-flight messages).
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
         # Build query with optional exclusion filter
         if exclude_message_ids and len(exclude_message_ids) > 0:
-            # Convert to list of strings (message IDs stored as TEXT)
             excluded_ids_str = [str(mid) for mid in exclude_message_ids]
             placeholders = ",".join("?" * len(excluded_ids_str))
 
@@ -429,18 +373,7 @@ class MessageMemory:
     async def get_first_messages(
         self, channel_id: str, limit: int = 20
     ) -> List[StoredMessage]:
-        """
-        Get first (oldest) messages from channel.
-
-        Useful for understanding channel history and purpose.
-
-        Args:
-            channel_id: Discord channel ID
-            limit: Maximum number of messages to return
-
-        Returns:
-            List of messages, oldest first (chronological order)
-        """
+        """Get first (oldest) messages from channel for understanding channel history"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -460,16 +393,7 @@ class MessageMemory:
     async def get_since(
         self, channel_id: str, since: datetime
     ) -> List[StoredMessage]:
-        """
-        Get messages since specific timestamp.
-
-        Args:
-            channel_id: Discord channel ID
-            since: Get messages after this timestamp
-
-        Returns:
-            List of messages, oldest first
-        """
+        """Get messages since specific timestamp"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -487,32 +411,21 @@ class MessageMemory:
         return [self._row_to_message(row) for row in rows]
 
     async def get_channel_stats(self, channel_id: str) -> Dict:
-        """
-        Get statistics about channel.
-
-        Args:
-            channel_id: Discord channel ID
-
-        Returns:
-            Dictionary with message count, unique users, etc.
-        """
+        """Get channel statistics (message count, unique users, time range)"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Message count
         cursor = await self._db.execute(
             "SELECT COUNT(*) FROM messages WHERE channel_id = ?", (channel_id,)
         )
         total_messages = (await cursor.fetchone())[0]
 
-        # Unique users
         cursor = await self._db.execute(
             "SELECT COUNT(DISTINCT author_id) FROM messages WHERE channel_id = ?",
             (channel_id,),
         )
         unique_users = (await cursor.fetchone())[0]
 
-        # First and last message times
         cursor = await self._db.execute(
             """
             SELECT MIN(timestamp), MAX(timestamp)
@@ -531,40 +444,18 @@ class MessageMemory:
         }
 
     async def get_user_message_count(self, user_id: str, server_id: str = None) -> int:
-        """
-        Get total message count for a user.
-
-        Args:
-            user_id: Discord user ID
-            server_id: Optional server ID to scope count to specific server
-
-        Returns:
-            Total message count
-        """
+        """Get total message count for user"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        if server_id:
-            # Count messages in specific server (all channels in that server)
-            # Note: This requires channel_id format to include server info or a separate server_id column
-            # For now, just count all messages by user
-            cursor = await self._db.execute(
-                "SELECT COUNT(*) FROM messages WHERE author_id = ?", (user_id,)
-            )
-        else:
-            cursor = await self._db.execute(
-                "SELECT COUNT(*) FROM messages WHERE author_id = ?", (user_id,)
-            )
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) FROM messages WHERE author_id = ?", (user_id,)
+        )
 
         return (await cursor.fetchone())[0]
 
     async def cleanup_old(self, days: int = 90):
-        """
-        Archive/delete messages older than N days.
-
-        Args:
-            days: Delete messages older than this many days
-        """
+        """Delete messages older than N days"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -579,12 +470,7 @@ class MessageMemory:
         logger.info(f"Cleaned up {deleted} messages older than {days} days")
 
     async def get_active_servers(self) -> List[str]:
-        """
-        Get list of unique server/guild IDs from message history.
-
-        Returns:
-            List of guild IDs that have messages in database
-        """
+        """Get list of unique server/guild IDs from message history"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -596,15 +482,7 @@ class MessageMemory:
         return [row[0] for row in rows]
 
     async def get_server_for_channel(self, channel_id: str) -> Optional[str]:
-        """
-        Get server/guild ID for a given channel.
-
-        Args:
-            channel_id: Discord channel ID
-
-        Returns:
-            Guild ID if found, None if channel not in database
-        """
+        """Get server/guild ID for a given channel"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -617,16 +495,7 @@ class MessageMemory:
         return row[0] if row else None
 
     async def check_user_activity(self, user_id: str, hours: int = 24) -> bool:
-        """
-        Check if user has been active in the last N hours.
-
-        Args:
-            user_id: Discord user ID
-            hours: Number of hours to check (default 24)
-
-        Returns:
-            True if user has posted messages within timeframe, False otherwise
-        """
+        """Check if user has posted messages within timeframe"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
@@ -649,22 +518,11 @@ class MessageMemory:
         before: int = 2,
         after: int = 2
     ) -> Dict[str, List[StoredMessage]]:
-        """
-        Get messages surrounding a specific message for context.
-
-        Args:
-            message_id: Target message ID
-            channel_id: Channel ID to search in
-            before: Number of messages before target (default 2)
-            after: Number of messages after target (default 2)
-
-        Returns:
-            Dictionary with 'before', 'match', and 'after' lists of messages
-        """
+        """Get messages surrounding a specific message for context"""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Get the target message first to know its timestamp
+        # Get target message to know its timestamp
         cursor = await self._db.execute(
             "SELECT * FROM messages WHERE message_id = ? AND channel_id = ?",
             (message_id, channel_id)
@@ -717,23 +575,15 @@ class MessageMemory:
         limit: int = 20
     ) -> List[StoredMessage]:
         """
-        Full-text search of message content using FTS5.
+        Full-text search using FTS5.
 
-        Args:
-            query: Search query (supports FTS5 syntax)
-            channel_id: Optional channel ID to filter results
-            author_id: Optional author ID to filter results
-            limit: Maximum results to return (default 20)
-
-        Returns:
-            List of matching messages, ordered by relevance
+        Query is sanitized to prevent FTS5 syntax errors.
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Build query with optional filters
         # Sanitize query for FTS5: escape double quotes and wrap in quotes
-        # This treats the query as a literal phrase search, avoiding FTS5 syntax errors
+        # Treats query as literal phrase search, avoiding syntax errors
         sanitized_query = f'"{query.replace('"', '""')}"'
         filters = []
         params = [sanitized_query]
@@ -749,7 +599,6 @@ class MessageMemory:
         where_clause = " AND ".join(filters) if filters else "1=1"
         params.append(limit)
 
-        # Execute FTS5 search
         cursor = await self._db.execute(
             f"""
             SELECT m.*
@@ -766,19 +615,9 @@ class MessageMemory:
         return [self._row_to_message(row) for row in rows]
 
     def _row_to_message(self, row: aiosqlite.Row) -> StoredMessage:
-        """
-        Convert database row to StoredMessage.
-
-        Args:
-            row: Database row from query
-
-        Returns:
-            StoredMessage instance
-        """
-        # Parse timestamp
+        """Convert database row to StoredMessage"""
         timestamp = datetime.fromisoformat(row["timestamp"])
 
-        # Parse mentions JSON
         mentions_json = row["mentions"]
         mentions = json.loads(mentions_json) if mentions_json else []
 

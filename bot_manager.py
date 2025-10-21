@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Discord-Claude Bot Framework - Bot Manager CLI
+Discord Agents - Bot Manager CLI
 
 Entry point for spawning and managing bots.
 
@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 import os
 import threading
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.config import BotConfig
@@ -33,36 +32,22 @@ from core.user_cache import UserCache
 
 class BotManager:
     """
-    Manages bot lifecycle.
-
-    Handles:
-    - Bot initialization
-    - Component setup
-    - Graceful shutdown
+    Manages bot lifecycle: initialization, component setup, graceful shutdown.
     """
 
     def __init__(self, bot_id: str):
-        """
-        Initialize bot manager.
-
-        Args:
-            bot_id: Bot identifier (e.g., "alpha")
-        """
         self.bot_id = bot_id
         self.config: BotConfig = None
         self.client: DiscordClient = None
         self.message_memory: MessageMemory = None
 
-        # Setup logging
         self._setup_logging()
 
     def _setup_logging(self):
-        """Configure logging"""
-        # Create logs directory
+        """Configure file and console logging with reduced discord.py noise"""
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
 
-        # Configure root logger
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -72,26 +57,23 @@ class BotManager:
             ],
         )
 
-        # Set discord.py logging to WARNING to reduce noise
+        # Discord.py is chatty - quiet it down
         logging.getLogger("discord").setLevel(logging.WARNING)
         logging.getLogger("discord.http").setLevel(logging.WARNING)
 
     async def initialize(self):
         """
-        Initialize all bot components.
-
-        Loads config, sets up database, initializes engines.
+        Initialize all bot components in dependency order.
+        Returns Discord token for client.start().
         """
         logger = logging.getLogger(__name__)
         logger.info(f"Initializing bot '{self.bot_id}'...")
 
-        # Load environment variables from .env
         load_dotenv()
 
-        # Find config file (bots/{bot_id}.yaml or bots/{bot_id}.yaml.example)
+        # Locate config file (prefer .yaml, fall back to .yaml.example)
         config_path = Path(f"bots/{self.bot_id}.yaml")
         if not config_path.exists():
-            # Try template
             template_path = Path(f"bots/{self.bot_id}.yaml.example")
             if template_path.exists():
                 logger.warning(
@@ -105,11 +87,10 @@ class BotManager:
                     f"Expected: bots/{self.bot_id}.yaml or bots/{self.bot_id}.yaml.example"
                 )
 
-        # Load bot configuration
         self.config = BotConfig.load(config_path)
         logger.info(f"Loaded config for bot '{self.config.name}'")
 
-        # Validate configuration
+        # Fail fast if config is invalid
         validation_errors = self.config.validate()
         if validation_errors:
             logger.error(f"[{self.bot_id}] Configuration validation failed:")
@@ -119,15 +100,15 @@ class BotManager:
 
         logger.info(f"[{self.bot_id}] Configuration validated successfully")
 
-        # Get environment variables (already validated by config.validate())
+        # Extract API credentials (already validated)
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
         discord_token = os.getenv(self.config.discord.token_env_var)
 
-        # Update log level from config
+        # Apply log level from config
         log_level = getattr(logging, self.config.logging.level)
         logging.getLogger().setLevel(log_level)
 
-        # Initialize message memory (SQLite)
+        # Initialize message memory (SQLite for conversation history)
         db_path = Path("persistence") / f"{self.bot_id}_messages.db"
         db_path.parent.mkdir(exist_ok=True)
 
@@ -135,24 +116,24 @@ class BotManager:
         await self.message_memory.initialize()
         logger.info("Message memory initialized")
 
-        # Initialize user cache (Phase 4)
+        # Initialize user cache (username/display name lookups)
         user_cache_path = Path("persistence") / f"{self.bot_id}_users.db"
         user_cache = UserCache(user_cache_path)
         await user_cache.initialize()
         logger.info("User cache initialized")
 
-        # Initialize memory manager
+        # Initialize memory manager (markdown-based long-term memory)
         memory_base_path = Path("memories")
         memory_manager = MemoryManager(self.bot_id, memory_base_path)
         logger.info("Memory manager initialized")
 
-        # Initialize conversation logger
+        # Initialize conversation logger (human-readable conversation dumps)
         from core.conversation_logger import ConversationLogger
         log_dir = Path("logs")
         conversation_logger = ConversationLogger(self.bot_id, log_dir)
         logger.info("Conversation logger initialized")
 
-        # Initialize rate limiter
+        # Initialize rate limiter (prevent API abuse)
         rate_limiter_config = {
             "short_window_minutes": self.config.rate_limiting.short.duration_minutes,
             "short_window_max": self.config.rate_limiting.short.max_responses,
@@ -163,7 +144,7 @@ class BotManager:
         rate_limiter = RateLimiter(rate_limiter_config)
         logger.info("Rate limiter initialized")
 
-        # Initialize reactive engine
+        # Initialize reactive engine (handles message reactions)
         reactive_engine = ReactiveEngine(
             config=self.config,
             rate_limiter=rate_limiter,
@@ -174,7 +155,7 @@ class BotManager:
         )
         logger.info("Reactive engine initialized")
 
-        # Initialize agentic engine (Phase 3)
+        # Initialize agentic engine if enabled (proactive actions)
         agentic_engine = None
         if self.config.agentic.enabled:
             from core.agentic_engine import AgenticEngine
@@ -183,11 +164,11 @@ class BotManager:
                 config=self.config,
                 memory_manager=memory_manager,
                 message_memory=self.message_memory,
-                anthropic_client=reactive_engine.anthropic,  # Share client
+                anthropic_client=reactive_engine.anthropic,
             )
             logger.info("Agentic engine initialized")
 
-        # Initialize Discord client
+        # Initialize Discord client (ties everything together)
         self.client = DiscordClient(
             config=self.config,
             reactive_engine=reactive_engine,
@@ -198,7 +179,7 @@ class BotManager:
         )
         logger.info("Discord client initialized")
 
-        # Set Discord client reference on agentic engine (Phase 3)
+        # Wire up circular dependency: agentic engine needs client reference
         if agentic_engine:
             agentic_engine.set_discord_client(self.client)
 
@@ -208,17 +189,13 @@ class BotManager:
 
     async def run(self):
         """
-        Run the bot.
-
-        Connects to Discord and runs until interrupted.
+        Connect to Discord and run until interrupted.
         """
         logger = logging.getLogger(__name__)
 
         try:
-            # Initialize components
             discord_token = await self.initialize()
 
-            # Start bot
             logger.info("Connecting to Discord...")
             await self.client.start(discord_token)
 
@@ -232,16 +209,15 @@ class BotManager:
             await self.shutdown()
 
     async def shutdown(self):
-        """Graceful shutdown"""
+        """Graceful shutdown: cleanup engines, close connections, cancel tasks"""
         logger = logging.getLogger(__name__)
         logger.info("Shutting down bot...")
 
         try:
-            # Shutdown reactive engine (cancel background tasks)
+            # Shutdown engines (cancel background tasks)
             if hasattr(self, 'client') and self.client and hasattr(self.client, 'reactive_engine'):
                 await self.client.reactive_engine.shutdown()
 
-            # Shutdown agentic engine (Phase 3)
             if hasattr(self, 'client') and self.client and hasattr(self.client, 'agentic_engine'):
                 if self.client.agentic_engine:
                     await self.client.agentic_engine.shutdown()
@@ -249,14 +225,13 @@ class BotManager:
             # Close Discord connection
             if self.client:
                 await self.client.close()
-                # Give Discord client time to finish closing
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.5)  # Let Discord finish cleanup
 
             # Close database
             if self.message_memory:
                 await self.message_memory.close()
 
-            # Cancel any remaining tasks
+            # Cancel any lingering tasks
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             if tasks:
                 logger.info(f"Cancelling {len(tasks)} remaining tasks...")
@@ -266,9 +241,9 @@ class BotManager:
 
             logger.info("Shutdown complete")
 
-            # Log active threads for debugging
+            # Log remaining threads for debugging hangs
             active_threads = threading.enumerate()
-            if len(active_threads) > 1:  # More than just main thread
+            if len(active_threads) > 1:
                 logger.info(f"Active threads: {[t.name for t in active_threads]}")
 
         except Exception as e:
@@ -277,7 +252,7 @@ class BotManager:
 
 def print_usage():
     """Print CLI usage"""
-    print("Discord-Claude Bot Framework - Bot Manager")
+    print("Discord Agents - Bot Manager")
     print()
     print("Usage:")
     print("  python bot_manager.py spawn <bot_id>   - Start a bot")
@@ -294,7 +269,7 @@ def print_usage():
 
 
 def main():
-    """Main CLI entry point"""
+    """CLI entry point"""
     if len(sys.argv) < 2 or sys.argv[1] in ["--help", "-h", "help"]:
         print_usage()
         sys.exit(0)
@@ -309,18 +284,14 @@ def main():
 
         bot_id = sys.argv[2]
 
-        # Create and run bot
         manager = BotManager(bot_id)
 
-        # Run with proper KeyboardInterrupt handling
         try:
             asyncio.run(manager.run())
         except KeyboardInterrupt:
-            # Already handled in manager.run(), exit cleanly
             pass
         finally:
-            # Force exit to prevent hanging - use os._exit for hard kill
-            # This skips cleanup handlers but ensures termination
+            # Hard exit to prevent hanging from stubborn threads
             os._exit(0)
 
     else:

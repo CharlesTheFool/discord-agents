@@ -4,170 +4,153 @@
 
 We actively support the following versions with security updates:
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.4.0-beta | :white_check_mark: |
-| < 0.4.0 | :x:                |
+| Version | Supported |
+| ------- | --------- |
+| 0.4.0-beta | ✅ |
+| < 0.4.0 | ❌ |
 
-**Note:** Beta versions receive security patches on a best-effort basis. Once v1.0.0 is released, we will maintain a formal security support policy.
+**Note:** Beta versions receive security patches on a best-effort basis. A formal security support policy will be established with v1.0.0.
 
 ## Reporting a Vulnerability
 
-**Please do not report security vulnerabilities through public GitHub issues.**
-
-Instead, report security issues privately:
+**Do not report security vulnerabilities through public GitHub issues.**
 
 ### Preferred Method: GitHub Security Advisories
-1. Go to the **Security** tab in this repository
+1. Navigate to the **Security** tab in this repository
 2. Click **"Report a vulnerability"**
-3. Fill out the form with details below
+3. Complete the form with the information detailed below
 
 ### Alternative: Direct Contact
-If you prefer, you can email security reports to: [Your Email or Security Contact]
+Email security reports to: `[Your Email or Security Contact]`
 
 ### What to Include
 
-Please provide as much information as possible:
+Provide as much detail as possible:
 
-- **Type of vulnerability** (e.g., authentication bypass, API key exposure, SQL injection)
-- **Affected component** (e.g., Discord client, reactive engine, memory manager)
+- **Type of vulnerability** (authentication bypass, API key exposure, injection, etc.)
+- **Affected component** (Discord client, reactive engine, memory manager, etc.)
 - **Affected versions** (if known)
-- **Steps to reproduce** (detailed PoC if possible)
-- **Potential impact** (what could an attacker accomplish?)
+- **Steps to reproduce** (detailed proof-of-concept preferred)
+- **Potential impact** (what can an attacker accomplish?)
 - **Suggested fix** (if you have one)
 
 ### What to Expect
 
-- **Initial Response:** Within 48 hours, we'll acknowledge receipt
-- **Status Updates:** We'll keep you informed as we investigate
-- **Resolution Timeline:** We aim to release fixes within 7-14 days for critical issues
-- **Credit:** We'll credit you in the security advisory (unless you prefer to remain anonymous)
+- **Initial Response:** Acknowledgment within 48 hours
+- **Status Updates:** Regular progress reports during investigation
+- **Resolution Timeline:** Critical issues patched within 7-14 days
+- **Credit:** Recognition in security advisory (unless you prefer anonymity)
 
 ### Disclosure Policy
 
-- **Coordinated disclosure:** We request 90 days before public disclosure
-- **Security advisories:** We'll publish advisories for confirmed vulnerabilities
-- **CVEs:** We'll request CVEs for significant vulnerabilities affecting users
+- **Coordinated disclosure:** 90-day embargo requested before public disclosure
+- **Security advisories:** Published for all confirmed vulnerabilities
+- **CVEs:** Requested for significant vulnerabilities affecting users
 
-## Security Best Practices for Users
+## Security Best Practices
 
 ### API Key Management
 
-✅ **DO:**
-- Store API keys in `.env` file only
-- Add `.env` to `.gitignore` (already configured)
-- Use separate API keys for development and production
-- Rotate keys immediately if compromised
-- Use environment variables, never hardcode keys
+**Essential practices:**
+- Store API keys exclusively in `.env` files (already in `.gitignore`)
+- Use separate keys for development and production environments
+- Rotate keys immediately upon suspected compromise
+- Never hardcode keys in source code or configuration files
 
-❌ **DON'T:**
-- Commit `.env` files to version control
-- Share API keys in Discord, Slack, or other chat platforms
-- Use the same key across multiple projects
-- Store keys in bot configuration YAML files
+**Common mistakes to avoid:**
+- Committing `.env` files to version control
+- Sharing keys via chat platforms (Discord, Slack, email)
+- Reusing the same key across multiple projects or environments
+- Storing keys in bot YAML configuration files
 
 ### Discord Bot Token Security
 
-✅ **DO:**
-- Regenerate token immediately if exposed
+**Essential practices:**
+- Regenerate tokens immediately if exposed
 - Enable 2FA on your Discord account
-- Restrict bot permissions to minimum required
-- Review bot's server list regularly
+- Apply minimum required permissions (principle of least privilege)
+- Audit bot's server list regularly
 
-❌ **DON'T:**
-- Share bot tokens publicly
-- Grant unnecessary Discord permissions
-- Add your bot to untrusted servers
+**Common mistakes to avoid:**
+- Sharing tokens publicly or with untrusted parties
+- Granting excessive Discord permissions "just in case"
+- Adding bots to unfamiliar or untrusted servers
 
 ### Rate Limiting & Quota Management
 
-✅ **DO:**
-- Monitor your bot's API usage regularly
-- Set appropriate rate limits in configuration
-- Use web search quota limits to control costs
-- Review logs for unusual activity patterns
+**Essential practices:**
+- Monitor API usage patterns regularly
+- Configure appropriate rate limits for your deployment
+- Set web search quota limits to control costs
+- Review logs for anomalous activity
 
-❌ **DON'T:**
-- Disable rate limiting in production
-- Ignore quota warnings
-- Share your bot instance with untrusted users
+**Common mistakes to avoid:**
+- Disabling rate limiting in production
+- Ignoring quota warnings or usage spikes
+- Sharing bot instances with untrusted users
 
 ### Server & Memory Isolation
 
-✅ **DO:**
-- Understand that memories are server-specific
-- Review memory contents periodically
-- Limit bot to servers you trust
+**Essential practices:**
+- Understand that memories are server-specific, not private
+- Review memory contents periodically for sensitive data
+- Limit bot deployment to trusted servers
 - Use separate bot instances for different communities
 
-❌ **DON'T:**
-- Assume memory is private (server admins can access it)
-- Store sensitive personal information in bot memory
-- Add bot to servers without vetting them first
+**Common mistakes to avoid:**
+- Assuming memory files are private (server admins can access them)
+- Storing sensitive personal information in bot memory
+- Deploying bots without vetting the server community
 
 ### Dependency Security
 
-✅ **DO:**
-- Keep dependencies updated: `pip install --upgrade -r requirements.txt`
-- Review security advisories for discord.py and anthropic SDK
+**Essential practices:**
+- Update dependencies regularly: `pip install --upgrade -r requirements.txt`
+- Monitor security advisories for `discord.py` and `anthropic` SDK
 - Pin versions in production: `pip freeze > requirements.txt`
 
-❌ **DON'T:**
-- Use outdated dependencies with known vulnerabilities
-- Ignore dependency security warnings
+**Common mistakes to avoid:**
+- Running outdated dependencies with known CVEs
+- Ignoring dependency security warnings from GitHub or pip
 
 ## Known Security Considerations
 
 ### Message History Access
-- Bot can search and access full message history in channels it has access to
-- Sensitive conversations should occur in channels the bot cannot see
-- Consider using Discord's permission system to restrict bot access
+The bot can search and access full message history in channels with appropriate permissions. Sensitive conversations should occur in channels the bot cannot access. Use Discord's permission system to restrict bot visibility.
 
 ### LLM Prompt Injection
-- Users may attempt prompt injection attacks via Discord messages
-- Bot's system prompt includes safeguards but is not foolproof
-- Monitor bot behavior for unexpected responses
-- Report concerning patterns via security advisory
+Users may attempt prompt injection attacks via Discord messages. The bot's system prompt includes safeguards, but no defense is foolproof. Monitor bot behavior for unexpected responses and report concerning patterns via security advisory.
 
 ### Memory Persistence
-- Bot memories are stored in plaintext Markdown files
-- Files are stored locally in `memories/` directory
-- Anyone with file system access can read memories
-- Consider full-disk encryption for sensitive deployments
+Bot memories are stored as plaintext Markdown files in the `memories/` directory. Anyone with filesystem access can read these files. Consider full-disk encryption for sensitive deployments.
 
 ### Web Search & External Content
-- Bot can fetch and display external web content
-- Malicious users might attempt to phish via crafted search results
-- Bot includes citation display to show content sources
-- Review web search results before trusting them
+The bot can fetch and display external web content, which creates potential phishing vectors. The bot includes citation display to show content sources—review these before trusting search results.
 
 ## Security Hardening Recommendations
 
-### For Development
-- Use virtual environments: `python -m venv venv`
-- Don't run bot with elevated privileges
+### Development Environments
+- Use Python virtual environments: `python -m venv venv`
+- Run bot with standard user privileges (never elevated)
 - Enable debug logging only in development
-- Use separate Discord servers for testing
+- Use dedicated Discord servers for testing
 
-### For Production
-- Run bot in isolated container (Docker recommended)
+### Production Deployments
+- Run bot in isolated containers (Docker recommended)
 - Use systemd service with restricted user permissions
-- Enable firewall rules limiting outbound connections
-- Implement monitoring and alerting for anomalies
-- Regular backups of memories and configuration
+- Implement firewall rules limiting outbound connections
+- Configure monitoring and alerting for anomalies
+- Maintain regular backups of memories and configuration
 
-### For Self-Hosting
-- Keep host OS updated and patched
+### Self-Hosted Instances
+- Keep host OS updated with security patches
 - Use SSH key authentication (disable password login)
 - Implement fail2ban or similar intrusion prevention
-- Enable automatic security updates
+- Enable automatic security updates where possible
 - Monitor system logs for suspicious activity
 
 ## Acknowledgments
 
-We appreciate security researchers who responsibly disclose vulnerabilities. Contributors will be recognized in:
-- Security advisories
-- Release notes for patched versions
-- CHANGELOG.md (if they consent)
+We appreciate security researchers who responsibly disclose vulnerabilities. Contributors will be recognized in security advisories, release notes, and CHANGELOG.md (with consent).
 
-Thank you for helping keep Discord-Claude Bot Framework secure!
+Thank you for helping keep this framework secure.

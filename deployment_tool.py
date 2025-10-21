@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Discord-Claude Bot Framework - Deployment Export/Import Tool
+Discord Agents - Deployment Export/Import Tool
 
 Backup and restore bot configuration and data across machines.
 
 Usage:
-    python deployment_tool.py export [--output PATH] [--exclude ITEMS]
+    python deployment_tool.py export [--output PATH] [--exclude ITEMS] [--dev]
     python deployment_tool.py import --input PATH [--dry-run]
 
 Examples:
-    # Export everything
+    # Export production files only (what's in public repo)
     python deployment_tool.py export
+
+    # Export everything including dev files (tests, prototype, docs)
+    python deployment_tool.py export --dev
 
     # Export without logs (smaller backup)
     python deployment_tool.py export --exclude logs
@@ -33,7 +36,7 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
-# Items that can be exported/imported
+# Production files (in public repo)
 EXPORTABLE_ITEMS = {
     'env': '.env',
     'bots': 'bots/',
@@ -42,32 +45,44 @@ EXPORTABLE_ITEMS = {
     'persistence': 'persistence/'
 }
 
+# Development-only files (not in public repo)
+DEV_ONLY_ITEMS = {
+    'tests': 'tests/',
+    'prototype': 'prototype/',
+    'docs': 'docs/',
+    'deployment': 'deployment/'
+}
 
-def export_deployment(output_path=None, exclude=None):
+
+def export_deployment(output_path=None, exclude=None, dev_mode=False):
     """
-    Export deployment data to zip file.
+    Export deployment data to timestamped zip file.
 
     Args:
-        output_path: Path for output zip file (default: timestamped)
-        exclude: List of item names to exclude
+        output_path: Path for zip file (default: timestamped)
+        exclude: Items to exclude from export
+        dev_mode: If True, include dev files (tests, prototype, docs, deployment)
 
-    Returns:
-        Path to created zip file
+    Returns path to created file.
     """
     exclude = set(exclude or [])
 
-    # Default output path with timestamp
     if not output_path:
         timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        output_path = f"deployment-backup_{timestamp}.zip"
+        suffix = '-dev' if dev_mode else ''
+        output_path = f"deployment-backup_{timestamp}{suffix}.zip"
 
     output_path = Path(output_path)
 
-    # Filter items to include
-    included_items = {k: v for k, v in EXPORTABLE_ITEMS.items() if k not in exclude}
+    # Merge production and dev items if dev_mode enabled
+    all_items = EXPORTABLE_ITEMS.copy()
+    if dev_mode:
+        all_items.update(DEV_ONLY_ITEMS)
+
+    included_items = {k: v for k, v in all_items.items() if k not in exclude}
 
     print("=" * 60)
-    print("Discord-Claude Bot Framework - Export Tool")
+    print("Discord Agents - Export Tool")
     print("=" * 60)
     print(f"\nExporting to: {output_path}")
     print(f"Including: {', '.join(included_items.keys())}")
@@ -77,12 +92,12 @@ def export_deployment(output_path=None, exclude=None):
 
     try:
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Write manifest
+            # Write manifest for version tracking
             manifest = {
                 'created': datetime.now().isoformat(),
                 'items': list(included_items.keys()),
                 'version': '0.4.0-beta',
-                'framework': 'discord-claude-bot'
+                'framework': 'discord-agents'
             }
             zipf.writestr('manifest.json', json.dumps(manifest, indent=2))
             print("✓ Created manifest")
@@ -96,15 +111,13 @@ def export_deployment(output_path=None, exclude=None):
                     continue
 
                 if path.is_file():
-                    # Single file (.env)
                     zipf.write(path, path.name)
                     print(f"  ✓ {item_name}: {path.name}")
                 else:
-                    # Directory
+                    # Recurse directory, skip hidden files
                     file_count = 0
                     for file in path.rglob('*'):
                         if file.is_file() and not file.name.startswith('.'):
-                            # Store with directory structure
                             arcname = file.relative_to('.')
                             zipf.write(file, arcname)
                             file_count += 1
@@ -114,7 +127,6 @@ def export_deployment(output_path=None, exclude=None):
                     else:
                         print(f"  ⚠ {item_name}: empty directory")
 
-        # Get file size
         size_mb = output_path.stat().st_size / (1024 * 1024)
 
         print()
@@ -134,13 +146,8 @@ def export_deployment(output_path=None, exclude=None):
 def import_deployment(input_path, dry_run=False):
     """
     Import deployment data from zip file.
-
-    Args:
-        input_path: Path to input zip file
-        dry_run: If True, preview without modifying files
-
-    Returns:
-        True if successful, False otherwise
+    Creates safety backup before overwriting.
+    Returns True on success.
     """
     input_path = Path(input_path)
 
@@ -149,7 +156,7 @@ def import_deployment(input_path, dry_run=False):
         return False
 
     print("=" * 60)
-    print("Discord-Claude Bot Framework - Import Tool")
+    print("Discord Agents - Import Tool")
     print("=" * 60)
     print(f"\nImporting from: {input_path}")
 
@@ -160,7 +167,7 @@ def import_deployment(input_path, dry_run=False):
 
     try:
         with zipfile.ZipFile(input_path, 'r') as zipf:
-            # Read and validate manifest
+            # Read and display manifest
             try:
                 manifest_data = zipf.read('manifest.json')
                 manifest = json.loads(manifest_data)
@@ -175,7 +182,6 @@ def import_deployment(input_path, dry_run=False):
                 print("⚠️  No manifest found (old or invalid backup)")
                 manifest = {'items': list(EXPORTABLE_ITEMS.keys())}
 
-            # Get list of files to extract
             files_to_extract = [m for m in zipf.namelist() if m != 'manifest.json']
 
             if dry_run:
@@ -188,7 +194,7 @@ def import_deployment(input_path, dry_run=False):
                 print("=" * 60)
                 return True
 
-            # Create safety backup of existing files
+            # Create safety backup before destructive import
             backup_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_dir = Path(f".backup_{backup_timestamp}")
 
@@ -250,7 +256,7 @@ def import_deployment(input_path, dry_run=False):
 def main():
     """CLI entry point"""
     parser = argparse.ArgumentParser(
-        description='Discord-Claude Bot Framework - Deployment Export/Import Tool',
+        description='Discord Agents - Deployment Export/Import Tool',
         epilog='For detailed usage, see: docs/README.md'
     )
     subparsers = parser.add_subparsers(dest='command', required=True, help='Command to execute')
@@ -267,6 +273,11 @@ def main():
     export_parser.add_argument(
         '--exclude',
         help='Comma-separated items to exclude (e.g., logs,memories)'
+    )
+    export_parser.add_argument(
+        '--dev',
+        action='store_true',
+        help='Include dev files (tests, prototype, docs, deployment) for full workspace backup'
     )
 
     # Import command
@@ -287,10 +298,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Execute command
     if args.command == 'export':
         exclude = args.exclude.split(',') if args.exclude else []
-        export_deployment(args.output, exclude)
+        export_deployment(args.output, exclude, dev_mode=args.dev)
 
     elif args.command == 'import':
         success = import_deployment(args.input, args.dry_run)

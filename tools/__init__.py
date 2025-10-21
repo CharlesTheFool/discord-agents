@@ -1,3 +1,3 @@
 """
-Discord-Claude Bot Framework - Tools
+Discord Agents - Tools
 """

@@ -23,28 +23,17 @@ class WebSearchManager:
     """
 
     def __init__(self, stats_file: Path, max_daily: int = 300, reset_hour: int = 0):
-        """
-        Initialize web search manager.
-
-        Args:
-            stats_file: Path to stats JSON file
-            max_daily: Maximum searches per day (default 300)
-            reset_hour: UTC hour to reset counter (default 0 = midnight)
-        """
         self.stats_file = stats_file
         self.max_daily = max_daily
-        self.reset_hour = reset_hour
+        self.reset_hour = reset_hour  # UTC hour for quota reset
 
-        # Load or initialize stats
         self.stats = self._load_stats()
-
-        # Check if reset needed
         self._check_reset()
 
         logger.info(f"WebSearchManager initialized (max_daily={max_daily})")
 
     def _load_stats(self) -> Dict:
-        """Load stats from file or create new"""
+        """Load stats from file or initialize fresh"""
         if self.stats_file.exists():
             try:
                 with open(self.stats_file, 'r') as f:
@@ -52,7 +41,6 @@ class WebSearchManager:
             except Exception as e:
                 logger.error(f"Failed to load web search stats: {e}")
 
-        # Initialize new stats
         return {
             "last_reset": datetime.utcnow().isoformat(),
             "searches_today": 0,
@@ -60,7 +48,7 @@ class WebSearchManager:
         }
 
     def _save_stats(self):
-        """Save stats to file"""
+        """Persist stats to disk"""
         try:
             self.stats_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.stats_file, 'w') as f:
@@ -69,17 +57,16 @@ class WebSearchManager:
             logger.error(f"Failed to save web search stats: {e}")
 
     def _check_reset(self):
-        """Check if daily reset is needed"""
+        """Reset daily counter if past configured reset time"""
         last_reset = datetime.fromisoformat(self.stats["last_reset"])
         now = datetime.utcnow()
 
-        # Calculate next reset time
+        # Calculate when next reset should occur
         next_reset = last_reset.replace(hour=self.reset_hour, minute=0, second=0, microsecond=0)
         if now >= last_reset:
-            # If reset time has passed, add a day
             next_reset += timedelta(days=1)
 
-        # Check if we've passed the reset time
+        # Perform reset if we've crossed the threshold
         if now >= next_reset:
             logger.info(f"Daily web search quota reset (was: {self.stats['searches_today']})")
             self.stats["searches_today"] = 0
@@ -88,10 +75,10 @@ class WebSearchManager:
 
     def can_search(self) -> tuple[bool, Optional[str]]:
         """
-        Check if web search is allowed.
+        Check if web search is allowed under quota.
 
         Returns:
-            (can_search, reason_if_blocked)
+            (allowed, reason_if_blocked)
         """
         self._check_reset()
 
@@ -101,7 +88,7 @@ class WebSearchManager:
         return True, None
 
     def record_search(self):
-        """Record that a web search was performed"""
+        """Increment usage counters after successful search"""
         self.stats["searches_today"] += 1
         self.stats["total_searches"] += 1
         self._save_stats()
@@ -132,16 +119,13 @@ class WebSearchManager:
 
 def get_web_search_tools(max_uses: int = 3, citations_enabled: bool = True) -> list:
     """
-    Get web search tools for Claude API.
+    Generate web search tool definitions for Claude API.
 
-    These are built-in Anthropic tools.
+    These are Anthropic's built-in tools, not custom implementations.
 
     Args:
-        max_uses: Maximum number of searches per request (default 3)
-        citations_enabled: Enable citations for web_fetch (default True, required for end-user apps)
-
-    Returns:
-        List of tool definitions
+        max_uses: Maximum searches per request (prevents runaway usage)
+        citations_enabled: Enable citations for web_fetch (required for end-user apps)
     """
     return [
         {

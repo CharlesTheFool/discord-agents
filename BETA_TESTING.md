@@ -1,6 +1,6 @@
 # Beta Testing Guide - v0.4.0-beta
 
-Thank you for participating in the closed beta test of the Discord-Claude Bot Framework!
+You're part of a small group testing Discord Agents before its public release. Your feedback will directly shape how this project evolves, and we're genuinely grateful you're here.
 
 ## What to Test
 
@@ -24,36 +24,36 @@ Thank you for participating in the closed beta test of the Discord-Claude Bot Fr
 
 ## How to Report Issues
 
-We've created structured issue templates to make reporting easy!
+We've built structured templates to make reporting painless. Choose the one that fits your situation:
 
 ### Bug Reports
-**Found a bug?** Use the [Bug Report template](../../issues/new?template=bug_report.yml)
+**Found something broken?** Use the [Bug Report template](../../issues/new?template=bug_report.yml)
 
-The template will guide you through providing:
-- Bug description and expected behavior
-- Steps to reproduce
-- Environment details (OS, Python version, bot config)
+The template walks you through:
+- What broke and what you expected to happen
+- Steps to reproduce the issue
+- Your environment (OS, Python version, bot config)
 - Relevant logs
 
 ### Feature Requests
 **Have an idea?** Use the [Feature Request template](../../issues/new?template=feature_request.yml)
 
-Share your:
-- Problem statement and use case
-- Proposed solution
-- Examples of how you'd use the feature
+Tell us about:
+- The problem you're trying to solve
+- Your proposed solution
+- How you'd actually use the feature
 
 ### General Beta Feedback
-**Want to share broader feedback?** Use the [Beta Feedback template](../../issues/new?template=beta_feedback.yml)
+**Want to share broader observations?** Use the [Beta Feedback template](../../issues/new?template=beta_feedback.yml)
 
-This template is for:
-- Overall impressions and observations
-- Documentation feedback
-- Setup and onboarding experience
-- Performance and reliability notes
+This is for:
+- Overall impressions and experience
+- Documentation clarity and gaps
+- Setup and onboarding friction
+- Performance and reliability observations
 
 ### Security Issues
-**🚨 Found a security vulnerability?**
+⚠️ **Found a security vulnerability?**
 
 **DO NOT** create a public GitHub issue. Instead:
 - Use [GitHub Security Advisories](../../security/advisories/new) to report privately
@@ -72,14 +72,16 @@ See [CHANGELOG.md](CHANGELOG.md#known-issues) for current known issues.
 
 ## Feedback Channels
 
-- **Bugs:** GitHub Issues
+- **Bugs:** GitHub Issues (using templates above)
 - **Feature Requests:** GitHub Discussions (Ideas category)
 - **General Questions:** GitHub Discussions (Q&A category)
 
-## Beta Tester Benefits
+## What You Get
 
-- Early access to new features
-- Direct influence on framework development
+- Early access to features before they're public
+- Direct influence on framework development priorities
 - Recognition in v1.0.0 release notes
 
-Thank you for helping improve the Discord-Claude Bot Framework!
+---
+
+Your time and insights matter. Thank you for helping make this framework better.
