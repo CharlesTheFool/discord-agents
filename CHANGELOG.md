@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0-beta] - 2025-10-20
 
-**Status:** Closed beta release - framework feature-complete
+**Status:** Beta release - framework feature-complete
 
 ### Added
 
