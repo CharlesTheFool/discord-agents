@@ -15,6 +15,13 @@ discord:
   servers:
     - "YOUR_SERVER_ID_HERE"  # Replace with your Discord server ID
 
+  # Default server timezone (IANA format: America/New_York, Europe/London, UTC)
+  # Users can override with !timezone command
+  default_timezone: "UTC"
+
+  # Bot activity status shown in Discord
+  status: "Helpful AI assistant"
+
   # Historical message backfill
   backfill_enabled: true          # Fetch message history on startup
   backfill_days: 30               # Days of history (ignored if unlimited=true)
@@ -90,6 +97,10 @@ agentic:
 api:
   model: "claude-sonnet-4-5-20250929"
   max_tokens: 16000  # Total tokens (thinking + response)
+
+  # Optional: Specify model's knowledge cutoff date for date awareness
+  # Example: "2025-01-01" (leave empty/commented if not needed)
+  # knowledge_cutoff_date: "2025-01-01"
 
   # Extended Thinking - Step-by-step reasoning for better responses
   extended_thinking:

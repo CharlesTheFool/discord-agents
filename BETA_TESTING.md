@@ -1,6 +1,6 @@
-# Beta Testing Guide - v0.4.0-beta
+# Beta Testing Guide - v0.4.1 (Pre-release)
 
-You're part of a small group testing Discord Agents before its public release. Your feedback will directly shape how this project evolves, and we're genuinely grateful you're here.
+You're part of a small group testing Discord Agents before its public release. This is still beta software undergoing active testing and refinement. Your feedback will directly shape how this project evolves, and we're genuinely grateful you're here.
 
 ## What to Test
 

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.1] - 2025-10-24
+
+**Status:** Pre-release (beta) - polish and refinements
+
+### Added
+
+**Date & Time Awareness**
+- **Current Date Display** - System prompt shows current date/time in configured server timezone
+- **Knowledge Cutoff** - Optional `knowledge_cutoff_date` configuration displays model's training cutoff date
+- **Timezone Tracking System** - `!timezone` / `!tz` commands let users set personal timezones stored in memory profiles
+- **Server Timezone** - Configurable default timezone for the server (defaults to UTC, supports IANA format)
+
+**Lifecycle Event Tracking**
+- **Online/Offline Events** - System messages logged when bot starts or stops gracefully
+- **Crash Detection** - Bot detects ungraceful shutdowns and logs crash events
+- **Per-Channel Events** - Lifecycle messages appear in each channel's context for awareness
+
+**Bot Customization**
+- **Configurable Status** - Discord activity status now configurable via `discord.status` field
+- **Crash Test Mode** - `--crash-test` flag for testing crash detection during development
+
+### Changed
+- **Database Schema** - Added `is_system` column for system messages with automatic migration
+- **Timezone Handling** - All timestamps normalized to naive UTC for consistency
+- **User Memory Files** - Timezone command uses usernames (not user IDs) for readable filenames
+
+### Technical
+- **Dependencies** - Added `pytz>=2024.1` for timezone support
+- **Backward Compatibility** - All changes backward compatible via auto-migration and sensible defaults
+
+---
+
 ## [0.4.0-beta] - 2025-10-20
 
 **Status:** Beta release - framework feature-complete

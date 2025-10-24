@@ -193,8 +193,54 @@ class DiscordClient(discord.Client):
         for guild in self.guilds:
             logger.info(f"  - {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
 
+        # Check for crash and insert lifecycle events
+        from pathlib import Path
+        from datetime import datetime
+
+        flag_file = Path(f"persistence/{self.config.bot_id}_running.flag")
+
+        if flag_file.exists():
+            # Previous session crashed (flag wasn't removed)
+            try:
+                offline_time = datetime.fromtimestamp(flag_file.stat().st_mtime)
+                logger.warning(f"Detected crash: Bot went offline at {offline_time}")
+
+                # Insert crash/offline tag for each channel in each server
+                for guild in self.guilds:
+                    for channel in guild.text_channels:
+                        try:
+                            await self.message_memory.insert_system_message(
+                                content="[YOU WENT OFFLINE - CRASH]",
+                                channel_id=str(channel.id),
+                                guild_id=str(guild.id),
+                                timestamp=offline_time
+                            )
+                        except Exception as e:
+                            logger.debug(f"Error inserting crash event to channel {channel.id}: {e}")
+            except Exception as e:
+                logger.error(f"Error processing crash detection: {e}", exc_info=True)
+
+        # Insert online tag for each channel in each server
+        online_time = datetime.utcnow()
+        for guild in self.guilds:
+            for channel in guild.text_channels:
+                try:
+                    await self.message_memory.insert_system_message(
+                        content="[YOU CAME ONLINE]",
+                        channel_id=str(channel.id),
+                        guild_id=str(guild.id),
+                        timestamp=online_time
+                    )
+                except Exception as e:
+                    logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
+
+        # Write running flag with current timestamp
+        flag_file.parent.mkdir(parents=True, exist_ok=True)
+        flag_file.write_text(str(online_time.timestamp()))
+        logger.info(f"Running flag created: {flag_file}")
+
         # Set activity status
-        activity = discord.Game(name="Powered by Claude Sonnet 4.5")
+        activity = discord.Game(name=self.config.discord.status)
         await self.change_presence(activity=activity)
 
         # Give reactive engine access to Discord client for periodic checks
@@ -255,6 +301,12 @@ class DiscordClient(discord.Client):
                         f"Ignoring message from unconfigured server: {message.guild.name}"
                     )
                     return
+
+        # Check for timezone command (before storing message)
+        if not message.author.bot:
+            timezone_result = await self._handle_timezone_command(message)
+            if timezone_result:
+                return  # Command handled, don't process further
 
         # Store ALL messages in memory (including bot's own for context)
         try:
@@ -478,6 +530,121 @@ class DiscordClient(discord.Client):
             logger.info(f"  ({failed_channels} channels skipped due to permissions/errors)")
 
         return total_messages
+
+    async def _handle_timezone_command(self, message: discord.Message) -> bool:
+        """
+        Handle timezone setting command (!timezone or !tz).
+
+        Returns True if command was handled, False otherwise.
+        """
+        content_lower = message.content.lower().strip()
+
+        # Check for timezone command prefix
+        if not (content_lower.startswith("!timezone") or content_lower.startswith("!tz")):
+            return False
+
+        # Extract timezone argument
+        parts = message.content.split(maxsplit=1)
+        if len(parts) < 2:
+            await message.channel.send(
+                f"{message.author.mention} Usage: `!timezone <timezone>` or `!tz <timezone>`\n"
+                f"Example: `!timezone America/New_York` or `!tz EST`",
+                delete_after=15
+            )
+            return True
+
+        tz_input = parts[1].strip()
+
+        # Validate and normalize timezone
+        import pytz
+        normalized_tz = None
+
+        # Try as IANA timezone name first
+        try:
+            pytz.timezone(tz_input)
+            normalized_tz = tz_input
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Try common abbreviations
+            abbreviation_map = {
+                'est': 'America/New_York',
+                'edt': 'America/New_York',
+                'cst': 'America/Chicago',
+                'cdt': 'America/Chicago',
+                'mst': 'America/Denver',
+                'mdt': 'America/Denver',
+                'pst': 'America/Los_Angeles',
+                'pdt': 'America/Los_Angeles',
+                'utc': 'UTC',
+                'gmt': 'GMT',
+            }
+
+            tz_lower = tz_input.lower()
+            if tz_lower in abbreviation_map:
+                normalized_tz = abbreviation_map[tz_lower]
+            else:
+                await message.channel.send(
+                    f"{message.author.mention} Invalid timezone: `{tz_input}`\n"
+                    f"Use IANA format (e.g., `America/New_York`) or common abbreviations (e.g., `EST`, `PST`).",
+                    delete_after=15
+                )
+                return True
+
+        # Write to user's memory profile
+        if message.guild:
+            server_id = str(message.guild.id)
+            user_id = message.author.name  # Use username for readable filenames
+            memory_path = self.reactive_engine.memory_manager.get_user_profile_path(server_id, user_id)
+
+            # Convert memory path to filesystem path
+            from pathlib import Path
+            relative_path = memory_path.replace(f"/memories/{self.config.bot_id}/", "")
+            file_path = Path(f"memories/{self.config.bot_id}") / relative_path
+
+            # Ensure directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Read existing profile or create new
+            try:
+                if file_path.exists():
+                    with open(file_path, 'r') as f:
+                        profile_content = f.read()
+                else:
+                    profile_content = ""
+
+                # Update or add timezone
+                import re
+                if "**Timezone:**" in profile_content:
+                    # Replace existing timezone
+                    profile_content = re.sub(
+                        r'\*\*Timezone:\*\* .*\n',
+                        f'**Timezone:** {normalized_tz}\n',
+                        profile_content
+                    )
+                else:
+                    # Add timezone at top
+                    profile_content = f"**Timezone:** {normalized_tz}\n\n" + profile_content
+
+                # Write back
+                with open(file_path, 'w') as f:
+                    f.write(profile_content)
+
+                logger.info(f"Set timezone for user {message.author.name} to {normalized_tz}")
+
+            except Exception as e:
+                logger.error(f"Error writing timezone to user profile: {e}", exc_info=True)
+                await message.channel.send(
+                    f"{message.author.mention} Error saving timezone. Please try again.",
+                    delete_after=10
+                )
+                return True
+
+        # Send confirmation
+        await message.channel.send(
+            f"✓ Timezone set to **{normalized_tz}** for {message.author.mention}",
+            delete_after=10
+        )
+
+        return True
 
     async def _daily_reindex_task(self):
         """

@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.4.0-beta (Closed Beta)
+**Version:** 0.4.1 (Pre-release Beta)
 
 Build intelligent Discord bots that think, remember, and act autonomously. Powered by Anthropic's Claude Sonnet 4.5.
 
@@ -8,6 +8,7 @@ Build intelligent Discord bots that think, remember, and act autonomously. Power
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Discord.py](https://img.shields.io/badge/discord.py-2.3+-blue.svg)](https://discordpy.readthedocs.io/)
 [![Security](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
+[![Status](https://img.shields.io/badge/status-beta-yellow.svg)](CHANGELOG.md)
 
 ---
 
@@ -56,6 +57,8 @@ Rate limiting prevents embarrassment (20/min, 100/hour per channel). Web search 
 - **Discord Bot** - [Create application](https://discord.com/developers/applications)
   - Enable "Message Content Intent" in Bot settings
 - **Anthropic API Key** - [Get key](https://console.anthropic.com/)
+  - **Requires Claude 4+ family models** (e.g., claude-sonnet-4-5-20250514)
+  - Claude 3.x models are not supported
 
 ---
 
@@ -101,12 +104,15 @@ Edit `bots/alpha.yaml`:
 discord:
   servers:
     - "YOUR_SERVER_ID_HERE"  # Right-click server → Copy ID
+  default_timezone: "UTC"  # Common: America/New_York, America/Los_Angeles, America/Phoenix, Europe/London
 
 personality:
   base_prompt: |
     Customize your bot's personality here.
     Define tone, expertise, behavior preferences.
 ```
+
+**Timezones:** Use [IANA format](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples: `America/New_York` (EST/EDT), `America/Chicago` (CST/CDT), `America/Phoenix` (MST, no DST), `America/Los_Angeles` (PST/PDT), `Europe/London` (GMT/BST), `UTC`.
 
 ### 5. Run Your Bot
 
@@ -296,7 +302,7 @@ See [CHANGELOG.md](CHANGELOG.md#known-issues) for current issues.
 
 ## Project Stats
 
-**Current Version:** 0.4.0-beta (Closed Beta)
+**Current Version:** 0.4.1 (Pre-release Beta)
 
 **Framework:**
 - 12 core modules

@@ -35,8 +35,9 @@ class BotManager:
     Manages bot lifecycle: initialization, component setup, graceful shutdown.
     """
 
-    def __init__(self, bot_id: str):
+    def __init__(self, bot_id: str, crash_test: bool = False):
         self.bot_id = bot_id
+        self.crash_test = crash_test
         self.config: BotConfig = None
         self.client: DiscordClient = None
         self.message_memory: MessageMemory = None
@@ -196,6 +197,18 @@ class BotManager:
         try:
             discord_token = await self.initialize()
 
+            # Schedule crash test if enabled
+            if self.crash_test:
+                async def crash_after_delay():
+                    await asyncio.sleep(5)
+                    logger.warning("CRASH TEST: Forcefully terminating in 1 second...")
+                    await asyncio.sleep(1)
+                    logger.error("CRASH TEST: Simulating crash via os._exit(1)")
+                    os._exit(1)
+
+                asyncio.create_task(crash_after_delay())
+                logger.warning("CRASH TEST MODE: Bot will crash in 6 seconds")
+
             logger.info("Connecting to Discord...")
             await self.client.start(discord_token)
 
@@ -214,6 +227,32 @@ class BotManager:
         logger.info("Shutting down bot...")
 
         try:
+            # Insert offline lifecycle event before shutdown
+            if self.client and self.message_memory:
+                from datetime import datetime
+                offline_time = datetime.utcnow()
+
+                for guild in self.client.guilds:
+                    for channel in guild.text_channels:
+                        try:
+                            await self.message_memory.insert_system_message(
+                                content="[YOU WENT OFFLINE]",
+                                channel_id=str(channel.id),
+                                guild_id=str(guild.id),
+                                timestamp=offline_time
+                            )
+                        except Exception as e:
+                            logger.debug(f"Error inserting offline event to channel {channel.id}: {e}")
+
+                logger.info("Offline lifecycle events inserted")
+
+            # Remove running flag (indicates clean shutdown)
+            from pathlib import Path
+            flag_file = Path(f"persistence/{self.bot_id}_running.flag")
+            if flag_file.exists():
+                flag_file.unlink()
+                logger.info("Running flag removed (clean shutdown)")
+
             # Shutdown engines (cancel background tasks)
             if hasattr(self, 'client') and self.client and hasattr(self.client, 'reactive_engine'):
                 await self.client.reactive_engine.shutdown()
@@ -255,11 +294,13 @@ def print_usage():
     print("Discord Agents - Bot Manager")
     print()
     print("Usage:")
-    print("  python bot_manager.py spawn <bot_id>   - Start a bot")
-    print("  python bot_manager.py --help           - Show this help")
+    print("  python bot_manager.py spawn <bot_id>             - Start a bot")
+    print("  python bot_manager.py spawn <bot_id> --crash-test - Start and crash after 6s (tests crash detection)")
+    print("  python bot_manager.py --help                     - Show this help")
     print()
     print("Examples:")
-    print("  python bot_manager.py spawn alpha      - Start the alpha bot")
+    print("  python bot_manager.py spawn alpha                - Start the alpha bot")
+    print("  python bot_manager.py spawn slh-01 --crash-test  - Test crash detection")
     print()
     print("Configuration:")
     print("  1. Copy .env.example to .env")
@@ -279,12 +320,15 @@ def main():
     if command == "spawn":
         if len(sys.argv) < 3:
             print("Error: Missing bot_id")
-            print("Usage: python bot_manager.py spawn <bot_id>")
+            print("Usage: python bot_manager.py spawn <bot_id> [--crash-test]")
             sys.exit(1)
 
         bot_id = sys.argv[2]
 
-        manager = BotManager(bot_id)
+        # Check for --crash-test flag
+        crash_test = "--crash-test" in sys.argv
+
+        manager = BotManager(bot_id, crash_test=crash_test)
 
         try:
             asyncio.run(manager.run())

@@ -1,7 +1,7 @@
 # Discord-Claude Bot Framework - Architecture
 
-**Version:** 0.4.0-beta
-**Last Updated:** 2025-10-20
+**Version:** 0.4.1 (Pre-release Beta)
+**Last Updated:** 2025-10-24
 
 This document provides comprehensive technical reference for the Discord-Claude Bot Framework. It serves as the primary guide for developers and AI coding agents working with the codebase.
 
@@ -1198,9 +1198,10 @@ discord-claude-framework/
 
 ## Version Information
 
-**Current Version:** 0.4.0-beta
+**Current Version:** 0.4.1 (Pre-release Beta)
 
 **Version History:**
+- **v0.4.1** (2025-10-24) - Pre-release beta: Polish & refinements with date/timezone awareness, lifecycle tracking, configurable status
 - **v0.4.0-beta** (2025-10-20) - Tools & polish, closed beta
 - **v0.3.0** (2025-10-04) - Autonomous agentic behaviors
 - **v0.2.0** (2025-10-04) - Intelligent context and memory

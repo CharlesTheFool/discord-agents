@@ -120,6 +120,7 @@ class APIConfig:
     """Claude API configuration"""
     model: str = "claude-sonnet-4-5-20250929"
     max_tokens: int = 4096
+    knowledge_cutoff_date: Optional[str] = None  # Optional model knowledge cutoff (e.g., "2025-01-01")
     extended_thinking: ExtendedThinkingConfig = field(default_factory=ExtendedThinkingConfig)
     context_editing: ContextEditingConfig = field(default_factory=ContextEditingConfig)
     throttling: ThrottlingConfig = field(default_factory=ThrottlingConfig)
@@ -169,6 +170,8 @@ class DiscordConfig:
     """Discord-specific configuration"""
     token_env_var: str = "DISCORD_BOT_TOKEN"  # Environment variable containing bot token
     servers: List[str] = field(default_factory=list)  # Guild IDs
+    default_timezone: str = "UTC"  # Default server timezone (IANA format, e.g., "America/New_York")
+    status: str = "Powered by Claude"  # Bot activity status shown in Discord
 
     # Historical message backfill
     backfill_enabled: bool = True  # Fetch historical messages on startup
@@ -256,7 +259,13 @@ class BotConfig:
         discord_data = data.get("discord", {})
         discord = DiscordConfig(
             token_env_var=discord_data.get("token_env_var", "DISCORD_BOT_TOKEN"),
-            servers=discord_data.get("servers", [])
+            servers=discord_data.get("servers", []),
+            default_timezone=discord_data.get("default_timezone", "UTC"),
+            status=discord_data.get("status", "Powered by Claude"),
+            backfill_enabled=discord_data.get("backfill_enabled", True),
+            backfill_days=discord_data.get("backfill_days", 30),
+            backfill_unlimited=discord_data.get("backfill_unlimited", False),
+            backfill_in_background=discord_data.get("backfill_in_background", True)
         )
 
         # Parse reactive config
@@ -345,6 +354,7 @@ class BotConfig:
         api = APIConfig(
             model=api_data.get("model", "claude-sonnet-4-5-20250929"),
             max_tokens=api_data.get("max_tokens", 4096),
+            knowledge_cutoff_date=api_data.get("knowledge_cutoff_date"),
             extended_thinking=extended_thinking,
             context_editing=context_editing,
             throttling=throttling,

@@ -12,6 +12,7 @@ Builds rich context from Discord messages with:
 import discord
 import logging
 import re
+import pytz
 from datetime import datetime
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 import sys
@@ -72,7 +73,15 @@ class ContextBuilder:
         if message.guild and message.guild.me:
             bot_display_name = message.guild.me.display_name
 
-        current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+        # Build date/time awareness context in server timezone
+        server_tz = pytz.timezone(self.config.discord.default_timezone)
+        current_time_obj = datetime.utcnow().replace(tzinfo=pytz.UTC).astimezone(server_tz)
+        current_time = current_time_obj.strftime('%Y-%m-%d %H:%M %Z')
+        date_context = f"Current server date/time: {current_time}"
+
+        # Add knowledge cutoff if configured
+        if self.config.api.knowledge_cutoff_date:
+            date_context += f" (knowledge cutoff: {self.config.api.knowledge_cutoff_date})"
 
         # Get base personality prompt
         base_prompt = (
@@ -145,13 +154,18 @@ Skip follow-ups for:
 
         # Assemble system prompt
         system_prompt = f"""You are {bot_display_name}.
-Current time: {current_time}
+{date_context}
+
+NOTE: Users can set personal timezones with: !timezone [timezone]
+User timezones are stored in their memory profiles.
 
 {base_prompt}{followup_instructions}
 
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
 
 NOTE: Messages showing "[Forwarded message - content not accessible]" are forwards from other channels. You cannot see forwarded message content due to Discord API limitations.
+
+NOTE: Messages showing "[YOU CAME ONLINE]" or "[YOU WENT OFFLINE]" are lifecycle events indicating when you were restarted or shutdown.
 
 CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response."""
 

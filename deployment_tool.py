@@ -96,7 +96,7 @@ def export_deployment(output_path=None, exclude=None, dev_mode=False):
             manifest = {
                 'created': datetime.now().isoformat(),
                 'items': list(included_items.keys()),
-                'version': '0.4.0-beta',
+                'version': '0.4.1',
                 'framework': 'discord-agents'
             }
             zipf.writestr('manifest.json', json.dumps(manifest, indent=2))

@@ -19,5 +19,8 @@ Pillow>=10.0.0
 # Configuration
 pyyaml>=6.0.0
 
+# Timezone support
+pytz>=2024.1
+
 # SQLite async support
 aiosqlite>=0.19.0

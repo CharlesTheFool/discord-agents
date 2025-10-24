@@ -28,6 +28,7 @@ class StoredMessage:
     content: str
     timestamp: datetime
     is_bot: bool
+    is_system: bool
     has_attachments: bool
     mentions: List[str]
 
@@ -50,6 +51,7 @@ class MessageMemory:
         content TEXT,
         timestamp DATETIME NOT NULL,
         is_bot BOOLEAN NOT NULL,
+        is_system BOOLEAN NOT NULL DEFAULT 0,
         has_attachments BOOLEAN NOT NULL,
         mentions TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -100,7 +102,32 @@ class MessageMemory:
         await self._db.executescript(self.SCHEMA)
         await self._db.commit()
 
+        # Run migrations for existing databases
+        await self._run_migrations()
+
         logger.info(f"Message memory initialized: {self.db_path}")
+
+    async def _run_migrations(self):
+        """Run database migrations for schema updates"""
+        if not self._db:
+            return
+
+        # Migration: Add is_system column if it doesn't exist
+        try:
+            cursor = await self._db.execute("PRAGMA table_info(messages)")
+            columns = await cursor.fetchall()
+            column_names = [col[1] for col in columns]
+
+            if "is_system" not in column_names:
+                logger.info("Running migration: Adding is_system column to messages table")
+                await self._db.execute("ALTER TABLE messages ADD COLUMN is_system BOOLEAN NOT NULL DEFAULT 0")
+                await self._db.commit()
+                logger.info("Migration complete: is_system column added")
+            else:
+                logger.debug("is_system column already exists, skipping migration")
+
+        except Exception as e:
+            logger.error(f"Error running migrations: {e}", exc_info=True)
 
     async def close(self):
         """Close database connection"""
@@ -326,6 +353,57 @@ class MessageMemory:
         )
         await self._db.commit()
         logger.debug(f"Deleted message {message_id}")
+
+    async def insert_system_message(
+        self, content: str, channel_id: str, guild_id: str, timestamp: datetime
+    ):
+        """
+        Insert a system message (lifecycle event) into the database.
+
+        System messages appear in message history but are marked with is_system=True.
+        They roll out of context naturally with regular messages.
+
+        Args:
+            content: System message content (e.g., "[YOU CAME ONLINE]")
+            channel_id: Channel ID (use "SYSTEM" for bot-wide events)
+            guild_id: Guild ID
+            timestamp: Timestamp of the event
+        """
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        # Generate unique message ID for system message
+        message_id = f"system_{timestamp.timestamp()}"
+
+        try:
+            await self._db.execute(
+                """
+                INSERT INTO messages (
+                    message_id, channel_id, guild_id,
+                    author_id, author_name, content,
+                    timestamp, is_bot, is_system, has_attachments, mentions
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message_id,
+                    channel_id,
+                    guild_id,
+                    "SYSTEM",  # author_id
+                    "System",  # author_name
+                    content,
+                    timestamp.isoformat(),
+                    False,  # is_bot
+                    True,   # is_system
+                    False,  # has_attachments
+                    "[]",   # mentions (empty)
+                ),
+            )
+            await self._db.commit()
+            logger.info(f"Inserted system message: {content} at {timestamp}")
+
+        except aiosqlite.IntegrityError:
+            # System message already exists (e.g., duplicate startup)
+            logger.debug(f"System message already exists: {message_id}")
 
     async def get_recent(
         self, channel_id: str, limit: int = 20, exclude_message_ids: List[int] = None
@@ -617,6 +695,9 @@ class MessageMemory:
     def _row_to_message(self, row: aiosqlite.Row) -> StoredMessage:
         """Convert database row to StoredMessage"""
         timestamp = datetime.fromisoformat(row["timestamp"])
+        # Strip timezone to ensure all timestamps are naive UTC
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
 
         mentions_json = row["mentions"]
         mentions = json.loads(mentions_json) if mentions_json else []
@@ -630,6 +711,7 @@ class MessageMemory:
             content=row["content"],
             timestamp=timestamp,
             is_bot=bool(row["is_bot"]),
+            is_system=bool(row["is_system"]) if "is_system" in row.keys() else False,
             has_attachments=bool(row["has_attachments"]),
             mentions=mentions,
         )

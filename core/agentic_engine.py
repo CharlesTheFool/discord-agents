@@ -461,7 +461,7 @@ class AgenticEngine:
             return 999.0  # Very idle
 
         last_message = recent[0]
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()  # Naive UTC to match database timestamps
         delta = now - last_message.timestamp
         hours = delta.total_seconds() / 3600
 

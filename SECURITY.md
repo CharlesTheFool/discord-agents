@@ -6,6 +6,7 @@ We actively support the following versions with security updates:
 
 | Version | Supported |
 | ------- | --------- |
+| 0.4.1 | ✅ |
 | 0.4.0-beta | ✅ |
 | < 0.4.0 | ❌ |
 
