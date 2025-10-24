@@ -27,6 +27,10 @@ if TYPE_CHECKING:
 
 from .memory_tool_executor import MemoryToolExecutor
 from .context_builder import ContextBuilder
+from .mcp_manager import MCPManager
+from .skills_manager import SkillsManager
+from .multimedia_processor import MultimediaProcessor
+from .data_isolation import DataIsolationEnforcer
 from tools.web_search import WebSearchManager, get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
 
@@ -102,6 +106,36 @@ class ReactiveEngine:
         self.discord_tool_executor = None
         self._discord_tools_enabled = True  # Always enabled for Phase 4
 
+        # Initialize v0.5.0 managers
+        # MCP Manager
+        self.mcp_manager = None
+        if config.mcp.enabled:
+            self.mcp_manager = MCPManager(config_path=Path(config.mcp.config_file))
+            logger.info("MCP manager initialized")
+
+        # Skills Manager
+        self.skills_manager = None
+        if config.skills.enabled:
+            self.skills_manager = SkillsManager(
+                skills_dir=Path(config.skills.skills_dir),
+                cache_file=Path(config.skills.cache_file),
+                anthropic_api_key=anthropic_api_key
+            )
+            logger.info("Skills manager initialized")
+
+        # Multimedia Processor
+        self.multimedia_processor = None
+        if config.multimedia.enabled:
+            self.multimedia_processor = MultimediaProcessor(
+                anthropic_client=self.anthropic,
+                max_file_size_mb=config.multimedia.max_file_size_mb
+            )
+            logger.info("Multimedia processor initialized")
+
+        # Data Isolation Enforcer
+        self.data_isolation = DataIsolationEnforcer(config.data_isolation)
+        logger.info(f"Data isolation enforcer initialized (enabled: {config.data_isolation.enabled})")
+
         # Track background tasks for clean shutdown
         self._background_tasks = set()
 
@@ -119,6 +153,29 @@ class ReactiveEngine:
         self.discord_client = None  # Set by DiscordClient on_ready
 
         logger.info(f"ReactiveEngine initialized for bot '{config.bot_id}'")
+
+    async def async_initialize(self):
+        """
+        Async initialization for managers that require I/O.
+        Should be called after bot is ready.
+        """
+        # Initialize MCP Manager (discover tools from servers)
+        if self.mcp_manager:
+            try:
+                await self.mcp_manager.initialize()
+                logger.info("MCP manager initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize MCP manager: {e}", exc_info=True)
+                self.mcp_manager = None  # Disable on failure
+
+        # Initialize Skills Manager (scan and upload skills)
+        if self.skills_manager:
+            try:
+                await self.skills_manager.initialize()
+                logger.info("Skills manager initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Skills manager: {e}", exc_info=True)
+                self.skills_manager = None  # Disable on failure
 
     async def handle_urgent(self, message: discord.Message):
         """
@@ -144,6 +201,18 @@ class ReactiveEngine:
             content=message.content,
             is_mention=True
         )
+
+        # Process multimedia attachments (v0.5.0)
+        multimedia_files = []
+        if self.multimedia_processor and message.attachments:
+            for attachment in message.attachments:
+                try:
+                    file_info = await self.multimedia_processor.process_attachment(attachment)
+                    if file_info:
+                        multimedia_files.append(file_info)
+                        logger.info(f"Processed multimedia file: {attachment.filename}")
+                except Exception as e:
+                    logger.error(f"Failed to process attachment {attachment.filename}: {e}")
 
         # @mentions ALWAYS bypass rate limits (especially ignore threshold)
         # Get stats for logging but don't check limits
@@ -204,12 +273,44 @@ class ReactiveEngine:
                         else:
                             logger.debug(f"Web search disabled for this request: {reason}")
 
+                    # Add MCP tools if enabled (v0.5.0)
+                    if self.mcp_manager:
+                        mcp_tools = self.mcp_manager.get_tools_for_api()
+                        if mcp_tools:
+                            tools.extend(mcp_tools)
+                            logger.debug(f"Added {len(mcp_tools)} MCP tools to API request")
+
+                    # Add code execution tool if multimedia or skills enabled (v0.5.0)
+                    code_execution_needed = self.multimedia_processor or self.skills_manager
+                    if code_execution_needed:
+                        tools.append({
+                            "type": "code_execution_20250825",
+                            "name": "code_execution"
+                        })
+                        beta_headers.append("code-execution-2025-08-25")
+                        logger.debug("Code execution tool added to API request")
+
+                        # Add files API beta if multimedia enabled
+                        if self.multimedia_processor:
+                            beta_headers.append("files-api-2025-04-14")
+
+                        # Add skills beta if skills enabled
+                        if self.skills_manager:
+                            beta_headers.append("skills-2025-10-02")
+
                     api_params = {
                         "model": self.config.api.model,
                         "max_tokens": self.config.api.max_tokens,
                         "tools": tools,
                         "extra_headers": {"anthropic-beta": ",".join(beta_headers)}
                     }
+
+                    # Add skills container if skills enabled (v0.5.0)
+                    if self.skills_manager:
+                        skills_list = self.skills_manager.get_all_skills_for_api() if self.config.skills.include_anthropic_skills else self.skills_manager.get_skills_for_api()
+                        if skills_list:
+                            api_params["container"] = {"skills": skills_list}
+                            logger.debug(f"Added {len(skills_list)} skills to container")
 
                     # Add context management if enabled
                     if self.config.api.context_editing.enabled:
@@ -243,7 +344,36 @@ class ReactiveEngine:
                         api_params["system"] = context["system_prompt"]
 
                     # Add messages
-                    api_params["messages"] = context["messages"]
+                    # Include multimedia files in message content if present (v0.5.0)
+                    messages = context["messages"].copy()
+                    if multimedia_files:
+                        # Add multimedia files to the last user message
+                        if messages and messages[-1]["role"] == "user":
+                            # Convert content to list format if it's a string
+                            if isinstance(messages[-1]["content"], str):
+                                messages[-1]["content"] = [
+                                    {"type": "text", "text": messages[-1]["content"]}
+                                ]
+
+                            # Add file uploads
+                            for file_info in multimedia_files:
+                                messages[-1]["content"].append({
+                                    "type": "container_upload",
+                                    "file_id": file_info["file_id"]
+                                })
+                                logger.debug(f"Added multimedia file to message: {file_info['filename']}")
+
+                                # Add processing instructions as a text block
+                                instructions = self.multimedia_processor.get_processing_instructions(
+                                    file_info["file_type"],
+                                    file_info["filename"]
+                                )
+                                messages[-1]["content"].append({
+                                    "type": "text",
+                                    "text": instructions
+                                })
+
+                    api_params["messages"] = messages
 
                     # Add extended thinking if enabled
                     if self.config.api.extended_thinking.enabled:
@@ -372,6 +502,30 @@ class ReactiveEngine:
                                                 "type": "tool_result",
                                                 "tool_use_id": block.id,
                                                 "content": result
+                                            })
+
+                                    # Handle MCP tools (v0.5.0)
+                                    elif "_" in block.name and self.mcp_manager:
+                                        # MCP tools are prefixed with server name (e.g., "github_get_commits")
+                                        logger.debug(f"Executing MCP tool: {block.name} with input: {block.input}")
+                                        try:
+                                            result = await self.mcp_manager.execute_tool(
+                                                tool_name=block.name,
+                                                arguments=block.input
+                                            )
+
+                                            tool_results.append({
+                                                "type": "tool_result",
+                                                "tool_use_id": block.id,
+                                                "content": str(result)
+                                            })
+                                        except Exception as e:
+                                            logger.error(f"MCP tool execution failed: {e}", exc_info=True)
+                                            tool_results.append({
+                                                "type": "tool_result",
+                                                "tool_use_id": block.id,
+                                                "content": f"Error executing MCP tool: {str(e)}",
+                                                "is_error": True
                                             })
 
                             # Add assistant message with tool use to conversation

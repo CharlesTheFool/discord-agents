@@ -170,3 +170,51 @@ logging:
   file: "logs/{bot_id}.log"
   max_size_mb: 50
   backup_count: 3
+
+# ===== v0.5.0 FEATURES =====
+
+# ===== MCP (MODEL CONTEXT PROTOCOL) =====
+# Connect Claude to external data sources and APIs
+mcp:
+  enabled: false              # Enable MCP server connections
+  config_file: "mcp_servers.json"  # MCP server configuration file
+
+# ===== SKILLS INTEGRATION =====
+# Modular instruction packages for specialized tasks
+skills:
+  enabled: false              # Enable skills auto-discovery
+  skills_dir: "skills"        # Directory for skill .zip files
+  cache_file: ".skills_cache.json"  # Hash-based upload cache
+  include_anthropic_skills: true  # Include built-in xlsx, pptx, docx, pdf skills
+
+# ===== DATA ISOLATION =====
+# Granular access controls for multi-server/multi-tenant deployments
+# Default: permissive (no restrictions) - opt-in to restrictions as needed
+data_isolation:
+  enabled: false              # Enable data isolation controls
+  default_mode: "permissive"  # permissive | server | channel
+
+  # Memory file access scope
+  memory_scope: "global"      # global | server | channel
+  allow_cross_server_memory: true
+
+  # Message search scope
+  search_scope: "global"      # global | server | channel
+  allow_cross_channel_search: true
+
+  # Discord tools scope
+  discord_tools_scope: "global"  # global | server | channel
+
+# ===== MULTIMEDIA FILE SUPPORT =====
+# Process non-image files (PDFs, Office docs, text files)
+multimedia:
+  enabled: false              # Enable multimedia file processing
+  max_file_size_mb: 32        # Maximum file size to process
+  supported_types:            # File types to process
+    - "pdf"
+    - "docx"
+    - "xlsx"
+    - "txt"
+    - "md"
+    - "csv"
+    - "json"

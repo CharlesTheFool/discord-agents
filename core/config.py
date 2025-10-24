@@ -157,6 +157,50 @@ class ImagesConfig:
 
 
 @dataclass
+class MCPConfig:
+    """MCP (Model Context Protocol) server configuration"""
+    enabled: bool = False
+    config_file: str = "mcp_servers.json"
+
+
+@dataclass
+class SkillsConfig:
+    """Skills auto-discovery configuration"""
+    enabled: bool = False
+    skills_dir: str = "skills"
+    cache_file: str = ".skills_cache.json"
+    include_anthropic_skills: bool = True  # Include built-in xlsx, pptx, docx, pdf
+
+
+@dataclass
+class DataIsolationConfig:
+    """Data isolation and access control configuration"""
+    enabled: bool = False
+    default_mode: str = "permissive"  # permissive | server | channel
+
+    # Memory access controls
+    memory_scope: str = "global"  # global | server | channel
+    allow_cross_server_memory: bool = True
+
+    # Message search controls
+    search_scope: str = "global"  # global | server | channel
+    allow_cross_channel_search: bool = True
+
+    # Discord tool controls
+    discord_tools_scope: str = "global"  # global | server | channel
+
+
+@dataclass
+class MultimediaConfig:
+    """Multimedia file processing configuration"""
+    enabled: bool = False
+    max_file_size_mb: int = 32  # Maximum file size to process
+    supported_types: List[str] = field(default_factory=lambda: [
+        "pdf", "docx", "xlsx", "txt", "md", "csv", "json"
+    ])
+
+
+@dataclass
 class LoggingConfig:
     """Logging configuration"""
     level: str = "INFO"
@@ -199,6 +243,12 @@ class BotConfig:
     rate_limiting: RateLimitingConfig = field(default_factory=RateLimitingConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+
+    # v0.5.0 features
+    mcp: MCPConfig = field(default_factory=MCPConfig)
+    skills: SkillsConfig = field(default_factory=SkillsConfig)
+    data_isolation: DataIsolationConfig = field(default_factory=DataIsolationConfig)
+    multimedia: MultimediaConfig = field(default_factory=MultimediaConfig)
 
     @classmethod
     def load(cls, yaml_path: Path) -> 'BotConfig':
@@ -379,6 +429,14 @@ class BotConfig:
             engagement_tracking_delay=rate_limiting_data.get("engagement_tracking_delay", 30),
         )
 
+        # Parse images config
+        images_data = data.get("images", {})
+        images = ImagesConfig(
+            enabled=images_data.get("enabled", False),
+            max_per_message=images_data.get("max_per_message", 5),
+            compression_target=images_data.get("compression_target", 0.73)
+        )
+
         # Parse logging config
         logging_data = data.get("logging", {})
         logging_config = LoggingConfig(
@@ -386,6 +444,41 @@ class BotConfig:
             file=logging_data.get("file", "logs/{bot_id}.log"),
             max_size_mb=logging_data.get("max_size_mb", 50),
             backup_count=logging_data.get("backup_count", 3),
+        )
+
+        # Parse v0.5.0 features
+        mcp_data = data.get("mcp", {})
+        mcp = MCPConfig(
+            enabled=mcp_data.get("enabled", False),
+            config_file=mcp_data.get("config_file", "mcp_servers.json")
+        )
+
+        skills_data = data.get("skills", {})
+        skills = SkillsConfig(
+            enabled=skills_data.get("enabled", False),
+            skills_dir=skills_data.get("skills_dir", "skills"),
+            cache_file=skills_data.get("cache_file", ".skills_cache.json"),
+            include_anthropic_skills=skills_data.get("include_anthropic_skills", True)
+        )
+
+        data_isolation_data = data.get("data_isolation", {})
+        data_isolation = DataIsolationConfig(
+            enabled=data_isolation_data.get("enabled", False),
+            default_mode=data_isolation_data.get("default_mode", "permissive"),
+            memory_scope=data_isolation_data.get("memory_scope", "global"),
+            allow_cross_server_memory=data_isolation_data.get("allow_cross_server_memory", True),
+            search_scope=data_isolation_data.get("search_scope", "global"),
+            allow_cross_channel_search=data_isolation_data.get("allow_cross_channel_search", True),
+            discord_tools_scope=data_isolation_data.get("discord_tools_scope", "global")
+        )
+
+        multimedia_data = data.get("multimedia", {})
+        multimedia = MultimediaConfig(
+            enabled=multimedia_data.get("enabled", False),
+            max_file_size_mb=multimedia_data.get("max_file_size_mb", 32),
+            supported_types=multimedia_data.get("supported_types", [
+                "pdf", "docx", "xlsx", "txt", "md", "csv", "json"
+            ])
         )
 
         return cls(
@@ -398,7 +491,12 @@ class BotConfig:
             agentic=agentic,
             api=api,
             rate_limiting=rate_limiting,
+            images=images,
             logging=logging_config,
+            mcp=mcp,
+            skills=skills,
+            data_isolation=data_isolation,
+            multimedia=multimedia
         )
 
     def validate(self) -> List[str]:

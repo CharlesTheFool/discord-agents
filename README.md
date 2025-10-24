@@ -2,7 +2,7 @@
 
 **Version:** 0.4.1 (Pre-release Beta)
 
-Build intelligent Discord bots that think, remember, and act autonomously. Powered by Anthropic's Claude Sonnet 4.5.
+Build intelligent Discord bots that think, remember, and act autonomously. Powered by Claude.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)

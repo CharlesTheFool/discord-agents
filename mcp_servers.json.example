@@ -1,0 +1,40 @@
+{
+  "_comment": "MCP (Model Context Protocol) Server Configuration",
+  "_comment_usage": "Copy to mcp_servers.json and customize. Supports environment variable substitution with ${VAR_NAME}",
+
+  "servers": [
+    {
+      "name": "example-github",
+      "transport": "http",
+      "url": "https://mcp.github.example.com",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_MCP_TOKEN}",
+        "X-API-Version": "2024-01-01"
+      },
+      "description": "GitHub repository access for commit history, issues, and PRs",
+      "enabled": false,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "example-database",
+      "transport": "http",
+      "url": "https://mcp.database.example.com",
+      "headers": {
+        "Authorization": "Bearer ${DB_MCP_TOKEN}"
+      },
+      "description": "PostgreSQL database queries for analytics",
+      "enabled": false,
+      "timeout_seconds": 60
+    }
+  ],
+
+  "_notes": [
+    "Each server must have a unique 'name' field",
+    "Set 'enabled: true' to activate a server",
+    "Environment variables in headers are substituted at runtime",
+    "Tool names will be prefixed with server name (e.g., 'github_get_commits')",
+    "HTTP transport is recommended over stdio for Discord bot deployments",
+    "Timeout is per-request; adjust based on expected response times",
+    "See docs/guides/MCP_SETUP.md for detailed configuration guide"
+  ]
+}
