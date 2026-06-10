@@ -276,8 +276,15 @@ class ReactiveEngine:
         )
 
         # Add recent messages to state WITH attachments
+        bot_user_id = (
+            str(self.discord_client.user.id)
+            if (self.discord_client and self.discord_client.user) else None
+        )
         for db_msg in recent_messages:
-            role = "assistant" if db_msg.is_bot else "user"
+            # Only THIS bot's messages are assistant turns; other bots are
+            # interlocutors (treating them as assistant corrupts identity and
+            # puts file blocks in assistant turns, which the API rejects)
+            role = "assistant" if (db_msg.is_bot and str(db_msg.author_id) == bot_user_id) else "user"
 
             # Query attachments for this message if it has any
             attachment_ids = []
@@ -324,8 +331,16 @@ class ReactiveEngine:
                                 elif file_data["method"] == "file_id":
                                     file_id = file_data["data"]
 
+                                    # document/container_upload blocks are only valid in user turns
+                                    if role != "user":
+                                        content_blocks.append({
+                                            "type": "text",
+                                            "text": f"\n[Attachment: {filename}]"
+                                        })
+                                        logger.debug(f"Skipped file block for assistant message: {filename}")
+
                                     # Add document block for reading (if eligible)
-                                    if file_data.get("use_as_document_block", True):
+                                    elif file_data.get("use_as_document_block", True):
                                         attachment_ids.append(attachment_id)
                                         # Add text indicator for visibility
                                         content_blocks.append({
