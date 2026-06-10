@@ -229,16 +229,11 @@ class ConversationState:
         Replace heavy tool results in turns older than the last keep_turns with
         a one-line stub (REDESIGN: turn-scoped working memory). Idempotent.
 
+        Only client tool_result blocks are stubbed - server tool blocks are
+        never persisted (see serialize_assistant_blocks in reactive_engine).
+
         Returns number of blocks stubbed.
         """
-        server_result_types = {
-            "code_execution_result",
-            "bash_code_execution_tool_result",
-            "text_editor_code_execution_tool_result",
-            "web_search_tool_result",
-            "web_fetch_tool_result",
-        }
-
         assistant_indices = [
             i for i, m in enumerate(self.messages)
             if m.get("message_type") == "discord_assistant"
@@ -263,13 +258,10 @@ class ConversationState:
             content = msg.get("content")
             if not isinstance(content, list):
                 continue
-            msg_type = msg.get("message_type")
+            if msg.get("message_type") != "tool_result":
+                continue
             for block in content:
-                if not isinstance(block, dict):
-                    continue
-                if msg_type == "tool_result" and block.get("type") == "tool_result":
-                    stubbed += _stub_block(block)
-                elif msg_type == "tool_use" and block.get("type") in server_result_types:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
                     stubbed += _stub_block(block)
 
         if stubbed:
@@ -322,29 +314,13 @@ class ConversationState:
         """
         Get messages array ready for Claude API.
 
-        Strips internal-only fields (message_type, attachment_ids) and
-        sanitizes server tool blocks to prevent orphaned tool_use/result pairs
-        (Bug #15: two-pass sanitization).
+        Strips internal-only fields (message_type, attachment_ids). Server
+        tool blocks never reach persisted state (stripped at serialization
+        and healed at deserialization), so no block sanitization is needed.
 
         Returns:
             Copy of messages array without internal fields
         """
-        # Server tool result types that require tool_use_id
-        server_tool_result_types = {
-            "code_execution_result",
-            "bash_code_execution_tool_result",
-            "text_editor_code_execution_tool_result",
-            "web_search_tool_result",
-            "web_fetch_tool_result"
-        }
-
-        # Server tool use types that require corresponding results
-        server_tool_use_types = {
-            "bash_code_execution",
-            "text_editor_code_execution",
-            "server_tool_use"
-        }
-
         internal_fields = {"message_type", "attachment_ids"}
 
         # Boundary self-heal: skip anything before the first plain user turn so
@@ -359,45 +335,10 @@ class ConversationState:
         if start:
             logger.debug(f"get_messages_for_api skipping {start} leading non-user message(s)")
 
-        api_messages = []
-        for msg in self.messages[start:]:
-            api_msg = {k: v for k, v in msg.items() if k not in internal_fields}
-
-            if "content" in api_msg and isinstance(api_msg["content"], list):
-                content_list = api_msg["content"]
-
-                # First pass: collect valid tool_use_ids (those with corresponding results)
-                valid_tool_use_ids = set()
-                for block in content_list:
-                    if isinstance(block, dict):
-                        block_type = block.get("type", "")
-                        if block_type in server_tool_result_types and "tool_use_id" in block:
-                            valid_tool_use_ids.add(block["tool_use_id"])
-
-                # Second pass: filter orphaned tool uses AND results missing tool_use_id
-                sanitized_content = []
-                for block in content_list:
-                    if isinstance(block, dict):
-                        block_type = block.get("type", "")
-
-                        if block_type in server_tool_use_types:
-                            tool_id = block.get("id")
-                            if tool_id and tool_id not in valid_tool_use_ids:
-                                logger.debug(f"Skipping orphaned {block_type} with id {tool_id} (no valid result)")
-                                continue
-
-                        if block_type in server_tool_result_types:
-                            if "tool_use_id" not in block:
-                                logger.debug(f"Skipping {block_type} block missing tool_use_id")
-                                continue
-
-                        sanitized_content.append(block)
-                    else:
-                        sanitized_content.append(block)
-                api_msg["content"] = sanitized_content
-
-            api_messages.append(api_msg)
-        return api_messages
+        return [
+            {k: v for k, v in msg.items() if k not in internal_fields}
+            for msg in self.messages[start:]
+        ]
 
     def get_message_count(self) -> int:
         """Get current message count"""
@@ -460,6 +401,21 @@ class ConversationState:
             "session_input_tokens": self.session_input_tokens,
         }
 
+    # Block types older releases persisted but which can't be replayed (their
+    # content was stringified, an invalid shape for these types) - stripped on
+    # load so existing rows heal themselves
+    _LEGACY_SERVER_BLOCK_TYPES = frozenset({
+        "server_tool_use",
+        "bash_code_execution",
+        "text_editor_code_execution",
+        "code_execution_result",
+        "code_execution_tool_result",
+        "bash_code_execution_tool_result",
+        "text_editor_code_execution_tool_result",
+        "web_search_tool_result",
+        "web_fetch_tool_result",
+    })
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ConversationState":
         """Deserialize from dictionary (tolerates pre-v0.6.0 rows)."""
@@ -474,6 +430,28 @@ class ConversationState:
         for msg in state.messages:
             if "message_type" not in msg:
                 msg["message_type"] = f"discord_{msg['role']}"
+
+        # Heal rows written before server blocks were excluded from persistence
+        stripped = 0
+        for msg in state.messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                kept = [
+                    b for b in content
+                    if not (isinstance(b, dict) and b.get("type") in cls._LEGACY_SERVER_BLOCK_TYPES)
+                ]
+                stripped += len(content) - len(kept)
+                msg["content"] = kept
+        if stripped:
+            # Stripping can leave empty messages, which the API rejects
+            state.messages = [
+                m for m in state.messages
+                if not (isinstance(m.get("content"), list) and not m["content"])
+            ]
+            logger.info(
+                f"Stripped {stripped} legacy server tool block(s) from persisted "
+                f"state for channel {state.channel_id}"
+            )
 
         state.active_skills = data.get("active_skills", [])
         state.messages_removed = data.get("messages_removed", 0)

@@ -53,6 +53,39 @@ def total_input_tokens(usage) -> int:
     )
 
 
+def serialize_assistant_blocks(content) -> list:
+    """
+    Convert SDK response content into dicts safe to persist and replay.
+
+    Server tool blocks (server_tool_use, code execution, web search/fetch and
+    their results) are deliberately dropped: detached from the live response
+    their content shapes can't be reproduced (a stringified result 400s on
+    replay), and the assistant's final text already carries the conclusions.
+    """
+    serialized = []
+    for block in content:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            serialized.append({"type": "text", "text": block.text})
+        elif block_type == "thinking":
+            # Signature required for tool-use continuity on replay
+            serialized.append({
+                "type": "thinking",
+                "thinking": block.thinking,
+                "signature": block.signature,
+            })
+        elif block_type == "redacted_thinking":
+            serialized.append({"type": "redacted_thinking", "data": block.data})
+        elif block_type == "tool_use":
+            serialized.append({
+                "type": "tool_use",
+                "id": block.id,
+                "name": block.name,
+                "input": block.input,
+            })
+    return serialized
+
+
 def collect_container_output_file_ids(response) -> list:
     """
     File IDs of files written by code execution in this response.
@@ -1102,59 +1135,7 @@ class ReactiveEngine:
                             # Persist tool use and results to conversation state (v0.5.0 Phase 1)
                             if conversation_state:
                                 try:
-                                    # Convert ContentBlock objects to dicts for serialization
-                                    assistant_content_dicts = []
-                                    for block in response.content:
-                                        if hasattr(block, 'type'):
-                                            if block.type == "text":
-                                                assistant_content_dicts.append({"type": "text", "text": block.text})
-                                            elif block.type == "thinking":
-                                                # Preserve thinking blocks with signature for tool continuity
-                                                assistant_content_dicts.append({
-                                                    "type": "thinking",
-                                                    "thinking": block.thinking,
-                                                    "signature": block.signature
-                                                })
-                                            elif block.type == "redacted_thinking":
-                                                # Preserve redacted blocks if API returns them (rare)
-                                                assistant_content_dicts.append({
-                                                    "type": "redacted_thinking",
-                                                    "data": block.data
-                                                })
-                                            elif block.type == "tool_use":
-                                                assistant_content_dicts.append({
-                                                    "type": "tool_use",
-                                                    "id": block.id,
-                                                    "name": block.name,
-                                                    "input": block.input
-                                                })
-                                            # Bug #9 fix: Capture server-side tool uses (code_execution, web_search, etc.)
-                                            # Bug #10 fix: Also capture bash_code_execution, text_editor_code_execution tool uses
-                                            elif block.type in ("server_tool_use", "bash_code_execution", "text_editor_code_execution"):
-                                                assistant_content_dicts.append({
-                                                    "type": block.type,  # Bug #10: Preserve original type
-                                                    "id": getattr(block, 'id', 'unknown'),
-                                                    "name": getattr(block, 'name', 'unknown'),
-                                                    "input": getattr(block, 'input', {})
-                                                })
-                                                logger.debug(f"Captured {block.type} for persistence: {getattr(block, 'name', 'unknown')}")
-                                            # Bug #9 fix: Capture server tool results (code execution output, web search results)
-                                            # Bug #10 fix: Added bash_code_execution_tool_result, text_editor_code_execution_tool_result
-                                            elif block.type in ("code_execution_result", "bash_code_execution_tool_result", "text_editor_code_execution_tool_result", "web_search_tool_result", "web_fetch_tool_result"):
-                                                # Store the result block for conversation history
-                                                # Bug #12 fix: Include tool_use_id which is required by token counting API
-                                                result_content = getattr(block, 'content', None) or getattr(block, 'text', 'No content')
-                                                result_block = {
-                                                    "type": block.type,
-                                                    "content": str(result_content)[:5000]  # Truncate very long results
-                                                }
-                                                # Server tool results have tool_use_id referencing the tool call
-                                                if hasattr(block, 'tool_use_id'):
-                                                    result_block["tool_use_id"] = block.tool_use_id
-                                                assistant_content_dicts.append(result_block)
-                                                logger.debug(f"Captured {block.type} for persistence (tool_use_id: {getattr(block, 'tool_use_id', 'N/A')})")
-                                        elif isinstance(block, dict):
-                                            assistant_content_dicts.append(block)
+                                    assistant_content_dicts = serialize_assistant_blocks(response.content)
 
                                     conversation_state.add_tool_use_and_results(
                                         assistant_content=assistant_content_dicts,
@@ -2133,59 +2114,7 @@ class ReactiveEngine:
 
                         # Persist tool use and results to conversation state (periodic path)
                         try:
-                            # Convert response.content to assistant_content_dicts
-                            assistant_content_dicts = []
-                            for block in response.content:
-                                if hasattr(block, 'type'):
-                                    if block.type == "text":
-                                        assistant_content_dicts.append({"type": "text", "text": block.text})
-                                    elif block.type == "thinking":
-                                        # Preserve thinking blocks with signature for tool continuity
-                                        assistant_content_dicts.append({
-                                            "type": "thinking",
-                                            "thinking": block.thinking,
-                                            "signature": block.signature
-                                        })
-                                    elif block.type == "redacted_thinking":
-                                        # Preserve redacted blocks if API returns them (rare)
-                                        assistant_content_dicts.append({
-                                            "type": "redacted_thinking",
-                                            "data": block.data
-                                        })
-                                    elif block.type == "tool_use":
-                                        assistant_content_dicts.append({
-                                            "type": "tool_use",
-                                            "id": block.id,
-                                            "name": block.name,
-                                            "input": block.input
-                                        })
-                                    # Bug #9 fix: Capture server-side tool uses (code_execution, web_search, etc.)
-                                    # Bug #10 fix: Also capture bash_code_execution, text_editor_code_execution tool uses
-                                    elif block.type in ("server_tool_use", "bash_code_execution", "text_editor_code_execution"):
-                                        assistant_content_dicts.append({
-                                            "type": block.type,  # Preserve original type
-                                            "id": getattr(block, 'id', 'unknown'),
-                                            "name": getattr(block, 'name', 'unknown'),
-                                            "input": getattr(block, 'input', {})
-                                        })
-                                        logger.debug(f"Captured {block.type} for persistence (periodic): {getattr(block, 'name', 'unknown')}")
-                                    # Bug #9 fix: Capture server tool results (code execution output, web search results)
-                                    # Bug #10 fix: Added bash_code_execution_tool_result, text_editor_code_execution_tool_result
-                                    elif block.type in ("code_execution_result", "bash_code_execution_tool_result", "text_editor_code_execution_tool_result", "web_search_tool_result", "web_fetch_tool_result"):
-                                        # Store the result block for conversation history
-                                        # Bug #12 fix: Include tool_use_id which is required by token counting API
-                                        result_content = getattr(block, 'content', None) or getattr(block, 'text', 'No content')
-                                        result_block = {
-                                            "type": block.type,
-                                            "content": str(result_content)[:5000]  # Truncate very long results
-                                        }
-                                        # Server tool results have tool_use_id referencing the tool call
-                                        if hasattr(block, 'tool_use_id'):
-                                            result_block["tool_use_id"] = block.tool_use_id
-                                        assistant_content_dicts.append(result_block)
-                                        logger.debug(f"Captured {block.type} for persistence (periodic) (tool_use_id: {getattr(block, 'tool_use_id', 'N/A')})")
-                                elif isinstance(block, dict):
-                                    assistant_content_dicts.append(block)
+                            assistant_content_dicts = serialize_assistant_blocks(response.content)
 
                             conversation_state.add_tool_use_and_results(
                                 assistant_content=assistant_content_dicts,
