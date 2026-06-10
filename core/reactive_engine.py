@@ -447,6 +447,47 @@ class ReactiveEngine:
         ]
         return "\n".join(lines)
 
+    def _build_attachment_tool_result(self, result, block_id, conversation_state):
+        """
+        Convert a structured get_attachment result into (tool_result, file_block).
+
+        Images inline into the tool_result (valid content). document /
+        container_upload blocks are NOT valid tool_result content - the file
+        block is returned separately to ride in the same user message after
+        the tool_results, and is persisted as its own annotated user message.
+        """
+        content_blocks = [{"type": "text", "text": result["text"]}]
+        file_block = None
+        file_data = result["file_data"]
+
+        if file_data.get("method") == "base64":
+            content_blocks.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": file_data["media_type"],
+                    "data": file_data["data"],
+                },
+            })
+        elif file_data.get("method") == "file_id":
+            if file_data.get("use_as_document_block", True):
+                file_block = {
+                    "type": "document",
+                    "source": {"type": "file", "file_id": file_data["data"]},
+                }
+                content_blocks[0]["text"] += "\nFile attached to the conversation as a readable document."
+            else:
+                file_block = {"type": "container_upload", "file_id": file_data["data"]}
+                content_blocks[0]["text"] += "\nFile loaded for code execution (find it via the INPUT_DIR env var)."
+
+            if conversation_state and file_block:
+                att_id = result["metadata"]["attachment_id"]
+                conversation_state.add_message("user", [file_block], [att_id])
+                logger.info(f"Added fetched attachment to conversation state: {result['metadata']['filename']}")
+
+        tool_result = {"type": "tool_result", "tool_use_id": block_id, "content": content_blocks}
+        return tool_result, file_block
+
     async def handle_urgent(self, message: discord.Message):
         """
         Handle urgent message (@mention) immediately.
@@ -801,6 +842,7 @@ class ReactiveEngine:
                         if response.stop_reason == "tool_use":
                             # Execute tool calls
                             tool_results = []
+                            pending_file_blocks = []  # document/container_upload from get_attachment
 
                             for block in response.content:
                                 if block.type == "tool_use":
@@ -863,60 +905,12 @@ class ReactiveEngine:
 
                                             # Check if result is structured data from get_attachment
                                             if isinstance(result, dict) and result.get("_structured"):
-                                                # Build content blocks array with text + file
-                                                content_blocks = [
-                                                    {"type": "text", "text": result["text"]}
-                                                ]
-
-                                                # Add file content block
-                                                file_data = result["file_data"]
-                                                if file_data.get("method") == "base64":
-                                                    # Image: ephemeral processing
-                                                    content_blocks.append({
-                                                        "type": "image",
-                                                        "source": {
-                                                            "type": "base64",
-                                                            "media_type": file_data["media_type"],
-                                                            "data": file_data["data"]
-                                                        }
-                                                    })
-                                                elif file_data.get("method") == "file_id":
-                                                    # Phase 3: Detect whether to use document block or container_upload
-                                                    # Design: document blocks for PDFs/plaintext (Claude reads directly)
-                                                    #         container_upload for other file types (accessed via code execution tool)
-                                                    use_as_document = file_data.get("use_as_document_block", True)
-
-                                                    if use_as_document:
-                                                        # Document: add to rolling context (PDFs, TXT, CSV, etc.)
-                                                        content_blocks.append({
-                                                            "type": "document",
-                                                            "source": {
-                                                                "type": "file",
-                                                                "file_id": file_data["data"]
-                                                            }
-                                                        })
-                                                    else:
-                                                        # Container upload: add to rolling context (any non-document-eligible files)
-                                                        # These files are accessed via code_execution tool, not read directly
-                                                        content_blocks.append({
-                                                            "type": "container_upload",
-                                                            "file_id": file_data["data"]
-                                                        })
-
-                                                    # Add to conversation state for persistence
-                                                    att_id = result["metadata"]["attachment_id"]
-                                                    conversation_state.add_message(
-                                                        "user",
-                                                        content_blocks,
-                                                        [att_id]
-                                                    )
-                                                    logger.info(f"Added fetched attachment to conversation state: {result['metadata']['filename']}")
-
-                                                tool_results.append({
-                                                    "type": "tool_result",
-                                                    "tool_use_id": block.id,
-                                                    "content": content_blocks
-                                                })
+                                                tool_result, file_block = self._build_attachment_tool_result(
+                                                    result, block.id, conversation_state
+                                                )
+                                                tool_results.append(tool_result)
+                                                if file_block:
+                                                    pending_file_blocks.append(file_block)
                                             else:
                                                 # Regular text result
                                                 tool_results.append({
@@ -955,10 +949,12 @@ class ReactiveEngine:
                                 "content": response.content
                             })
 
-                            # Add tool results as user message
+                            # Add tool results as user message; fetched file blocks
+                            # ride in the same message AFTER the tool_results
+                            # (API: tool_result blocks must come first)
                             api_params["messages"].append({
                                 "role": "user",
-                                "content": tool_results
+                                "content": tool_results + pending_file_blocks
                             })
 
                             # Persist tool use and results to conversation state (v0.5.0 Phase 1)
@@ -1866,6 +1862,7 @@ class ReactiveEngine:
                         # Execute tool calls
                         tools_were_used = True  # Track that tools were executed (Bug #7 fix)
                         tool_results = []
+                        pending_file_blocks = []  # document/container_upload from get_attachment
                         for content_block in response.content:
                             if content_block.type == "tool_use":
                                 # Handle memory tool
@@ -1910,11 +1907,20 @@ class ReactiveEngine:
                                             current_server_id=str(message.guild.id) if message.guild else None,
                                             current_channel_id=channel_id
                                         )
-                                        tool_results.append({
-                                            "type": "tool_result",
-                                            "tool_use_id": content_block.id,
-                                            "content": result
-                                        })
+                                        # Structured data from get_attachment
+                                        if isinstance(result, dict) and result.get("_structured"):
+                                            tool_result, file_block = self._build_attachment_tool_result(
+                                                result, content_block.id, conversation_state
+                                            )
+                                            tool_results.append(tool_result)
+                                            if file_block:
+                                                pending_file_blocks.append(file_block)
+                                        else:
+                                            tool_results.append({
+                                                "type": "tool_result",
+                                                "tool_use_id": content_block.id,
+                                                "content": result
+                                            })
 
                                 # Handle MCP tools (v0.5.0)
                                 elif "_" in content_block.name and self.mcp_manager:
@@ -1938,9 +1944,10 @@ class ReactiveEngine:
                                             "is_error": True
                                         })
 
-                        # Continue conversation with tool results
+                        # Continue conversation with tool results; fetched file blocks
+                        # ride in the same message AFTER the tool_results
                         api_params["messages"].append({"role": "assistant", "content": response.content})
-                        api_params["messages"].append({"role": "user", "content": tool_results})
+                        api_params["messages"].append({"role": "user", "content": tool_results + pending_file_blocks})
 
                         # Persist tool use and results to conversation state (periodic path)
                         try:
