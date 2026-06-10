@@ -32,6 +32,7 @@ from .skills_manager import SkillsManager
 from .unified_attachment_manager import UnifiedAttachmentManager
 from .data_isolation import DataIsolationEnforcer
 from .conversation_state_manager import ConversationStateManager
+from .internal_constants import TOOL_STUB_KEEP_TURNS
 from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
 from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
@@ -147,6 +148,9 @@ class ReactiveEngine:
         # Conversation State Manager (v0.5.0 - dual-cap context management)
         self.conversation_state_manager = None  # Initialized in async_initialize
 
+        # Episode Manager (v0.6.0 episodic sessions)
+        self.episode_manager = None  # Initialized in async_initialize
+
         # Track background tasks for clean shutdown
         self._background_tasks = set()
 
@@ -188,6 +192,17 @@ class ReactiveEngine:
         except Exception as e:
             logger.error(f"Failed to initialize ConversationStateManager: {e}", exc_info=True)
             self.conversation_state_manager = None  # Disable on failure
+
+        # Episode manager (v0.6.0 episodic sessions)
+        self.episode_manager = None
+        if self.conversation_state_manager:
+            from core.episode_manager import EpisodeManager
+            self.episode_manager = EpisodeManager(
+                message_memory=self.message_memory,
+                memory_manager=self.memory_manager,
+                conversation_state_manager=self.conversation_state_manager,
+                anthropic_client=self.anthropic,
+            )
 
         # Initialize MCP Manager (discover tools from servers)
         if self.mcp_manager:
@@ -1148,9 +1163,27 @@ class ReactiveEngine:
                     if removed_count > 0:
                         logger.info(f"Message cap enforced after response: removed {removed_count} oldest messages")
 
+                    # Record session usage watermark and stub old tool results (v0.6.0)
+                    if hasattr(response, "usage"):
+                        conversation_state.record_usage(response.usage.input_tokens)
+                    conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
+
                     # Save conversation state to database
                     await self.conversation_state_manager.save(conversation_state)
                     logger.debug(f"Saved conversation state: {conversation_state}")
+
+                    # Session over usage threshold -> close the episode in the background
+                    if (self.episode_manager
+                            and conversation_state.session_input_tokens > self.config.api.context_tokens):
+                        logger.info(
+                            f"Session usage {conversation_state.session_input_tokens:,} over threshold "
+                            f"{self.config.api.context_tokens:,} - episodizing channel {channel_id}"
+                        )
+                        task = asyncio.create_task(
+                            self.episode_manager.episodize_channel(channel_id, force=True)
+                        )
+                        self._background_tasks.add(task)
+                        task.add_done_callback(self._background_tasks.discard)
 
                 except Exception as e:
                     logger.error(f"Failed to update conversation state: {e}", exc_info=True)
@@ -1349,6 +1382,14 @@ class ReactiveEngine:
         try:
             while self._running:
                 await asyncio.sleep(self.config.reactive.check_interval_seconds)
+
+                # Episode idle sweep (v0.6.0) - cheap; ~every 10 min
+                self._episode_sweep_counter = getattr(self, "_episode_sweep_counter", 0) + 1
+                sweep_every = max(1, 600 // max(1, self.config.reactive.check_interval_seconds))
+                if self.episode_manager and self._episode_sweep_counter % sweep_every == 0:
+                    task = asyncio.create_task(self.episode_manager.check_idle_channels())
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
 
                 if not self.pending_messages:
                     continue
@@ -2072,9 +2113,27 @@ class ReactiveEngine:
                             if removed_count > 0:
                                 logger.info(f"Message cap enforced in periodic response: removed {removed_count} oldest messages")
 
+                            # Record session usage watermark and stub old tool results (v0.6.0)
+                            if hasattr(response, "usage"):
+                                conversation_state.record_usage(response.usage.input_tokens)
+                            conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
+
                             # Save conversation state to database
                             await self.conversation_state_manager.save(conversation_state)
                             logger.debug(f"Saved conversation state: {conversation_state}")
+
+                            # Session over usage threshold -> close the episode in the background
+                            if (self.episode_manager
+                                    and conversation_state.session_input_tokens > self.config.api.context_tokens):
+                                logger.info(
+                                    f"Session usage {conversation_state.session_input_tokens:,} over threshold "
+                                    f"{self.config.api.context_tokens:,} - episodizing channel {channel_id}"
+                                )
+                                task = asyncio.create_task(
+                                    self.episode_manager.episodize_channel(channel_id, force=True)
+                                )
+                                self._background_tasks.add(task)
+                                task.add_done_callback(self._background_tasks.discard)
 
                         except Exception as e:
                             logger.error(f"Failed to update conversation state: {e}", exc_info=True)
