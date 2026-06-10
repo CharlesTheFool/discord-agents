@@ -261,6 +261,7 @@ reporting via [GitHub Security Advisories](../../security/advisories/new)
 ## Documentation
 
 - **[README.md](README.md)** — this file: quick start and overview
+- **[ROADMAP.md](ROADMAP.md)** — where the project is headed
 - **[CHANGELOG.md](CHANGELOG.md)** — version history and upgrade notes
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — running dev and production installs
   side by side, and the release/update workflow
@@ -298,8 +299,8 @@ Built with:
 
 ## Roadmap
 
-- Batches API for cheaper background distillation
-- Retroactive channel digests when joining a server with history
-- Thread support
+See [ROADMAP.md](ROADMAP.md) — next up: **0.7.0 "The Unified Mind"** (one
+continuous identity across servers, with vaults and discretion; memory
+reconsolidation) and **0.8.0 "Day One"** (server induction, threads).
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
