@@ -271,13 +271,11 @@ df = pd.read_excel(os.path.join(os.environ.get('INPUT_DIR', '.'), 'filename.xlsx
 print(df.describe())
 ```
 
-DELIVERING FILES: a file is attached to your Discord reply ONLY if python wrote
-it using a RELATIVE path (e.g. p.save('briefing.pptx')). Absolute paths
-('/briefing.pptx', '/tmp/x') and shell-created files (echo, cp) are NOT captured
-and silently vanish. If a file was built at an absolute path (skills often do
-this), publish it with one final command:
-  python -c "import shutil; shutil.copy('/abs/path/file.pptx', 'file.pptx')"
-Never claim a file is attached unless you wrote/published it via a relative path.
+DELIVERING FILES: files you place in $OUTPUT_DIR (the code-exec environment's
+output directory) are attached to your Discord reply. To deliver a document,
+finish with e.g.: cp /tmp/briefing.pptx "$OUTPUT_DIR"/briefing.pptx
+Files left anywhere else are not attached. Never claim a file is attached
+unless you put it in $OUTPUT_DIR.
 
 The attachments_index section lists this channel's recent files with their IDs;
 retrieve anything marked 'not in context' with the discord get_attachment tool.
