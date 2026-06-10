@@ -320,6 +320,11 @@ class ConversationState:
         tool blocks never reach persisted state (stripped at serialization
         and healed at deserialization), so no block sanitization is needed.
 
+        String content is normalized to block form so every message has one
+        stable wire representation across turns - prompt caching matches on
+        the serialized prefix, and the per-turn cache breakpoint rides on a
+        content block (see with_message_cache_breakpoint in reactive_engine).
+
         Returns:
             Copy of messages array without internal fields
         """
@@ -337,10 +342,13 @@ class ConversationState:
         if start:
             logger.debug(f"get_messages_for_api skipping {start} leading non-user message(s)")
 
-        return [
-            {k: v for k, v in msg.items() if k not in internal_fields}
-            for msg in self.messages[start:]
-        ]
+        result = []
+        for msg in self.messages[start:]:
+            out = {k: v for k, v in msg.items() if k not in internal_fields}
+            if isinstance(out.get("content"), str):
+                out["content"] = [{"type": "text", "text": out["content"]}]
+            result.append(out)
+        return result
 
     def set_active_skills(self, skill_names: List[str], max_skills: int = 2) -> None:
         """Set currently active skills for this conversation."""

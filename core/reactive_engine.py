@@ -112,6 +112,42 @@ def collect_container_output_file_ids(response) -> list:
     return file_ids
 
 
+_CACHEABLE_BLOCK_TYPES = frozenset({"text", "tool_result", "image", "document"})
+
+
+def with_message_cache_breakpoint(messages: list) -> list:
+    """
+    Copy of messages with cache_control on the last cacheable block, so each
+    request caches the whole conversation up to its tail (the system-prefix
+    breakpoint alone re-reads the full history every turn). Old breakpoints
+    need no removal: the marked message is rebuilt fresh from state each
+    request, and markers don't affect prefix matching - the next turn's
+    breakpoint lands further down and reads the previous one's cache.
+
+    The source messages are never mutated (their dicts are shared with
+    conversation state). SDK objects (in-loop assistant content) and
+    unmarkable block types are skipped by walking backwards.
+    """
+    for mi in range(len(messages) - 1, -1, -1):
+        content = messages[mi].get("content") if isinstance(messages[mi], dict) else None
+        if isinstance(content, str):
+            new_content = [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
+        elif isinstance(content, list):
+            for bi in range(len(content) - 1, -1, -1):
+                block = content[bi]
+                if isinstance(block, dict) and block.get("type") in _CACHEABLE_BLOCK_TYPES:
+                    new_content = list(content)
+                    new_content[bi] = {**block, "cache_control": {"type": "ephemeral"}}
+                    break
+            else:
+                continue
+        else:
+            continue
+        new_msg = {**messages[mi], "content": new_content}
+        return messages[:mi] + [new_msg] + messages[mi + 1:]
+    return messages
+
+
 @dataclass
 class ToolLoopResult:
     """Outcome of one full tool-use loop (one bot turn)."""
@@ -959,7 +995,9 @@ class ReactiveEngine:
                 logger.debug(f"  Container/Skills: {api_params.get('container')}")
 
             try:
-                response = await self.anthropic.beta.messages.create(**api_params)
+                response = await self.anthropic.beta.messages.create(
+                    **{**api_params, "messages": with_message_cache_breakpoint(api_params["messages"])}
+                )
             except NotFoundError as e:
                 # Stale file_id in persisted state 404s the whole request
                 stale_id = self._stale_file_id_from_error(e)
