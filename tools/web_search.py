@@ -129,11 +129,11 @@ def get_web_search_tools(citations_enabled: bool = True) -> list:
     """
     return [
         {
-            "type": "web_search_20250305",
+            "type": "web_search_20260209",
             "name": "web_search",
         },
         {
-            "type": "web_fetch_20250910",
+            "type": "web_fetch_20260209",
             "name": "web_fetch",
             "citations": {"enabled": citations_enabled}
         }

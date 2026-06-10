@@ -658,11 +658,10 @@ class ReactiveEngine:
                         logger.warning("Discord tool executor is None - tools NOT added!")
 
                     # Add web search tools if enabled (all-or-nothing, no rate limits)
-                    beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
+                    beta_headers = ["context-management-2025-06-27"]
                     if self.web_search_enabled:
                         web_search_config = self.config.get_web_search_config()
                         tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
-                        beta_headers.append("web-fetch-2025-09-10")
                         logger.debug("Web search tools added to API request (unlimited)")
 
                     # Add MCP tools if enabled (v0.5.0)
@@ -682,14 +681,13 @@ class ReactiveEngine:
                     # Skills load files into /skills/ directory which is accessed via code_execution tool
                     if self.skills_manager:
                         tools.append({
-                            "type": "code_execution_20250825",
+                            "type": "code_execution_20260120",
                             "name": "code_execution"
                         })
                         # Add request_skill tool for progressive disclosure (v0.5.0)
                         tools.append(get_skill_request_tool())
-                        beta_headers.append("code-execution-2025-08-25")
                         beta_headers.append("skills-2025-10-02")
-                        logger.debug("Code execution tool, request_skill tool, and skills beta headers added")
+                        logger.debug("Code execution tool, request_skill tool, and skills beta header added")
 
                     # Bug #14 fix: Track container.id across tool loop iterations
                     # Per Anthropic docs, multi-turn conversations must reuse container.id
@@ -824,12 +822,11 @@ If these contain information pertinent to current conversation, consider:
 
                     api_params["messages"] = messages
 
-                    # Add extended thinking if enabled
-                    if self.config.api.extended_thinking.enabled:
-                        api_params["thinking"] = {
-                            "type": "enabled",
-                            "budget_tokens": self.config.api.extended_thinking.budget_tokens
-                        }
+                    # Add adaptive thinking and effort if configured
+                    if self.config.api.thinking.enabled:
+                        api_params["thinking"] = {"type": "adaptive"}
+                    if self.config.api.effort:
+                        api_params["output_config"] = {"effort": self.config.api.effort}
 
                     # Token cap enforcement (Phase 4 - v0.5.0)
                     if conversation_state:
@@ -1968,11 +1965,10 @@ If these contain information pertinent to current conversation, consider:
                 logger.warning("Discord tool executor is None - tools NOT added to periodic check!")
 
             # Add web search tools if enabled (all-or-nothing, no rate limits)
-            beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
+            beta_headers = ["context-management-2025-06-27"]
             if self.web_search_enabled:
                 web_search_config = self.config.get_web_search_config()
                 tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
-                beta_headers.append("web-fetch-2025-09-10")
                 logger.debug("Web search tools added to periodic check (unlimited)")
 
             # Add MCP tools if enabled (v0.5.0)
@@ -1985,14 +1981,13 @@ If these contain information pertinent to current conversation, consider:
             # Add code execution tool and skills (Bug #14 fix: skills REQUIRE code_execution)
             if self.skills_manager:
                 tools.append({
-                    "type": "code_execution_20250825",
+                    "type": "code_execution_20260120",
                     "name": "code_execution"
                 })
                 # Add request_skill tool for progressive disclosure (v0.5.0)
                 tools.append(get_skill_request_tool())
-                beta_headers.append("code-execution-2025-08-25")
                 beta_headers.append("skills-2025-10-02")
-                logger.debug("Code execution, request_skill, and skills beta headers added to periodic check")
+                logger.debug("Code execution, request_skill, and skills beta header added to periodic check")
 
             # Add files API beta if attachments enabled
             if self.attachment_manager:
@@ -2045,12 +2040,11 @@ If these contain information pertinent to current conversation, consider:
                     api_params["container"] = container_config
                     logger.debug(f"Container (periodic): id={container_id}, skills={active_skill_names}")
 
-            # Add extended thinking if enabled
-            if self.config.api.extended_thinking.enabled:
-                api_params["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": self.config.api.extended_thinking.budget_tokens
-                }
+            # Add adaptive thinking and effort if configured
+            if self.config.api.thinking.enabled:
+                api_params["thinking"] = {"type": "adaptive"}
+            if self.config.api.effort:
+                api_params["output_config"] = {"effort": self.config.api.effort}
 
             # Add context management if enabled
             if self._context_editing_config["enabled"]:

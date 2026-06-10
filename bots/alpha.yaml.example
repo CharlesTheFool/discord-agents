@@ -92,17 +92,20 @@ agentic:
 # AI MODEL
 # ============================================================
 api:
-  model: "claude-sonnet-4-5-20250929"
+  model: "claude-sonnet-4-6"
   max_tokens: 16000
 
   # Context management
   context_messages: 30        # Messages to remember (rolling window)
   context_tokens: 100000      # Token budget
 
-  # Extended Thinking - step-by-step reasoning
-  extended_thinking:
+  # Effort - main cost/depth dial: low | medium | high | max
+  # Omit for API default (high). Chat bots usually want low/medium.
+  effort: "medium"
+
+  # Adaptive thinking - model decides when and how much to think
+  thinking:
     enabled: true
-    budget_tokens: 10000
 
   # Web Search - all or nothing (no rate limiting)
   web_search:

@@ -723,16 +723,15 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 "tools": [{"type": "memory_20250818", "name": "memory"}],
             }
 
-            # Add extended thinking if enabled
-            if self.config.api.extended_thinking.enabled:
-                api_params["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": self.config.api.extended_thinking.budget_tokens
-                }
+            # Add adaptive thinking and effort if configured
+            if self.config.api.thinking.enabled:
+                api_params["thinking"] = {"type": "adaptive"}
+            if self.config.api.effort:
+                api_params["output_config"] = {"effort": self.config.api.effort}
 
             # Add beta header for memory tool
             api_params["extra_headers"] = {
-                "anthropic-beta": "context-management-2025-06-27,prompt-caching-2024-07-31"
+                "anthropic-beta": "context-management-2025-06-27"
             }
 
             # Call Claude to generate message

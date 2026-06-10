@@ -75,16 +75,16 @@ def main():
     print("\n[3] Testing Skills + Code Execution API call...")
     try:
         response = client.beta.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-sonnet-4-6",
             max_tokens=256,
-            betas=["code-execution-2025-08-25", "skills-2025-10-02"],
+            betas=["skills-2025-10-02"],
             container={
                 "skills": [
                     {"type": "anthropic", "skill_id": "xlsx", "version": "latest"}
                 ]
             },
             tools=[{
-                "type": "code_execution_20250825",
+                "type": "code_execution_20260120",
                 "name": "code_execution"
             }],
             messages=[{

@@ -156,10 +156,9 @@ class AgenticConfig:
 
 
 @dataclass
-class ExtendedThinkingConfig:
-    """Extended thinking configuration"""
+class ThinkingConfig:
+    """Adaptive thinking configuration (model decides when/how much to think)"""
     enabled: bool = True
-    budget_tokens: int = 10000  # Max tokens for thinking (min: 1024)
 
 
 @dataclass
@@ -179,11 +178,12 @@ class CodeExecutionConfig:
 @dataclass
 class APIConfig:
     """Claude API configuration"""
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = "claude-sonnet-4-6"
     max_tokens: int = 4096
     context_messages: int = 30  # Messages to remember (rolling window)
     context_tokens: int = 100000  # Total input token budget
-    extended_thinking: ExtendedThinkingConfig = field(default_factory=ExtendedThinkingConfig)
+    effort: Optional[str] = None  # low | medium | high | max (None = API default, high)
+    thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     code_execution: CodeExecutionConfig = field(default_factory=CodeExecutionConfig)
 
@@ -435,10 +435,10 @@ class BotConfig:
         # Parse API config
         api_data = data.get("api", {})
 
-        extended_thinking_data = api_data.get("extended_thinking", {})
-        extended_thinking = ExtendedThinkingConfig(
-            enabled=extended_thinking_data.get("enabled", True),
-            budget_tokens=extended_thinking_data.get("budget_tokens", 10000),
+        # "extended_thinking" fallback accepts pre-v0.6.0 configs (budget_tokens ignored)
+        thinking_data = api_data.get("thinking", api_data.get("extended_thinking", {}))
+        thinking = ThinkingConfig(
+            enabled=thinking_data.get("enabled", True),
         )
 
         web_search_data = api_data.get("web_search", {})
@@ -462,11 +462,12 @@ class BotConfig:
         )
 
         api = APIConfig(
-            model=api_data.get("model", "claude-sonnet-4-5-20250929"),
+            model=api_data.get("model", "claude-sonnet-4-6"),
             max_tokens=api_data.get("max_tokens", 4096),
             context_messages=context_messages,
             context_tokens=context_tokens,
-            extended_thinking=extended_thinking,
+            effort=api_data.get("effort"),
+            thinking=thinking,
             web_search=web_search,
             code_execution=code_execution,
         )
@@ -579,6 +580,11 @@ class BotConfig:
         # Validate API config
         if self.api.max_tokens <= 0:
             errors.append("api.max_tokens must be positive")
+
+        if self.api.effort is not None and self.api.effort not in ("low", "medium", "high", "max"):
+            errors.append(
+                f"api.effort must be one of low/medium/high/max, got '{self.api.effort}'"
+            )
 
         if self.api.context_tokens <= 0:
             errors.append("api.context_tokens must be positive")

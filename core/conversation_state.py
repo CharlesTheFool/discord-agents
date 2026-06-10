@@ -925,7 +925,7 @@ class ConversationState:
         # Only enable thinking if conversation actually contains thinking blocks
         try:
             count_params = {
-                "model": "claude-sonnet-4-5-20250929",
+                "model": "claude-sonnet-4-6",
                 "system": system_prompt,
                 "messages": messages_for_counting  # Use converted messages
                 # tools excluded - contributes minimal overhead anyway
@@ -934,12 +934,12 @@ class ConversationState:
             # Only enable thinking parameter if conversation has thinking blocks
             # (avoids API errors when old DB messages lack thinking blocks)
             if self.has_thinking_blocks():
-                count_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
-                logger.debug("Enabling extended thinking for token counting (thinking blocks present)")
+                count_params["thinking"] = {"type": "adaptive"}
+                logger.debug("Enabling adaptive thinking for token counting (thinking blocks present)")
 
-            # Use beta API with required beta features for Files API and code execution
+            # Use beta API for Files API blocks (code execution is GA, no header needed)
             result = await anthropic_client.beta.messages.count_tokens(
-                betas=["code-execution-2025-08-25", "files-api-2025-04-14"],
+                betas=["files-api-2025-04-14"],
                 **count_params
             )
 
@@ -990,10 +990,10 @@ class ConversationState:
         # NOTE: Exclude tools to avoid API validation errors with custom tool types
         try:
             # API requires at least one message, so use minimal dummy message
-            # Use beta API with required beta features for Files API and code execution
+            # Use beta API for Files API blocks (code execution is GA, no header needed)
             result = await anthropic_client.beta.messages.count_tokens(
-                betas=["code-execution-2025-08-25", "files-api-2025-04-14"],
-                model="claude-sonnet-4-5-20250929",
+                betas=["files-api-2025-04-14"],
+                model="claude-sonnet-4-6",
                 system=system_prompt,
                 messages=[{"role": "user", "content": "test"}]  # Minimal dummy message
                 # tools excluded - contributes minimal overhead anyway
