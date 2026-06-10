@@ -130,6 +130,10 @@ attachments:
   enabled: false
   backfill_enabled: true
   backfill_days: 30
+  # Bot file repository (v0.6.1): persistent per-server local drive at
+  # repository/{bot_id}/{server_id}/ - drop files in by hand, the bot sees them.
+  repository:
+    enabled: true
 
 # ============================================================
 # DATA ISOLATION (Multi-tenant)

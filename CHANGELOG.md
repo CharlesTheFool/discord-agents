@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2026-06-10
+
+**Status:** Pre-release (beta).
+
+### Added
+
+**Bot File Repository**
+- Persistent per-server local drive at `repository/{bot_id}/{server_id}/` —
+  drop arbitrary files in by hand and the bot sees them; everything survives
+  restarts
+- New `repository` tool: `save_file` (author text files), `save_attachment`
+  (preserve a Discord upload), `save_output` (pull a code-execution artifact
+  in by file_id), `delete`, `rename`, `list` — every transfer is an explicit
+  bot action, nothing is harvested automatically
+- Repository contents ride a `<repository>` section in the volatile context
+  tail (cache-safe), with in-context/not-in-context markers; reads reuse the
+  existing `get_attachment` retrieval path (documents re-attach, images
+  inline, spreadsheets mount into code execution)
+- Disk is the source of truth: a per-request scan picks up user adds, edits,
+  deletes, and renames; bot-side renames and content edits keep a stable
+  attachment identity
+- Config: `attachments.repository.enabled` (default on when attachments are
+  enabled)
+
 ## [0.6.0] - 2026-06-10
 
 **Status:** Pre-release (beta). The 0.5.0 feature set plus a memory-architecture

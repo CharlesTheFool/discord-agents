@@ -1075,8 +1075,7 @@ class ReactiveEngine:
             logger.debug(f"API params{log_suffix}: model={api_params.get('model')}, betas={api_params.get('betas')}")
             logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
             if 'container' in api_params:
-                # TEMP-DIAG (v0.6.1 live test): INFO-level container tracing
-                logger.info(f"  Iter {loop_iteration} request container: {api_params.get('container')}")
+                logger.debug(f"  Container/Skills: {api_params.get('container')}")
 
             try:
                 response = await self.anthropic.beta.messages.create(
@@ -1101,12 +1100,6 @@ class ReactiveEngine:
             # Multi-iteration turns must reuse the container (per Anthropic docs)
             if getattr(response, "container", None) and getattr(response.container, "id", None):
                 container_id = response.container.id
-                # TEMP-DIAG (v0.6.1 live test)
-                logger.info(f"  Iter {loop_iteration} response container: {container_id}")
-            for _b in response.content:
-                if getattr(_b, "type", "") in ("bash_code_execution_tool_result", "code_execution_tool_result"):
-                    _c = getattr(_b, "content", None)
-                    logger.info(f"  Iter {loop_iteration} code-exec stdout: {getattr(_c, 'stdout', None)!r:.300} stderr: {getattr(_c, 'stderr', None)!r:.200}")
 
             # Collect files written by code execution for Discord delivery
             result.container_file_ids.extend(collect_container_output_file_ids(response))

@@ -6,6 +6,7 @@
 logs/
 memories/
 persistence/
+repository/
 bots/*.yaml
 !bots/*.yaml.example
 test-stuff/
