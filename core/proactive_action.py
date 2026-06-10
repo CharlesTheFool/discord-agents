@@ -24,7 +24,7 @@ class ProactiveAction:
     user_name: Optional[str] = None
     message: Optional[str] = None
     context: Optional[str] = None
-    delivery_method: str = "standalone"  # "standalone" | "woven" | "deferred"
+    delivery_method: str = "standalone"  # "immediate" | "standalone" | "woven" | "deferred"
     followup_id: Optional[str] = None
     followup_event: Optional[str] = None
 
@@ -38,7 +38,7 @@ class ProactiveAction:
         if self.priority not in valid_priorities:
             raise ValueError(f"Invalid priority: {self.priority}. Must be {valid_priorities}")
 
-        valid_delivery = ["standalone", "woven", "deferred"]
+        valid_delivery = ["immediate", "standalone", "woven", "deferred"]
         if self.delivery_method not in valid_delivery:
             raise ValueError(f"Invalid delivery_method: {self.delivery_method}. Must be {valid_delivery}")
 
@@ -46,10 +46,13 @@ class ProactiveAction:
         """
         Determine if action should execute now based on delivery method.
 
+        immediate: Execute regardless of channel activity (high priority)
         standalone: Execute when channel is idle
         woven: Execute when channel is active (weave into conversation)
         deferred: Never execute immediately
         """
+        if self.delivery_method == "immediate":
+            return True
         if self.delivery_method == "standalone":
             return not channel_active
         elif self.delivery_method == "woven":

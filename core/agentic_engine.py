@@ -254,7 +254,7 @@ class AgenticEngine:
 
         # If high priority, send now even if active
         if followup["priority"] == "high":
-            return "standalone"
+            return "immediate"
 
         # Check if user is in current conversation
         recent_messages = await self.message_memory.get_recent(channel_id, limit=5)
