@@ -67,8 +67,8 @@ personality:
 reactive:
   enabled: true
   always_respond_to_mentions: true  # Guaranteed response to @mentions
-  cooldown: "moderate"              # fast | moderate | relaxed
   rate_limit: "moderate"            # strict | moderate | permissive | unlimited
+  check_interval_seconds: 60        # How often pending messages are scanned
 
 # ============================================================
 # AUTONOMOUS BEHAVIOR
@@ -120,16 +120,12 @@ mcp:
   enabled: false
 
 # Skills - modular instruction packages (always enabled)
-# Code execution is automatically enabled with skills (Bug #14 fix)
+# Code execution is automatically enabled with skills
 skills:
   include_anthropic_skills: true  # xlsx, pptx, docx, pdf
+  default_skills: ["pdf"]         # Loaded initially; the bot can swap via request_skill
 
-# Image processing
-images:
-  enabled: true
-  max_per_message: 5
-
-# Unified attachment system (v0.5.0)
+# Unified attachment system (images, documents, spreadsheets, code files)
 attachments:
   enabled: false
   backfill_enabled: true

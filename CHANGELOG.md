@@ -7,6 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2026-06-10
+
+**Status:** Pre-release (beta). The 0.5.0 feature set plus a memory-architecture
+redesign, validated end-to-end through live scenario testing on a real Discord
+server (six narrative scenarios, a full code audit, and a release stress test —
+54 bugs and findings fixed along the way).
+
+### Added
+
+**Episodic Session Memory** (replaces client-side token budgeting)
+- Conversation sessions are distilled into per-channel episode files (titled,
+  timestamped, message-ranged) when a session crosses its token threshold or
+  goes idle — then the live context reseeds fresh
+- Episode archives are readable by the bot through its memory tool; distilled
+  channel state (standing facts, settled questions, running jokes) feeds
+  proactive decisions
+- Startup catch-up distills anything missed while offline; failed distillations
+  retry with a cooldown instead of re-billing every message
+
+**Retrieval**
+- `get_attachment` tool: the bot can pull any indexed attachment back into
+  context on demand (documents re-attach, images inline, spreadsheets mount
+  into code execution)
+- Attachment index in the system prompt: recent channel files with
+  in-context/not-in-context markers, so the bot knows what it can retrieve
+- Full-text message search now handles multi-keyword queries (per-token AND
+  with literal-phrase fallback)
+
+**Prompt-Cache Architecture**
+- Full-conversation caching: message-level cache breakpoints plus a
+  volatile-context tail keep the entire prompt prefix byte-stable across turns
+  — measured live at ~330 uncached tokens per turn versus ~3,000 before
+- Persisted images stored by reference in a content-addressed blob store
+  (states no longer re-serialize megabytes of base64 on every save)
+- Cache-anatomy logging: input tokens split into uncached / cache-read /
+  cache-write
+
+**Autonomy**
+- Engagement settlement: proactive messages are judged after a delay (replies
+  count as success), so channel success rates actually learn — previously
+  every channel death-spiraled after two unanswered sends
+- Proactive evaluations return structured decisions and may explicitly decline
+  to send ("nothing worth saying")
+
+### Changed
+
+- **Configuration simplified from ~150 options to ~30.** Rate limiting and
+  proactive intensity are now presets (`strict/moderate/permissive/unlimited`,
+  `gentle/moderate/active`); implementation details moved to internal
+  constants. Old keys log deprecation warnings and map where possible.
+- Both response paths (@mention and periodic check) now share one
+  request/tool-loop/delivery pipeline
+- Web search cost control is per-request (`max_uses`) — the daily quota
+  system is gone
+- API layer modernized: adaptive thinking, `effort` parameter (validated
+  against model capability at startup), beta Messages endpoint throughout
+- Message deletions are handled via raw gateway events, so storage and
+  attachment purges fire even for messages older than the current process
+- Backfill always runs in the background; `backfill_days: 0` now means
+  unlimited
+
+### Fixed
+
+Fifty-four bugs and audit findings across three hardening passes, including:
+
+- Server tool result blocks persisted as repr strings poisoned conversation
+  replay (400 on every subsequent request) — server blocks are no longer
+  persisted, and existing databases heal themselves on load
+- Conversation states could start with a non-user turn after cap enforcement
+  or DB seeding (channel-bricking 400) — invariants enforced at every
+  mutation point, poisoned states self-heal
+- Expired Files API references in persisted state bricked their channel; they
+  now recover in place (re-upload from local storage, id swapped, request
+  retried)
+- The agentic engine: infinite proactive loop on `max_tokens` stops, naive
+  datetime crash, hours-vs-minutes idle confusion, engagement success never
+  recorded, effort sent to models that reject it
+- MCP tools from underscore-named servers could never route back
+- Skills upload blocked the Discord gateway heartbeat at startup (sync client
+  in async path); skills cache now reconciles against the server
+- Windows cp1252 encoding crashes in memory files, deployment tool, and logs
+- Deleted Discord messages now purge their attachments (local copy, Files API
+  upload, database rows)
+
+### Upgrading from 0.4.x
+
+No manual data migration: databases and persisted conversation states migrate
+themselves on first load (new tables auto-create; legacy rows heal).
+
+Config changes to make in your bot YAML:
+
+- **Removed (now ignored, with deprecation warnings):** `reactive.cooldown`,
+  `images:` section, `api.context_management`, `api.context_editing`,
+  `api.throttling`, `rate_limiting:` section, `multimedia:` section, per-rate
+  personality knobs (`mention_response_rate` etc. — express style in
+  `personality.base_prompt` instead)
+- **Renamed:** `discord.default_timezone` → `discord.timezone`;
+  `api.context_management.max_conversation_messages` → `api.context_messages`;
+  `api.context_management.max_total_tokens` → `api.context_tokens`
+- **New:** `api.effort` (low/medium/high/max — startup validation rejects it
+  on models without effort support), `reactive.check_interval_seconds`,
+  `skills.default_skills`
+- **Semantics:** `agentic.proactive.quiet_hours` is a list of LOCAL host-clock
+  hours (default `[0..6]`); `discord.backfill_days: 0` means unlimited
+- `web_search` no longer takes quota settings — enable/disable only
+
+---
+
+## [0.5.0] - 2026-06-10
+
+**Status:** Never released independently — developed after 0.4.1, validated and
+shipped as part of 0.6.0. Listed separately so the feature history stays honest.
+
+### Added
+
+- **MCP integration** - Remote MCP servers over HTTP (`mcp_servers.json`),
+  tools auto-discovered at startup and namespaced by server; server failures
+  degrade gracefully
+- **Skills system** - `.zip` skills auto-discovered from `/skills/`, uploaded
+  with SHA256 deduplication; Anthropic built-ins (xlsx, pptx, docx, pdf);
+  progressive disclosure — the bot requests skills via a `request_skill` tool;
+  code execution enabled automatically with skills
+- **Unified attachments** - Images, documents, spreadsheets, and code files
+  processed through one pipeline (Files API + local storage), with retroactive
+  processing of historical attachments and configurable backfill
+- **Container file delivery** - Files the bot creates in code execution
+  (decks, charts, exports) attach to its Discord reply
+- **Persistent conversation state** - Per-channel context survives restarts
+  (SQLite-backed)
+- **Data isolation modes** - `off` / `server` / `channel` scoping for memory,
+  search, and Discord tools in multi-tenant deployments
+
+---
+
 ## [0.4.1] - 2025-10-24
 
 **Status:** Pre-release (beta) - polish and refinements

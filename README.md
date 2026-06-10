@@ -1,10 +1,9 @@
 # Discord Agents
 
-**Version:** 0.4.1 (Pre-release Beta)
+**Version:** 0.6.0 (Pre-release Beta)
 
 Build intelligent Discord bots that think, remember, and act autonomously. Powered by Claude.
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Discord.py](https://img.shields.io/badge/discord.py-2.3+-blue.svg)](https://discordpy.readthedocs.io/)
 [![Security](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
@@ -14,123 +13,163 @@ Build intelligent Discord bots that think, remember, and act autonomously. Power
 
 ## ⚠️ Beta Notice
 
-This is a beta release. The framework is feature-complete but undergoing community testing.
-
-- **Expect changes** - API and configuration may evolve between beta versions
-- **Report issues** - Use [GitHub Issues](../../issues) with provided templates
-- **Beta testing** - See [BETA_TESTING.md](BETA_TESTING.md) for guidelines
-- **Security** - Report vulnerabilities via [GitHub Security Advisories](SECURITY.md)
+This is a beta release. The framework is feature-complete and validated through
+live scenario testing, but APIs and configuration may still evolve between beta
+versions. Report issues via [GitHub Issues](../../issues); report security
+vulnerabilities via [GitHub Security Advisories](SECURITY.md).
 
 ---
 
 ## What It Does
 
-### Intelligence
+### Two engines, one bot
 
-Your bot reasons through complex questions with extended thinking, maintains persistent memory per server (Markdown-based), and searches message history using FTS5 full-text indexing. Web search comes with automatic citation extraction. Handles up to 5 images per message through a compression pipeline. It understands time, threads reply chains up to 5 levels deep, and knows when to shut up.
+A **reactive engine** answers @mentions immediately and scans ongoing
+conversation for moments worth joining — with the judgment to stay quiet when
+it has nothing to add. An **agentic engine** runs in the background: it
+initiates conversation in idle channels, remembers to follow up on things
+people mentioned ("how did the presentation go?"), and learns per-channel
+engagement rates so it backs off where it isn't wanted.
 
-### Autonomy
+### Memory that survives
 
-The bot initiates conversations in idle channels when appropriate, tracks events and follows up naturally, and learns channel success rates to adapt its behavior. Configure quiet hours to avoid late night enthusiasm. Messages are delivered standalone, woven into context, or deferred based on delivery intelligence.
+- **Episodic sessions** — when a conversation session grows past its token
+  threshold or goes idle, the bot distills it into a titled, timestamped
+  episode file and reseeds its live context. The archive stays searchable
+  through the bot's memory tool, so "what did we decide last Tuesday?" works
+  weeks later.
+- **Long-term memory** — per-server Markdown files (user profiles, channel
+  notes, server culture) the bot reads and writes itself.
+- **Message history** — SQLite with FTS5 full-text search; the bot can search
+  and quote its own channel history on demand.
+- **Attachments** — images, documents, spreadsheets, and code files are
+  indexed and retrievable: the bot can pull any past attachment back into
+  context with its `get_attachment` tool.
 
-### Production Features
+### Capabilities
 
-Rate limiting prevents embarrassment (20/min, 100/hour per channel). Web search quota management keeps costs predictable (300/day default). Daily message reindexing runs at 3 AM UTC. API keys stay isolated, environment variables get validated, and comprehensive logging tracks everything including conversation flows. Run multiple bots with isolated configurations because sometimes one personality isn't enough.
+- **Skills + code execution** — drop `.zip` skill packages into `/skills/`;
+  Anthropic's built-in document skills (xlsx, pptx, docx, pdf) are included.
+  Files the bot creates in its sandbox (decks, charts, exports) attach
+  directly to its Discord reply.
+- **Web search** with automatic citations.
+- **MCP integration** — connect remote MCP servers; their tools are
+  auto-discovered and available to the bot.
+- **Vision** — image attachments are processed and understood in context.
 
-**Technical Details:**
-- Extended thinking for step-by-step reasoning
-- Persistent per-server knowledge storage (Markdown)
-- FTS5 full-text message search with agentic retrieval
-- Web search via Anthropic server tools with citations
-- Multi-image processing (up to 5 per message, 6 compression strategies)
-- Temporal awareness with message timestamps
-- Reply chain threading (5-level depth)
-- Adaptive learning from channel engagement rates
-- Configurable quiet hours
-- Smart message delivery (standalone/woven/deferred)
+### Production posture
+
+- Per-channel rate-limit presets with engagement-aware backoff
+- Prompt-cache-aware request layout (measured ~330 uncached tokens per turn in
+  steady state — the conversation prefix stays cached)
+- Persistent conversation state across restarts; crash detection and catch-up
+- Optional data isolation (`server` or `channel` scope) for multi-tenant use
+- Multiple isolated bots from one codebase (separate configs, databases,
+  memory trees, and logs)
 
 ---
 
 ## Prerequisites
 
-- **Python 3.10+** - [Download](https://www.python.org/downloads/)
-- **Discord Bot** - [Create application](https://discord.com/developers/applications)
+- **Python 3.10+** — [Download](https://www.python.org/downloads/)
+- **Discord Bot** — [Create application](https://discord.com/developers/applications)
   - Enable "Message Content Intent" in Bot settings
-- **Anthropic API Key** - [Get key](https://console.anthropic.com/)
-  - **Requires Claude 4+ family models** (e.g., claude-sonnet-4-5-20250514)
-  - Claude 3.x models are not supported
+- **Anthropic API Key** — [Get key](https://console.anthropic.com/)
+  - Defaults to `claude-sonnet-4-6`. Any Claude 4-family model works; the
+    optional `api.effort` setting requires an effort-capable model (validated
+    at startup).
 
 ---
 
 ## Quick Start
 
-### 1. Clone Repository
+### 1. Clone and install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/CharlesTheFool/discord-agents.git
 cd discord-agents
-```
-
-### 2. Install Dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment
-
-Copy the template and add your API keys:
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env`:
+
 ```bash
 ALPHA_BOT_TOKEN=your_discord_bot_token_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-### 4. Configure Your Bot
-
-Copy the template and customize:
+### 3. Configure your bot
 
 ```bash
 cp bots/alpha.yaml.example bots/alpha.yaml
 ```
 
 Edit `bots/alpha.yaml`:
+
 ```yaml
 discord:
   servers:
-    - "YOUR_SERVER_ID_HERE"  # Right-click server → Copy ID
-  default_timezone: "UTC"  # Common: America/New_York, America/Los_Angeles, America/Phoenix, Europe/London
+    - "YOUR_SERVER_ID_HERE"   # Right-click server → Copy ID (Developer Mode)
+  timezone: "UTC"              # IANA format: America/New_York, Europe/London, ...
 
 personality:
   base_prompt: |
-    Customize your bot's personality here.
-    Define tone, expertise, behavior preferences.
+    Your bot's character AND behavior style — tone, when to engage,
+    formatting preferences. This prompt is the main behavioral control.
 ```
 
-**Timezones:** Use [IANA format](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples: `America/New_York` (EST/EDT), `America/Chicago` (CST/CDT), `America/Phoenix` (MST, no DST), `America/Los_Angeles` (PST/PDT), `Europe/London` (GMT/BST), `UTC`.
-
-### 5. Run Your Bot
+### 4. Run
 
 ```bash
 python bot_manager.py spawn alpha
 ```
 
-The bot will connect to Discord, backfill message history, start its autonomous background loop, and respond to @mentions.
+The bot connects, backfills message history in the background, starts its
+autonomous loop, and responds to @mentions.
+
+---
+
+## Configuration
+
+v0.6.0 deliberately keeps configuration small (~30 user-facing settings).
+Behavioral style lives in the personality prompt; operational tuning uses
+presets:
+
+```yaml
+reactive:
+  rate_limit: "moderate"        # strict | moderate | permissive | unlimited
+
+agentic:
+  proactive:
+    enabled: true
+    intensity: "moderate"       # gentle | moderate | active
+    quiet_hours: [0, 1, 2, 3, 4, 5, 6]   # LOCAL host-clock hours
+
+api:
+  model: "claude-sonnet-4-6"
+  context_messages: 30          # Rolling window of Discord messages
+  context_tokens: 80000         # Session threshold: episodize + reseed past this
+  effort: "medium"              # Optional cost/depth dial (low|medium|high|max)
+```
+
+See `bots/alpha.yaml.example` for the complete annotated reference, and
+`CHANGELOG.md` → *Upgrading from 0.4.x* if you're migrating an existing
+config.
 
 ---
 
 ## Deployment (Self-Hosted)
 
-### Option 1: Systemd Service (Linux VPS)
-
-Create `/etc/systemd/system/discord-bot.service`:
+### Systemd (Linux VPS)
 
 ```ini
+# /etc/systemd/system/discord-bot.service
 [Unit]
 Description=Discord Agent
 After=network.target
@@ -147,200 +186,118 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-Enable and start:
 ```bash
-sudo systemctl enable discord-bot
-sudo systemctl start discord-bot
-sudo systemctl status discord-bot
+sudo systemctl enable --now discord-bot
 ```
 
-### Option 2: PM2 (Process Manager)
+### PM2
 
 ```bash
 pm2 start bot_manager.py --name discord-bot --interpreter python3 -- spawn alpha
-pm2 save
-pm2 startup  # Follow instructions for auto-start
+pm2 save && pm2 startup
 ```
 
-### Option 3: Docker
+### Docker
 
-Create `Dockerfile`:
 ```dockerfile
 FROM python:3.10-slim
-
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
-
 CMD ["python3", "bot_manager.py", "spawn", "alpha"]
 ```
 
-Build and run:
 ```bash
 docker build -t discord-agent .
 docker run -d --name bot --env-file .env discord-agent
 ```
 
-### Option 4: Screen/Tmux (Simple)
+### Screen/Tmux (simple)
 
 ```bash
 screen -S discord-bot
-python bot_manager.py spawn alpha
-# Ctrl+A, D to detach
+python bot_manager.py spawn alpha    # Ctrl+A, D to detach
+```
+
+---
+
+## Backup & Restore
+
+```bash
+# Export configuration + data to a portable zip
+python deployment_tool.py export
+python deployment_tool.py export --exclude logs
+
+# Import on another machine (preview first)
+python deployment_tool.py import --input backup.zip --dry-run
+python deployment_tool.py import --input backup.zip
 ```
 
 ---
 
 ## Security & Safety
 
-**Full Security Policy:** See [SECURITY.md](SECURITY.md) for complete guidelines and best practices.
+**Full policy:** [SECURITY.md](SECURITY.md) — including vulnerability
+reporting via [GitHub Security Advisories](../../security/advisories/new)
+(please don't open public issues for security problems).
 
-### Reporting Security Vulnerabilities
-
-⚠️ **Found a security issue?** Report it responsibly:
-
-- **GitHub Security Advisories** (preferred): [Report vulnerability](../../security/advisories/new)
-- **Do NOT** create public GitHub issues for security vulnerabilities
-- See [SECURITY.md](SECURITY.md) for detailed reporting instructions
-
-### API Key Management
-Never commit `.env` files (already git-ignored). Use environment variables only—no hardcoded keys. Rotate keys immediately if exposed by regenerating Discord token and Anthropic key. For multi-bot setups, consider one key per bot for isolation.
-
-### Rate Limiting
-Per-channel limits prevent spam: 20 messages per 5 minutes, 200 per 60 minutes. The bot learns when users are less responsive and backs off accordingly.
-
-### Quota Management
-Web search defaults to 300 per day (configurable in bot YAML). Image processing maxes at 5 per message. Tracking data lives in `persistence/{bot}_web_search_stats.json`.
-
-### Resource Cleanup
-Graceful shutdown on SIGTERM/SIGINT. Database connections close properly. Background tasks cancel cleanly.
-
-### Memory Isolation
-Per-server separation prevents data leakage between communities. Per-channel isolation maintains channel-specific memory contexts. Each server has isolated memory files—no cross-contamination.
-
-**For comprehensive security guidelines, hardening recommendations, and deployment best practices, see [SECURITY.md](SECURITY.md).**
+- **API keys** live in environment variables only; `.env` is git-ignored.
+  Rotate immediately if exposed.
+- **Rate limiting** is per-channel with preset tiers; the bot also silences
+  itself after consecutive ignored messages.
+- **Web search** is capped per request; code execution runs in Anthropic's
+  sandbox, not on your host.
+- **Data isolation** (optional) scopes memory, search, and Discord tools to
+  the current server or channel — validated in both directions by live
+  testing.
+- **Deletion handling** — deleting a Discord message purges it from the bot's
+  storage and attachment pipeline, including messages older than the current
+  process.
+- **Graceful shutdown** on SIGTERM/SIGINT; database connections close cleanly.
 
 ---
 
 ## Documentation
 
-- **[README.md](README.md)** - This file: Quick start and overview
-- **[BETA_TESTING.md](BETA_TESTING.md)** - Beta testing guide and feedback channels
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical reference and system design
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and planned features
-- **[SECURITY.md](SECURITY.md)** - Security policy and vulnerability reporting
-
----
-
-## Configuration Guide
-
-### Minimal Setup
-
-Just get started:
-```yaml
-bot_id: mybot
-name: "My Bot"
-
-discord:
-  token_env_var: "DISCORD_BOT_TOKEN"
-  servers: ["YOUR_SERVER_ID"]
-
-personality:
-  base_prompt: "Your bot's personality"
-```
-
-### Full Configuration
-
-See `bots/alpha.yaml.example` for all options including personality and engagement rates, reactive engine settings, agentic behaviors (proactive, follow-ups), API configuration (thinking, context editing, tools), rate limiting, and logging.
-
----
-
-## Backup & Restore
-
-### Export Your Bot Data
-
-Create a portable backup of your bot configuration and data:
-
-```bash
-# Export everything
-python deployment_tool.py export
-
-# Export without logs (smaller backup)
-python deployment_tool.py export --exclude logs
-
-# Export to specific location
-python deployment_tool.py export --output ~/backups/my-bot.zip
-```
-
-This creates a timestamped zip file containing bot configurations (`bots/*.yaml`), environment variables (`.env`), and optionally logs, memories, and persistence data.
-
-### Import on Another Machine
-
-Restore your bot data from a backup:
-
-```bash
-# Preview what will be imported (safe, no changes)
-python deployment_tool.py import --input backup.zip --dry-run
-
-# Import backup (creates safety backup of existing files first)
-python deployment_tool.py import --input backup.zip
-```
-
-Portable (USB drive, Dropbox, cloud storage), safe (auto-backup before import), selective (choose what to include), and simple (no git complexity).
-
----
-
-## Known Issues
-
-See [CHANGELOG.md](CHANGELOG.md#known-issues) for current issues.
-
-**Report bugs:** [GitHub Issues](repository-url/issues)
+- **[README.md](README.md)** — this file: quick start and overview
+- **[CHANGELOG.md](CHANGELOG.md)** — version history and upgrade notes
+- **[REDESIGN.md](REDESIGN.md)** — the v0.6.0 architecture design document
+  (episodic sessions, context layout)
+- **[SECURITY.md](SECURITY.md)** — security policy
+- `docs/archive/` — historical design documents from earlier versions
 
 ---
 
 ## Project Stats
 
-**Current Version:** 0.4.1 (Pre-release Beta)
-
-**Framework:**
-- 12 core modules
-- 3 tool integrations (discord, web, image)
-- 6 test suites
-- 3,000+ lines of code
-
-**Capabilities:**
-- Message handling (reactive)
-- Autonomous behaviors (proactive)
-- Full-text search (FTS5)
-- Web search with citations
-- Image processing (6 strategies)
-- Memory management (Markdown)
+- ~25 core modules, 216 unit tests
+- Validated by live scenario campaigns on a real Discord server: six narrative
+  scenarios, a full pre-release code audit, and a release stress test — 54
+  bugs and findings fixed across three hardening passes (see CHANGELOG)
 
 ---
 
 ## License
 
-[Your License Here - e.g., MIT]
+No license file yet — all rights reserved until one is added.
 
 ---
 
 ## Acknowledgments
 
 Built with:
-- [Anthropic Claude](https://www.anthropic.com/) - AI foundation
-- [discord.py](https://discordpy.readthedocs.io/) - Discord integration
-- [aiosqlite](https://github.com/omnilib/aiosqlite) - Async SQLite
+
+- [Anthropic Claude](https://www.anthropic.com/) — AI foundation
+- [discord.py](https://discordpy.readthedocs.io/) — Discord integration
+- [aiosqlite](https://github.com/omnilib/aiosqlite) — async SQLite
 
 ---
 
 ## Roadmap
 
-### Planned for v0.5.0
-- Enhanced analytics dashboard
-- Thread and voice channel support
-- Performance optimizations
-- Community feedback integration
+- Batches API for cheaper background distillation
+- Retroactive channel digests when joining a server with history
+- Thread support
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed version history and planned features.
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
