@@ -51,7 +51,8 @@ judgment to handle that gracefully.
 
 ## 0.8.0 — Day One
 
-Make a bot joining a populated server instantly tuned-in instead of amnesiac.
+Make a bot joining a populated server instantly tuned-in instead of amnesiac,
+and present on every conversation surface.
 
 - **Server induction** — a deliberate operator action (`induct`, with
   dry-run cost preview) that distills existing history into channel
@@ -61,14 +62,56 @@ Make a bot joining a populated server instantly tuned-in instead of amnesiac.
   reconsolidation machinery (induction is reconsolidation at t = 0).
 - **Thread support** — threads become first-class conversation surfaces
   (backfill, replies, memory).
+- **Voice-channel text presence** — the bot lives in voice channels' text
+  chat like any other channel: meeting notes relayed there become memory,
+  documents, reminders.
+
+## 0.9.0 — The Switchboard
+
+The ensemble becomes an organism.
+
+- **Supervisor daemon** — the shared backbone: process management for bot
+  instances, a local message bus, and a status/config/log API. Built once,
+  consumed twice (by the Master bot below, and by the dashboard).
+- **Master bot** — a coordinator with no channel-posting surface of its own:
+  talk to it in DMs, it manages the fleet, and it relays **cross-agent
+  requests** — one bot asks it to have another instance pose a question or
+  make an announcement in Server X / Channel Y, optionally with a
+  **standing watch** that monitors for the response and feeds it back into
+  the requesting conversation. Vault containment and provenance tagging
+  extend across the bus (relayed knowledge is labeled as relayed).
+- **DM support** — bots gain a DM surface (prerequisite for the Master,
+  useful everywhere).
+- **Minimal web dashboard** — a thin human client on the supervisor API:
+  status, logs, config, spawn/stop.
+
+## 0.10.0 — The Listener
+
+- **Voice transcription** — the bot joins occupied voice channels and treats
+  transcribed speech as flagged ordinary messages (full pipeline reuse — no
+  multimodality), replying in the voice channel's text chat with
+  conversation-aware pacing. Local Whisper (faster-whisper) as the free
+  default; paid APIs (Deepgram, OpenAI) as optional plug-ins.
+  Known dependency bet to validate early: voice *receive* requires the
+  community `discord-ext-voice-recv` extension.
+- **/record** — start/stop (or 5-minute silence) meeting capture →
+  Claude-organized transcript document → posted to a chosen channel and
+  saved to the repository.
+
+## 1.0 — The Product
+
+No new behavior. Two things, done properly:
+
+- **The application** — Electron-packaged desktop app on the supervisor
+  API: download-site distribution for non-developer operators
+  (instantiation, configuration, monitoring without touching a terminal).
+- **The stability campaign** — extended prod soak, a full audit pass like
+  the v0.6.0 pre-release sweep, config freeze and stability guarantees.
+  1.0 is earned by testing, not built.
 
 ## Later / unscheduled
 
-- **Ensemble dynamics** — multiple bots in one server, aware of each other,
-  with their own relationships
-- **Richer presence** — events, polls, voice-channel awareness
-- **1.0 operational maturity** — config stability guarantees, observability,
-  onboarding for outside operators (only if the project decides it wants
-  them)
+- **Bot speech** in voice channels (the Listener learns to talk back)
+- **Richer presence** — events, polls, scheduled activities
 - **Daily web-search quota** — dormant; revisit only if per-request caps
   prove insufficient
