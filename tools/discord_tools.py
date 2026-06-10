@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 if TYPE_CHECKING:
     from core.message_memory import MessageMemory
     from core.user_cache import UserCache
+    from core.data_isolation import DataIsolationEnforcer
+    from core.conversation_state_manager import ConversationStateManager
 
 logger = logging.getLogger(__name__)
 
@@ -24,27 +26,61 @@ class DiscordToolExecutor:
     Routes commands to appropriate handlers.
     """
 
-    def __init__(self, message_memory: "MessageMemory", user_cache: "UserCache"):
+    def __init__(
+        self,
+        message_memory: "MessageMemory",
+        user_cache: "UserCache",
+        data_isolation: Optional["DataIsolationEnforcer"] = None,
+        attachment_manager: Optional["UnifiedAttachmentManager"] = None,
+        conversation_state_manager: Optional["ConversationStateManager"] = None
+    ):
         self.message_memory = message_memory
         self.user_cache = user_cache
+        self.data_isolation = data_isolation
+        self.attachment_manager = attachment_manager
+        # Phase 6.4: Store conversation_state_manager for in_context_only filtering
+        self.conversation_state_manager = conversation_state_manager
         logger.info("DiscordToolExecutor initialized")
 
-    async def execute(self, tool_input: dict) -> str:
-        """Route tool command to appropriate handler"""
+    async def execute(
+        self,
+        tool_input: dict,
+        current_server_id: Optional[str] = None,
+        current_channel_id: Optional[str] = None
+    ) -> str:
+        """
+        Route tool command to appropriate handler.
+
+        Args:
+            tool_input: Tool parameters
+            current_server_id: Current server context for isolation
+            current_channel_id: Current channel context for isolation
+        """
         command = tool_input.get("command", "")
 
+        # Apply data isolation scope if enabled (v0.5.0)
+        scope = {}
+        if self.data_isolation and current_server_id and current_channel_id:
+            scope = self.data_isolation.get_search_scope(current_server_id, current_channel_id)
+            logger.debug(f"Data isolation scope applied: {scope}")
+
         if command == "search_messages":
-            return await self._search_messages(tool_input)
+            return await self._search_messages(tool_input, scope)
         elif command == "view_messages":
-            return await self._view_messages(tool_input)
+            return await self._view_messages(tool_input, scope)
         elif command == "get_user_info":
             return await self._get_user_info(tool_input)
         elif command == "get_channel_info":
             return await self._get_channel_info(tool_input)
+        elif command == "get_attachment":
+            return await self._get_attachment(tool_input)
+        elif command == "list_attachments":
+            # Phase 6.3: Route list_attachments command to executor
+            return await self._list_attachments(tool_input)
         else:
             return f"Unknown Discord tool command: {command}"
 
-    async def _search_messages(self, params: dict) -> str:
+    async def _search_messages(self, params: dict, scope: dict) -> str:
         """
         Search message history using FTS5 full-text search.
 
@@ -58,6 +94,18 @@ class DiscordToolExecutor:
 
         if not query:
             return "Error: query parameter required"
+
+        # Apply data isolation scope constraints (v0.5.0)
+        if scope:
+            if scope.get("server_id") and not channel_id:
+                # Scope is server-limited but no specific channel requested
+                # We need to filter to this server's channels
+                # For now, just inform the user
+                logger.info(f"Search scoped to server: {scope['server_id']}")
+            if scope.get("channel_id"):
+                # Force search to specific channel
+                channel_id = scope["channel_id"]
+                logger.info(f"Search scoped to channel: {channel_id}")
 
         try:
             results = await self.message_memory.search_messages(
@@ -74,11 +122,27 @@ class DiscordToolExecutor:
 
             for msg in results:
                 timestamp = msg.timestamp.strftime('%Y-%m-%d %H:%M')
-                lines.append(
-                    f"[{timestamp}] {msg.author_name} (msg_id: {msg.message_id}, channel: {msg.channel_id}): {msg.content}"
-                )
+                message_line = f"[{timestamp}] {msg.author_name} (msg_id: {msg.message_id}, channel: {msg.channel_id}): {msg.content}"
+
+                # Query attachments for this message
+                if self.attachment_manager:
+                    try:
+                        async with self.attachment_manager.attachment_db.db.execute(
+                            "SELECT attachment_id, filename FROM attachments WHERE message_id = ?",
+                            (str(msg.message_id),)
+                        ) as cursor:
+                            attachments = await cursor.fetchall()
+
+                        if attachments:
+                            attachment_strs = [f"{row['filename']} (ID: {row['attachment_id']})" for row in attachments]
+                            message_line += f" [Attachments: {', '.join(attachment_strs)}]"
+                    except Exception as e:
+                        logger.debug(f"Failed to query attachments for message {msg.message_id}: {e}")
+
+                lines.append(message_line)
 
             lines.append("\nTip: Use view_messages with mode='around' and the message_id to see conversation context.")
+            lines.append("Tip: Use get_attachment with attachment_id to retrieve and process specific attachments.")
 
             return "\n".join(lines)
 
@@ -86,7 +150,7 @@ class DiscordToolExecutor:
             logger.error(f"Error searching messages: {e}", exc_info=True)
             return f"Error searching messages: {str(e)}"
 
-    async def _view_messages(self, params: dict) -> str:
+    async def _view_messages(self, params: dict, scope: dict) -> str:
         """
         View messages with flexible exploration modes.
 
@@ -98,6 +162,12 @@ class DiscordToolExecutor:
         """
         mode = params.get("mode", "recent")
         channel_id = params.get("channel_id")
+
+        # Apply data isolation scope constraints (v0.5.0)
+        if scope and scope.get("channel_id"):
+            if channel_id and channel_id != scope["channel_id"]:
+                return f"Error: Access denied. Cannot view messages from other channels."
+            channel_id = scope["channel_id"]
         limit = min(params.get("limit", 30), 100)  # Cap at 100 to avoid overwhelming output
 
         if not channel_id:
@@ -172,7 +242,28 @@ class DiscordToolExecutor:
 
             for msg in messages:
                 timestamp = msg.timestamp.strftime('%Y-%m-%d %H:%M')
-                lines.append(f"[{timestamp}] {msg.author_name}: {msg.content}")
+                message_line = f"[{timestamp}] {msg.author_name}: {msg.content}"
+
+                # Query attachments for this message
+                if self.attachment_manager:
+                    try:
+                        async with self.attachment_manager.attachment_db.db.execute(
+                            "SELECT attachment_id, filename FROM attachments WHERE message_id = ?",
+                            (str(msg.message_id),)
+                        ) as cursor:
+                            attachments = await cursor.fetchall()
+
+                        if attachments:
+                            attachment_strs = [f"{row['filename']} (ID: {row['attachment_id']})" for row in attachments]
+                            message_line += f" [Attachments: {', '.join(attachment_strs)}]"
+                    except Exception as e:
+                        logger.debug(f"Failed to query attachments for message {msg.message_id}: {e}")
+
+                lines.append(message_line)
+
+            # Add helpful tips
+            if any("[Attachments:" in line for line in lines):
+                lines.append("\nTip: Use get_attachment with attachment_id to retrieve and process specific attachments.")
 
             return "\n".join(lines)
 
@@ -241,6 +332,185 @@ class DiscordToolExecutor:
             logger.error(f"Error getting channel info: {e}", exc_info=True)
             return f"Error getting channel info: {str(e)}"
 
+    async def _get_attachment(self, params: dict):
+        """
+        Retrieve and process a specific attachment by ID.
+
+        Returns structured data with both text description and file content
+        for integration into conversation context.
+
+        Returns:
+            Dict with:
+            - text: Human-readable description
+            - file_data: File content for API (optional)
+            - metadata: Source information
+            OR string with error message
+        """
+        attachment_id = params.get("attachment_id", "")
+        if not attachment_id:
+            return "Error: attachment_id parameter required"
+
+        if not self.attachment_manager:
+            return "Error: Attachment processing not available (attachment_manager not initialized)"
+
+        try:
+            # Query database for full metadata
+            async with self.attachment_manager.attachment_db.db.execute(
+                "SELECT filename, attachment_type, size_bytes, message_id, channel_id, server_id, uploaded_at FROM attachments WHERE attachment_id = ?",
+                (attachment_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+
+            if not row:
+                return f"Error: Attachment {attachment_id} not found in database"
+
+            filename = row["filename"]
+            attachment_type = row["attachment_type"]
+            size_bytes = row["size_bytes"]
+            source_message_id = row["message_id"]
+            source_channel_id = row["channel_id"]
+            server_id = row["server_id"]
+            uploaded_at = row["uploaded_at"]
+
+            # Format size
+            if size_bytes < 1024:
+                size_str = f"{size_bytes}B"
+            elif size_bytes < 1024 * 1024:
+                size_str = f"{size_bytes / 1024:.1f}KB"
+            else:
+                size_str = f"{size_bytes / (1024 * 1024):.1f}MB"
+
+            # Retrieve attachment from storage
+            attachment_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
+
+            if not attachment_data:
+                return f"Error: Attachment {attachment_id} not found or no longer available in storage"
+
+            # Build text description with provenance
+            lines = [
+                f"✓ Retrieved: {filename} ({size_str})",
+                f"📍 Source: Message {source_message_id} in channel {source_channel_id}",
+                f"📅 Uploaded: {uploaded_at}",
+                f"📎 Type: {attachment_type}"
+            ]
+
+            text_description = "\n".join(lines)
+
+            # Return structured data for reactive engine integration
+            return {
+                "_structured": True,  # Marker for reactive engine
+                "text": text_description,
+                "file_data": attachment_data,
+                "metadata": {
+                    "attachment_id": attachment_id,
+                    "filename": filename,
+                    "attachment_type": attachment_type,
+                    "size_bytes": size_bytes,
+                    "source_message_id": source_message_id,
+                    "source_channel_id": source_channel_id,
+                    "server_id": server_id
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error retrieving attachment: {e}", exc_info=True)
+            return f"Error retrieving attachment: {str(e)}"
+
+    async def _list_attachments(self, params: dict) -> str:
+        """
+        Phase 6.2: List all attachments with optional filtering.
+
+        Design: Discovery layer for rolled-out files. Shows all attachments stored
+        in database, with optional filters for keyword, file_type, and in_context_only.
+
+        Returns formatted list with filename, size, type, and message_id for context
+        via view_messages tool.
+        """
+        if not self.attachment_manager:
+            return "Error: Attachment processing not available (attachment_manager not initialized)"
+
+        # Extract filter parameters
+        keyword = params.get("keyword", "").lower()
+        file_type = params.get("file_type", "").lower()
+        in_context_only = params.get("in_context_only", False)
+        channel_id = params.get("channel_id")
+
+        try:
+            # Build SQL query with filters
+            query = "SELECT attachment_id, filename, attachment_type, size_bytes, message_id, channel_id FROM attachments WHERE 1=1"
+            query_params = []
+
+            if channel_id:
+                query += " AND channel_id = ?"
+                query_params.append(channel_id)
+
+            if keyword:
+                query += " AND (LOWER(filename) LIKE ? OR LOWER(attachment_type) LIKE ?)"
+                query_params.extend([f"%{keyword}%", f"%{keyword}%"])
+
+            if file_type:
+                query += " AND LOWER(filename) LIKE ?"
+                query_params.append(f"%.{file_type}")
+
+            query += " ORDER BY uploaded_at DESC"
+
+            # Execute query
+            async with self.attachment_manager.attachment_db.db.execute(query, query_params) as cursor:
+                rows = await cursor.fetchall()
+
+            if not rows:
+                return "No attachments found matching the specified filters."
+
+            # Phase 6.2: Filter by in_context_only if requested
+            # Design: If in_context_only is True, only show files that are currently in conversation state
+            if in_context_only and self.conversation_state_manager and channel_id:
+                # Get conversation state for this channel
+                state = await self.conversation_state_manager.load_or_create(channel_id)
+
+                # Get set of attachment_ids currently in context
+                in_context_ids = {
+                    item.item_id for item in state.context_items
+                    if item.type in ("document", "container_upload")
+                }
+
+                # Filter rows to only those in context
+                rows = [row for row in rows if row["attachment_id"] in in_context_ids]
+
+                if not rows:
+                    return "No attachments currently in conversation context. Use list_attachments without in_context_only to see all uploaded files."
+
+            # Format results
+            lines = [f"Found {len(rows)} attachment(s):\n"]
+
+            for row in rows:
+                attachment_id = row["attachment_id"]
+                filename = row["filename"]
+                attachment_type = row["attachment_type"]
+                size_bytes = row["size_bytes"]
+                message_id = row["message_id"]
+
+                # Format size
+                if size_bytes < 1024:
+                    size_str = f"{size_bytes}B"
+                elif size_bytes < 1024 * 1024:
+                    size_str = f"{size_bytes / 1024:.1f}KB"
+                else:
+                    size_str = f"{size_bytes / (1024 * 1024):.1f}MB"
+
+                # Format line with message_id for context lookup
+                line = f"- {filename} ({size_str}, type: {attachment_type}, ID: {attachment_id}, from message: {message_id})"
+                lines.append(line)
+
+            # Add tips about re-accessing and viewing context
+            lines.append("\n📎 To retrieve and process any of these files, use: get_attachment with the attachment_id")
+            lines.append("🔍 To see the message context, use: view_messages with mode='around' and the message_id")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            logger.error(f"Error listing attachments: {e}", exc_info=True)
+            return f"Error listing attachments: {str(e)}"
+
 
 def get_discord_tools() -> list:
     """
@@ -251,13 +521,13 @@ def get_discord_tools() -> list:
     return [
         {
             "name": "discord_tools",
-            "description": "Agentic Discord exploration: search_messages for keyword discovery (returns message IDs), view_messages for flexible browsing (recent/around/first/range modes), get_user_info for user details, get_channel_info for stats. WORKFLOW: Use search to find keywords → use view with mode='around' and message_id to explore context. Or use view directly with mode='recent' to see current conversation.",
+            "description": "Agentic Discord exploration: search_messages for keyword discovery (returns message IDs), view_messages for flexible browsing (recent/around/first/range modes), list_attachments for file discovery (shows all uploaded files with filters), get_attachment to retrieve specific files, get_user_info for user details, get_channel_info for stats. WORKFLOW: Use search to find keywords → use view with mode='around' and message_id to explore context. Use list_attachments to discover files → use get_attachment to retrieve them.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "enum": ["search_messages", "view_messages", "get_user_info", "get_channel_info"],
+                        "enum": ["search_messages", "view_messages", "get_user_info", "get_channel_info", "get_attachment", "list_attachments"],
                         "description": "Discord tool command to execute"
                     },
                     "query": {
@@ -304,6 +574,22 @@ def get_discord_tools() -> list:
                     "limit": {
                         "type": "integer",
                         "description": "[search_messages/view_messages] Max results (search: default 20, view: default 30, max 100)"
+                    },
+                    "attachment_id": {
+                        "type": "string",
+                        "description": "[get_attachment] Attachment ID from search/view results to retrieve and process"
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "[list_attachments] Filter by filename or attachment type (case-insensitive substring match)"
+                    },
+                    "file_type": {
+                        "type": "string",
+                        "description": "[list_attachments] Filter by file extension (e.g., 'pdf', 'docx', 'xlsx', 'png')"
+                    },
+                    "in_context_only": {
+                        "type": "boolean",
+                        "description": "[list_attachments] Show only attachments currently in conversation state (not rolled out). Default: false (show all attachments)"
                     }
                 },
                 "required": ["command"]

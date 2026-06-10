@@ -135,12 +135,13 @@ class BotManager:
         logger.info("Conversation logger initialized")
 
         # Initialize rate limiter (prevent API abuse)
+        rate_limiting = self.config.get_rate_limiting_config()
         rate_limiter_config = {
-            "short_window_minutes": self.config.rate_limiting.short.duration_minutes,
-            "short_window_max": self.config.rate_limiting.short.max_responses,
-            "long_window_minutes": self.config.rate_limiting.long.duration_minutes,
-            "long_window_max": self.config.rate_limiting.long.max_responses,
-            "ignore_threshold": self.config.rate_limiting.ignore_threshold,
+            "short_window_minutes": rate_limiting["short"]["duration_minutes"],
+            "short_window_max": rate_limiting["short"]["max_responses"],
+            "long_window_minutes": rate_limiting["long"]["duration_minutes"],
+            "long_window_max": rate_limiting["long"]["max_responses"],
+            "ignore_threshold": rate_limiting["ignore_threshold"],
         }
         rate_limiter = RateLimiter(rate_limiter_config)
         logger.info("Rate limiter initialized")
@@ -177,6 +178,7 @@ class BotManager:
             message_memory=self.message_memory,
             user_cache=user_cache,
             conversation_logger=conversation_logger,
+            memory_manager=memory_manager,
         )
         logger.info("Discord client initialized")
 

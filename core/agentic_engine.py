@@ -60,6 +60,9 @@ class AgenticEngine:
         self.anthropic = anthropic_client
         self.discord_client = None  # Set after Discord client initialization
 
+        # Cache proactive config (v0.6.0 - simplified config with presets)
+        self._proactive_config = config.get_proactive_config()
+
         # Track background task
         self._task = None
         self._running = False
@@ -115,7 +118,7 @@ class AgenticEngine:
                         actions.extend(server_actions)
 
                 # Check proactive engagement opportunities
-                if self.config.agentic.proactive.enabled:
+                if self._proactive_config["enabled"]:
                     engagement_actions = await self.check_engagement_opportunities()
                     actions.extend(engagement_actions)
 
@@ -249,7 +252,7 @@ class AgenticEngine:
         # Get engagement stats for allowed channels
         actions = []
 
-        for channel_id in self.config.agentic.proactive.allowed_channels:
+        for channel_id in self._proactive_config["allowed_channels"]:
             # Convert to string (YAML config may have integers)
             channel_id = str(channel_id)
 
@@ -297,25 +300,28 @@ class AgenticEngine:
         """
         # Get channel idle time
         idle_time = await self.get_channel_idle_time(channel_id)
-        logger.debug(f"Channel {channel_id} idle time: {idle_time:.2f}h (min: {self.config.agentic.proactive.min_idle_hours}, max: {self.config.agentic.proactive.max_idle_hours})")
+        min_idle = self._proactive_config["min_idle_hours"]
+        max_idle = self._proactive_config["max_idle_hours"]
+        logger.debug(f"Channel {channel_id} idle time: {idle_time:.2f}h (min: {min_idle}, max: {max_idle})")
 
         # Check idle time bounds
-        if idle_time < self.config.agentic.proactive.min_idle_hours:
-            logger.debug(f"Channel {channel_id} too active (idle: {idle_time:.2f}h < {self.config.agentic.proactive.min_idle_hours}h)")
+        if idle_time < min_idle:
+            logger.debug(f"Channel {channel_id} too active (idle: {idle_time:.2f}h < {min_idle}h)")
             return False  # Too active
-        if idle_time > self.config.agentic.proactive.max_idle_hours:
-            logger.debug(f"Channel {channel_id} too dead (idle: {idle_time:.2f}h > {self.config.agentic.proactive.max_idle_hours}h)")
+        if idle_time > max_idle:
+            logger.debug(f"Channel {channel_id} too dead (idle: {idle_time:.2f}h > {max_idle}h)")
             return False  # Too dead
 
         # Check quiet hours
         current_hour = datetime.now().hour
-        if current_hour in self.config.agentic.proactive.quiet_hours:
+        if current_hour in self._proactive_config["quiet_hours"]:
             return False
 
         # Check engagement success rate
         stats = await self.get_engagement_stats(server_id, channel_id)
-        logger.debug(f"Channel {channel_id} success rate: {stats['success_rate']:.1%} (threshold: {self.config.agentic.proactive.engagement_threshold:.1%})")
-        if stats["success_rate"] < self.config.agentic.proactive.engagement_threshold:
+        threshold = self._proactive_config["engagement_threshold"]
+        logger.debug(f"Channel {channel_id} success rate: {stats['success_rate']:.1%} (threshold: {threshold:.1%})")
+        if stats["success_rate"] < threshold:
             logger.debug(f"Channel {channel_id} success rate too low: {stats['success_rate']:.1%}")
             return False
 
@@ -862,14 +868,16 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             self._reset_rate_limits()
 
         # Check global daily limit
-        if self._proactive_counts_global >= self.config.agentic.proactive.max_per_day_global:
-            logger.debug(f"Global daily limit reached: {self._proactive_counts_global}/{self.config.agentic.proactive.max_per_day_global}")
+        max_global = self._proactive_config["max_per_day_global"]
+        if self._proactive_counts_global >= max_global:
+            logger.debug(f"Global daily limit reached: {self._proactive_counts_global}/{max_global}")
             return False
 
         # Check per-channel daily limit
+        max_per_channel = self._proactive_config["max_per_day_per_channel"]
         channel_count = self._proactive_counts_per_channel.get(channel_id, 0)
-        if channel_count >= self.config.agentic.proactive.max_per_day_per_channel:
-            logger.debug(f"Per-channel daily limit reached for {channel_id}: {channel_count}/{self.config.agentic.proactive.max_per_day_per_channel}")
+        if channel_count >= max_per_channel:
+            logger.debug(f"Per-channel daily limit reached for {channel_id}: {channel_count}/{max_per_channel}")
             return False
 
         return True

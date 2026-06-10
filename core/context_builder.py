@@ -25,8 +25,13 @@ if TYPE_CHECKING:
     from .config import BotConfig
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
+    from .data_isolation import DataIsolationEnforcer
+    from .unified_attachment_manager import UnifiedAttachmentManager
+    from .skills_manager import SkillsManager
 
 from tools.image_processor import ImageProcessor
+from tools.skills_tool import build_skills_catalog_prompt
+from .internal_constants import MANDATORY_RESPONSE_JUDGMENT_PROMPT, WEB_SEARCH_DISABLED_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +49,37 @@ class ContextBuilder:
         config: "BotConfig",
         message_memory: "MessageMemory",
         memory_manager: "MemoryManager",
+        data_isolation: Optional["DataIsolationEnforcer"] = None,
+        attachment_manager: Optional["UnifiedAttachmentManager"] = None,
+        skills_manager: Optional["SkillsManager"] = None
     ):
         self.config = config
         self.message_memory = message_memory
         self.memory_manager = memory_manager
+        self.data_isolation = data_isolation
+        self.attachment_manager = attachment_manager
+        self.skills_manager = skills_manager
         self.image_processor = ImageProcessor()
 
         logger.info(f"ContextBuilder initialized for bot '{config.bot_id}'")
+
+    def build_skills_prompt(self, active_skills: List[str]) -> str:
+        """
+        Build the skills catalog section for system prompt.
+
+        Enables progressive disclosure - Claude sees all available skills
+        and knows which ones are currently loaded.
+
+        Args:
+            active_skills: List of currently active skill names
+
+        Returns:
+            Formatted XML section for system prompt, or empty string if no skills_manager
+        """
+        if not self.skills_manager:
+            return ""
+
+        return build_skills_catalog_prompt(self.skills_manager, active_skills)
 
     async def build_context(self, message: discord.Message, exclude_message_ids: List[int] = None) -> dict:
         """
@@ -65,7 +94,7 @@ class ContextBuilder:
             "reply_chain_length": 0,
             "recent_messages": 0,
             "reactions_found": 0,
-            "images_processed": 0
+            "attachments_processed": 0
         }
 
         # Get bot's Discord display name
@@ -74,14 +103,10 @@ class ContextBuilder:
             bot_display_name = message.guild.me.display_name
 
         # Build date/time awareness context in server timezone
-        server_tz = pytz.timezone(self.config.discord.default_timezone)
+        server_tz = pytz.timezone(self.config.discord.timezone)
         current_time_obj = datetime.utcnow().replace(tzinfo=pytz.UTC).astimezone(server_tz)
         current_time = current_time_obj.strftime('%Y-%m-%d %H:%M %Z')
         date_context = f"Current server date/time: {current_time}"
-
-        # Add knowledge cutoff if configured
-        if self.config.api.knowledge_cutoff_date:
-            date_context += f" (knowledge cutoff: {self.config.api.knowledge_cutoff_date})"
 
         # Get base personality prompt
         base_prompt = (
@@ -152,28 +177,105 @@ Skip follow-ups for:
 **Timing:** Use judgment based on the event. The system checks periodically, so schedule follow-ups for when it would be natural to check in.
 """
 
-        # Assemble system prompt
-        system_prompt = f"""You are {bot_display_name}.
+        # Add data isolation transparency (v0.5.0)
+        isolation_transparency = ""
+        if self.data_isolation:
+            isolation_transparency = "\n" + self.data_isolation.get_transparency_message() + "\n"
+
+        # Add web search disabled notice if applicable
+        web_search_notice = ""
+        if not self.config.api.web_search.enabled:
+            web_search_notice = WEB_SEARCH_DISABLED_PROMPT
+
+        # Assemble system prompt with XML structure (Phase 7 - v0.5.0)
+        system_prompt = f"""<identity>
+You are {bot_display_name}. Your Discord user ID is {message.guild.me.id if (message.guild and message.guild.me) else 'unknown'}.
 {date_context}
 
 NOTE: Users can set personal timezones with: !timezone [timezone]
 User timezones are stored in their memory profiles.
+NOTE: When users @mention you, it will appear as @{bot_display_name} in the message text.
+</identity>
 
+<context_awareness>
+You are operating in a rolling context window:
+- Recent messages are in context (managed automatically)
+- Conversation state maintains the {self.config.api.context_messages} most recent messages
+- Oldest messages are automatically removed as new messages arrive (FIFO queue)
+- You can retrieve old content using tools when needed
+
+IMPORTANT - Proactive Memory Management:
+When you notice important context from older messages approaching removal:
+- Consider saving key facts, decisions, or ongoing threads to memory files
+- Use the memory tool to preserve information that may be valuable later
+- This is especially important for: project details, user preferences, unresolved questions, or long-term goals
+- You'll know messages are "old" if they're near the start of your conversation history
+
+CRITICAL: Avoid hallucination
+- Don't extrapolate from messages not in current context
+- Use discord_tools to search for old messages when needed
+- Use memory tool to read saved information
+- Admit when you don't have info in current context rather than guessing
+
+Document availability:
+- Documents from recent messages are visible as content blocks
+- Documents from older messages may have been stripped to manage tokens
+- Attachment metadata is preserved even when stripped
+- You can mention attachment IDs for users to reference
+</context_awareness>
+
+<instructions>
+{MANDATORY_RESPONSE_JUDGMENT_PROMPT}
 {base_prompt}{followup_instructions}
-
+{isolation_transparency}{web_search_notice}
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
 
 NOTE: Messages showing "[Forwarded message - content not accessible]" are forwards from other channels. You cannot see forwarded message content due to Discord API limitations.
 
 NOTE: Messages showing "[YOU CAME ONLINE]" or "[YOU WENT OFFLINE]" are lifecycle events indicating when you were restarted or shutdown.
 
-CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response."""
+SEARCH METHODOLOGY:
+1. Start broad (search_messages keywords only) → get message_ids
+2. View context (view_messages mode='around' message_id) → see conversation
+3. Triangulate: if wrong context, search related keywords from what you found
+4. Track threads: view_messages shows adjacent messages - follow the chain
+5. Find responses: search for keywords from questions you discovered
+6. Narrow spatially: add channel_id if global search too noisy
+7. Conclude not found: if direct keywords exhausted with no results, stop - tell user it's not accessible
+
+Pattern: keyword → context → refine → adjacent → related → done
+
+MEMORY USAGE: You have access to memory files for persistent information. Use them proactively to:
+- Remember important facts about users and their preferences
+- Track ongoing projects or topics of interest
+- Save context that would be valuable in future conversations
+- Build understanding of channel culture and dynamics
+
+TOOL USAGE GUIDELINES (CRITICAL):
+When you have access to the code_execution tool:
+- For spreadsheets (xlsx, xlsm, csv, xls): ALWAYS use code_execution with pandas or openpyxl to read and analyze
+- For binary documents (docx, pptx): Use code_execution to extract text content
+- For large files marked as 'container_upload': Use code_execution to access at the documented path
+- DO NOT rely on document preview/extraction for spreadsheets - it may be incomplete or miss formatting
+- When asked to calculate, analyze data, or process file contents: USE code_execution first
+
+Example for spreadsheet:
+```python
+import pandas as pd
+df = pd.read_excel('/tmp/uploads/filename.xlsx')  # Path from uploaded_files manifest
+print(df.describe())
+```
+
+The uploaded_files manifest shows available files with their access method and path.
+
+CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response.
+</instructions>"""
 
         # Get recent messages (excluding current to avoid duplication)
         channel_id = str(message.channel.id)
         all_recent = await self.message_memory.get_recent(
             channel_id,
-            limit=self.config.reactive.context_window + 1,
+            limit=self.config.api.context_messages + 1,
             exclude_message_ids=exclude_message_ids
         )
 
@@ -181,7 +283,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         recent_messages = [msg for msg in all_recent if msg.message_id != str(message.id)]
 
         # Trim to configured limit after filtering
-        recent_messages = recent_messages[:self.config.reactive.context_window]
+        recent_messages = recent_messages[:self.config.api.context_messages]
 
         # Build messages array for Claude
         messages = []
@@ -221,8 +323,23 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 resolved_content, resolved_count = await self._resolve_mentions(msg.content, message.guild)
                 stats["mentions_resolved"] += resolved_count
 
+                # Check for attachments if attachment manager is available
+                attachment_info = ""
+                if self.attachment_manager:
+                    try:
+                        async with self.attachment_manager.attachment_db.db.execute(
+                            "SELECT attachment_id, filename FROM attachments WHERE message_id = ?",
+                            (str(msg.message_id),)
+                        ) as cursor:
+                            attachment_rows = await cursor.fetchall()
+                            if attachment_rows:
+                                attachment_strs = [f"{row['filename']} (ID: {row['attachment_id']})" for row in attachment_rows]
+                                attachment_info = f" [Attachments: {', '.join(attachment_strs)}; use get_attachment to retrieve]"
+                    except Exception as e:
+                        logger.debug(f"Failed to query attachments for message {msg.message_id}: {e}")
+
                 timestamp_str = msg.timestamp.strftime('%H:%M')
-                history_parts.append(f"[{timestamp_str}] **{author_display}**: {resolved_content}")
+                history_parts.append(f"[{timestamp_str}] **{author_display}**: {resolved_content}{attachment_info}")
 
             history_parts.append("")
 
@@ -245,7 +362,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 user_ids = [str(message.author.id)]
 
                 # Add unique user IDs from recent messages
-                for msg in recent_messages[-5:]:  # Last 5 messages
+                for msg in recent_messages[-5:]:  # Last few messages
                     if msg.author_id not in user_ids:
                         user_ids.append(msg.author_id)
 
@@ -255,18 +372,28 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 history_parts.append("")
                 history_parts.append(memory_context)
 
-            # Process images from current message
-            images = await self.process_images(message)
-            if images:
-                stats["images_processed"] = len(images)
-                # Content becomes array with text and images
+            # Process current message attachments
+            attachments = await self.process_attachments(message)
+
+            # Process replied-to message attachments (retroactive processing)
+            replied_attachments = []
+            if message.reference and message.reference.message_id:
+                replied_attachments = await self._get_attachment_data(str(message.reference.message_id))
+                if replied_attachments:
+                    logger.info(f"Retrieved {len(replied_attachments)} attachments from replied-to message")
+
+            # Combine all attachments
+            all_attachments = replied_attachments + attachments
+            if all_attachments:
+                stats["attachments_processed"] = len(all_attachments)
+                # Content becomes array with text and attachments
                 content_parts = [{"type": "text", "text": "\n".join(history_parts)}]
-                content_parts.extend(images)
+                content_parts.extend(all_attachments)
                 messages.append(
                     {"role": "user", "content": content_parts}
                 )
             else:
-                # No images, use string content
+                # No attachments, use string content
                 messages.append(
                     {"role": "user", "content": "\n".join(history_parts)}
                 )
@@ -284,12 +411,22 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             if has_reactions:
                 stats["reactions_found"] += 1
 
-            # Process images
-            images = await self.process_images(message)
-            if images:
-                stats["images_processed"] = len(images)
+            # Process current message attachments
+            attachments = await self.process_attachments(message)
+
+            # Process replied-to message attachments (retroactive processing)
+            replied_attachments = []
+            if message.reference and message.reference.message_id:
+                replied_attachments = await self._get_attachment_data(str(message.reference.message_id))
+                if replied_attachments:
+                    logger.info(f"Retrieved {len(replied_attachments)} attachments from replied-to message")
+
+            # Combine all attachments
+            all_attachments = replied_attachments + attachments
+            if all_attachments:
+                stats["attachments_processed"] = len(all_attachments)
                 content_parts = [{"type": "text", "text": message_with_context}]
-                content_parts.extend(images)
+                content_parts.extend(all_attachments)
                 messages.append(
                     {"role": "user", "content": content_parts}
                 )
@@ -337,11 +474,196 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
 
         return resolved, resolved_count
 
+    async def _get_attachment_data(self, message_id: str) -> List[Dict]:
+        """
+        Retrieve attachment data for a message from the database.
+
+        Queries database for cached file_id and local_path to avoid re-uploading.
+        Falls back to retroactive processing only if database has no records.
+        Returns list of content blocks ready for Claude API.
+        """
+        if not self.attachment_manager:
+            return []
+
+        attachment_blocks = []
+
+        try:
+            # Query for complete attachment metadata (including cached file_id)
+            async with self.attachment_manager.attachment_db.db.execute(
+                """SELECT attachment_id, filename, attachment_type, file_id, local_path,
+                          processed_base64, processed_mime
+                   FROM attachments WHERE message_id = ?""",
+                (message_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+            # If no cached data, fall back to retroactive processing
+            if not rows:
+                logger.debug(f"No cached attachments for message {message_id}, using retroactive processing")
+                return await self._retroactive_attachment_processing(message_id)
+
+            # Use cached data from database
+            for row in rows:
+                attachment_id, filename, att_type, file_id, local_path, cached_base64, cached_mime = row
+
+                try:
+                    if att_type == "image":
+                        # Check for cached base64 first
+                        if cached_base64 and cached_mime:
+                            attachment_blocks.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": cached_mime,
+                                    "data": cached_base64
+                                }
+                            })
+                            logger.debug(f"Loaded cached image from DB: {filename}")
+                        elif local_path:
+                            # Load from local storage
+                            import base64
+                            file_bytes = await self.attachment_manager.local_storage.load(local_path)
+                            base64_data = base64.standard_b64encode(file_bytes).decode('utf-8')
+
+                            # Determine media type from filename
+                            media_type = self._get_media_type_from_filename(filename)
+
+                            attachment_blocks.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": base64_data
+                                }
+                            })
+                            logger.debug(f"Loaded image from local storage: {filename}")
+                        else:
+                            # Fall back to retroactive for this attachment
+                            logger.warning(f"No cached data for image {filename}, using retroactive")
+                            fallback_data = await self._process_single_attachment_fallback(attachment_id, filename)
+                            if fallback_data:
+                                attachment_blocks.append(fallback_data)
+
+                    elif att_type in ("document", "code"):
+                        # Use cached file_id (NO re-upload!)
+                        if file_id:
+                            attachment_blocks.append({
+                                "type": "document",
+                                "source": {
+                                    "type": "file",
+                                    "file_id": file_id
+                                }
+                            })
+                            logger.debug(f"Loaded document from DB cache: {filename} ({file_id})")
+                        else:
+                            # Fall back to retroactive for this attachment
+                            logger.warning(f"No file_id for document {filename}, using retroactive")
+                            fallback_data = await self._process_single_attachment_fallback(attachment_id, filename)
+                            if fallback_data:
+                                attachment_blocks.append(fallback_data)
+
+                except Exception as e:
+                    logger.error(f"Failed to load cached attachment {filename}: {e}")
+                    # Add placeholder
+                    attachment_blocks.append({
+                        "type": "text",
+                        "text": f"\n[Attachment: {filename} - no longer available]"
+                    })
+
+        except Exception as e:
+            logger.error(f"Failed to query attachments for message {message_id}: {e}")
+
+        return attachment_blocks
+
+    async def _retroactive_attachment_processing(self, message_id: str) -> List[Dict]:
+        """
+        Fallback: Use retroactive processing when database has no cached data.
+
+        This maintains backwards compatibility for messages processed before caching was added.
+        """
+        attachment_blocks = []
+
+        try:
+            async with self.attachment_manager.attachment_db.db.execute(
+                "SELECT attachment_id, filename FROM attachments WHERE message_id = ?",
+                (message_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+            for row in rows:
+                attachment_id, filename = row
+                block = await self._process_single_attachment_fallback(attachment_id, filename)
+                if block:
+                    attachment_blocks.append(block)
+
+        except Exception as e:
+            logger.error(f"Retroactive processing failed for message {message_id}: {e}")
+
+        return attachment_blocks
+
+    async def _process_single_attachment_fallback(self, attachment_id: str, filename: str):
+        """
+        Process a single attachment via retroactive processing fallback.
+
+        Returns a content block dict or None if processing fails.
+        """
+        try:
+            file_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
+
+            if file_data:
+                if file_data["method"] == "base64":
+                    logger.debug(f"Retrieved image {filename} via retroactive processing")
+                    return {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": file_data["media_type"],
+                            "data": file_data["data"]
+                        }
+                    }
+                elif file_data["method"] == "file_id":
+                    if file_data.get("use_as_document_block", True):
+                        logger.debug(f"Retrieved document {filename} via retroactive processing")
+                        return {
+                            "type": "document",
+                            "source": {
+                                "type": "file",
+                                "file_id": file_data["data"]
+                            }
+                        }
+                    else:
+                        logger.debug(f"Retrieved code file {filename} via retroactive processing")
+                        return {
+                            "type": "text",
+                            "text": f"\n[Attached file: {filename} - available to code execution]"
+                        }
+        except Exception as e:
+            logger.warning(f"Retroactive processing failed for {filename}: {e}")
+            return {
+                "type": "text",
+                "text": f"\n[Attachment: {filename} - no longer available]"
+            }
+
+        return None
+
+    @staticmethod
+    def _get_media_type_from_filename(filename: str) -> str:
+        """Determine media type from file extension."""
+        ext = filename.lower().split('.')[-1] if '.' in filename else ''
+        media_types = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'webp': 'image/webp'
+        }
+        return media_types.get(ext, 'image/jpeg')
+
     async def _get_reply_chain(self, message: discord.Message) -> List[discord.Message]:
         """
         Follow reply chain backwards to build context.
 
-        Max 5 messages to prevent excessive context bloat.
+        Limited depth to prevent excessive context bloat.
         Returns oldest-first order, empty list if not a reply.
         """
         if not message.reference:
@@ -350,7 +672,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         chain = []
         current = message
 
-        # Follow chain backwards (max 5 to prevent context bloat)
+        # Follow chain backwards (limited depth to prevent context bloat)
         for _ in range(5):
             if not current.reference:
                 break
@@ -399,47 +721,87 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             if isinstance(replied_msg, discord.Message):
                 replied_author = "Assistant (you)" if replied_msg.author.bot else replied_msg.author.display_name
                 # Truncate long replied content
-                replied_content = replied_msg.content[:100]
-                if len(replied_msg.content) > 100:
+                truncate_length = 100
+                replied_content = replied_msg.content[:truncate_length]
+                if len(replied_msg.content) > truncate_length:
                     replied_content += "..."
                 parts.append(f"  *(Replying to {replied_author}: \"{replied_content}\")*")
 
         return "\n".join(parts), has_reactions
 
-    async def process_images(self, message: discord.Message) -> List[Dict]:
+    async def process_attachments(self, message: discord.Message) -> List[Dict]:
         """
-        Process image attachments into Claude API format.
+        Process all attachments (images, documents, spreadsheets, etc.) into Claude API format.
 
-        Filters to image types, limits to 5 images (Claude API limit).
-        Returns list of processed image dicts.
+        Handles both base64 (images) and file_id (documents) formats.
+        Limits attachments to API maximum.
+        Returns list of processed attachment content blocks.
         """
         if not message.attachments:
             return []
 
-        # Filter to only images
-        image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
-        image_attachments = [
-            attachment for attachment in message.attachments
-            if any(attachment.filename.lower().endswith(ext) for ext in image_extensions)
-        ]
+        # Limit attachments to API maximum
+        api_limit = 20
+        attachments_to_process = message.attachments[:api_limit]
+        if len(message.attachments) > api_limit:
+            logger.warning(f"Message has {len(message.attachments)} attachments, limiting to {api_limit}")
 
-        if not image_attachments:
-            return []
-
-        # Limit to 5 images (Claude API limit)
-        if len(image_attachments) > 5:
-            logger.warning(f"Message has {len(image_attachments)} images, limiting to 5")
-            image_attachments = image_attachments[:5]
-
-        # Process each image
-        processed_images = []
-        for attachment in image_attachments:
+        # Process each attachment
+        processed_attachments = []
+        for attachment in attachments_to_process:
             try:
-                processed = await self.image_processor.process_attachment(attachment)
-                if processed:
-                    processed_images.append(processed)
-                    logger.info(f"Processed image: {attachment.filename}")
-            except Exception as e:
-                logger.error(f"Failed to process image {attachment.filename}: {e}")
+                if self.attachment_manager:
+                    # Use attachment manager (stores in database + processes)
+                    result = await self.attachment_manager.process_attachment(
+                        attachment=attachment,
+                        message=message,
+                        is_realtime=True
+                    )
 
-        return processed_images
+                    if result and result.get("for_api"):
+                        api_data = result["for_api"]
+
+                        if api_data["method"] == "base64":
+                            # Image: base64 format
+                            processed_attachments.append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": api_data["media_type"],
+                                    "data": api_data["data"]
+                                }
+                            })
+                            logger.info(f"Processed image via attachment manager: {attachment.filename}")
+
+                        elif api_data["method"] == "file_id":
+                            # Files API: check if should be document block or text mention
+                            if api_data.get("use_as_document_block", True):
+                                # PDF/plaintext: add as document content block for direct viewing
+                                processed_attachments.append({
+                                    "type": "document",
+                                    "source": {
+                                        "type": "file",
+                                        "file_id": api_data["data"]
+                                    }
+                                })
+                                logger.info(f"Processed document block: {attachment.filename}")
+                            else:
+                                # Code execution files: container_upload block
+                                # Bug #25 fix: Use container_upload instead of text mention
+                                processed_attachments.append({
+                                    "type": "container_upload",
+                                    "file_id": api_data['data']
+                                })
+                                logger.info(f"Processed code execution file: {attachment.filename} (file_id: {api_data['data']})")
+
+                else:
+                    # Fallback: use ImageProcessor directly (backward compatibility, images only)
+                    processed = await self.image_processor.process_attachment(attachment)
+                    if processed:
+                        processed_attachments.append(processed)
+                        logger.info(f"Processed image via ImageProcessor fallback: {attachment.filename}")
+
+            except Exception as e:
+                logger.error(f"Failed to process attachment {attachment.filename}: {e}")
+
+        return processed_attachments

@@ -9,8 +9,11 @@ Operations: view, create, str_replace, insert, delete, rename
 
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import shutil
+
+if TYPE_CHECKING:
+    from .data_isolation import DataIsolationEnforcer
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +26,33 @@ class MemoryToolExecutor:
     All paths must start with /memories/{bot_id}/
     """
 
-    def __init__(self, memory_base_path: Path, bot_id: str):
+    def __init__(
+        self,
+        memory_base_path: Path,
+        bot_id: str,
+        data_isolation: Optional['DataIsolationEnforcer'] = None
+    ):
         self.bot_id = bot_id
         self.base_path = memory_base_path / bot_id
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self.data_isolation = data_isolation
 
         logger.info(f"MemoryToolExecutor initialized at {self.base_path}")
 
-    def execute(self, tool_input: Dict[str, Any]) -> str:
-        """Execute memory tool command, returning result string for Claude"""
+    def execute(
+        self,
+        tool_input: Dict[str, Any],
+        current_server_id: Optional[str] = None,
+        current_channel_id: Optional[str] = None
+    ) -> str:
+        """
+        Execute memory tool command, returning result string for Claude.
+
+        Args:
+            tool_input: Tool parameters (command, path, etc.)
+            current_server_id: Current server context for isolation
+            current_channel_id: Current channel context for isolation
+        """
         command = tool_input.get("command")
         path = tool_input.get("path", "")
 
@@ -39,6 +60,17 @@ class MemoryToolExecutor:
         if command != "rename":
             if not self._validate_path(path):
                 return f"Error: Invalid path '{path}'"
+
+            # Check data isolation permissions (v0.5.0)
+            if self.data_isolation and current_server_id and current_channel_id:
+                is_allowed, reason = self.data_isolation.validate_memory_access(
+                    requested_path=path,
+                    current_server_id=current_server_id,
+                    current_channel_id=current_channel_id
+                )
+                if not is_allowed:
+                    logger.warning(f"Memory access denied: {reason}")
+                    return f"Error: Access denied. {reason}"
 
         try:
             if command == "view":

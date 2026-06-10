@@ -6,10 +6,9 @@ Defaults to permissive mode - users opt-in to restrictions.
 """
 
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional
 
-if TYPE_CHECKING:
-    from .config import DataIsolationConfig
+from .config import DataIsolationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class DataIsolationEnforcer:
     - Provide transparency about access scope
     """
 
-    def __init__(self, config: 'DataIsolationConfig'):
+    def __init__(self, config: DataIsolationConfig):
         """
         Initialize Data Isolation Enforcer.
 

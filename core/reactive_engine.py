@@ -29,10 +29,12 @@ from .memory_tool_executor import MemoryToolExecutor
 from .context_builder import ContextBuilder
 from .mcp_manager import MCPManager
 from .skills_manager import SkillsManager
-from .multimedia_processor import MultimediaProcessor
+from .unified_attachment_manager import UnifiedAttachmentManager
 from .data_isolation import DataIsolationEnforcer
-from tools.web_search import WebSearchManager, get_web_search_tools
+from .conversation_state_manager import ConversationStateManager
+from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
+from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -78,28 +80,35 @@ class ReactiveEngine:
         # Initialize Anthropic client
         self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
 
+        # Cache internal config values (v0.6.0 - simplified config)
+        self._context_editing_config = config.get_context_editing_config()
+        self._rate_limiting_config = config.get_rate_limiting_config()
+
+        # Initialize data isolation enforcer first (v0.5.0)
+        # data_isolation is now a string mode, not an object - use helper method to expand
+        data_isolation_config = config.get_data_isolation_config()
+        self.data_isolation = DataIsolationEnforcer(data_isolation_config)
+        logger.info(f"Data isolation enforcer initialized (mode: {config.data_isolation})")
+
         # Initialize memory tool executor
         self.memory_tool_executor = MemoryToolExecutor(
             memory_base_path=Path("memories"),
-            bot_id=config.bot_id
+            bot_id=config.bot_id,
+            data_isolation=self.data_isolation
         )
 
         # Initialize context builder
         self.context_builder = ContextBuilder(
             config=config,
             message_memory=message_memory,
-            memory_manager=memory_manager
+            memory_manager=memory_manager,
+            data_isolation=self.data_isolation
         )
 
-        # Initialize web search manager if enabled
-        self.web_search_manager = None
-        if config.api.web_search.enabled:
-            stats_file = Path("persistence") / f"{config.bot_id}_web_search_stats.json"
-            self.web_search_manager = WebSearchManager(
-                stats_file=stats_file,
-                max_daily=config.api.web_search.max_daily
-            )
-            logger.info(f"Web search enabled (max_daily={config.api.web_search.max_daily})")
+        # Web search: all-or-nothing (no rate limiting)
+        self.web_search_enabled = config.api.web_search.enabled
+        if self.web_search_enabled:
+            logger.info("Web search enabled (unlimited)")
 
         # Initialize Discord tool executor (Phase 4)
         # Get user_cache from discord_client once it's set in on_ready
@@ -110,31 +119,34 @@ class ReactiveEngine:
         # MCP Manager
         self.mcp_manager = None
         if config.mcp.enabled:
-            self.mcp_manager = MCPManager(config_path=Path(config.mcp.config_file))
+            mcp_config = config.get_mcp_config()
+            self.mcp_manager = MCPManager(config_path=Path(mcp_config["config_file"]))
             logger.info("MCP manager initialized")
 
-        # Skills Manager
-        self.skills_manager = None
-        if config.skills.enabled:
-            self.skills_manager = SkillsManager(
-                skills_dir=Path(config.skills.skills_dir),
-                cache_file=Path(config.skills.cache_file),
-                anthropic_api_key=anthropic_api_key
-            )
-            logger.info("Skills manager initialized")
+        # Skills Manager (always enabled - skills require code_execution tool)
+        skills_config = config.get_skills_config()
+        self.skills_manager = SkillsManager(
+            skills_dir=Path(skills_config["skills_dir"]),
+            cache_file=Path(skills_config["cache_file"]),
+            anthropic_api_key=anthropic_api_key
+        )
+        logger.info(f"Skills manager initialized with directory: {skills_config['skills_dir']}")
 
-        # Multimedia Processor
-        self.multimedia_processor = None
-        if config.multimedia.enabled:
-            self.multimedia_processor = MultimediaProcessor(
-                anthropic_client=self.anthropic,
-                max_file_size_mb=config.multimedia.max_file_size_mb
-            )
-            logger.info("Multimedia processor initialized")
+        # Pass skills_manager to ContextBuilder for skills catalog in system prompt
+        self.context_builder.skills_manager = self.skills_manager
 
-        # Data Isolation Enforcer
-        self.data_isolation = DataIsolationEnforcer(config.data_isolation)
-        logger.info(f"Data isolation enforcer initialized (enabled: {config.data_isolation.enabled})")
+        # Skill Request Executor (v0.5.0 Progressive Disclosure)
+        self.skill_request_executor = SkillRequestExecutor(
+            skills_manager=self.skills_manager,
+            max_skills=self.skills_manager.MAX_SKILLS_PER_REQUEST
+        )
+        logger.info("Skill request executor initialized")
+
+        # Unified Attachment Manager (replaces multimedia_processor)
+        self.attachment_manager = None  # Initialized in async_initialize
+
+        # Conversation State Manager (v0.5.0 - dual-cap context management)
+        self.conversation_state_manager = None  # Initialized in async_initialize
 
         # Track background tasks for clean shutdown
         self._background_tasks = set()
@@ -147,7 +159,9 @@ class ReactiveEngine:
         self._responded_messages = deque(maxlen=1000)
 
         # Pending channels for periodic check (Phase 3)
-        self.pending_channels = set()
+        # Bug #7 fix: Track individual messages, not just channels
+        # List of (channel_id, message_id) tuples to prevent message loss
+        self.pending_messages = []
         self._periodic_task = None
         self._running = False
         self.discord_client = None  # Set by DiscordClient on_ready
@@ -159,6 +173,25 @@ class ReactiveEngine:
         Async initialization for managers that require I/O.
         Should be called after bot is ready.
         """
+        # Initialize Conversation State Manager (v0.5.0 - dual-cap context management)
+        try:
+            db_path = Path("persistence") / f"{self.config.bot_id}_conversation_states.db"
+            self.conversation_state_manager = ConversationStateManager(
+                db_path=db_path,
+                bot_id=self.config.bot_id,
+                max_messages=self.config.api.context_messages,
+                max_tokens=self.config.api.context_tokens
+            )
+            await self.conversation_state_manager.initialize()
+            logger.info(
+                f"ConversationStateManager initialized "
+                f"(max_messages={self.config.api.context_messages}, "
+                f"max_tokens={self.config.api.context_tokens})"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize ConversationStateManager: {e}", exc_info=True)
+            self.conversation_state_manager = None  # Disable on failure
+
         # Initialize MCP Manager (discover tools from servers)
         if self.mcp_manager:
             try:
@@ -177,6 +210,266 @@ class ReactiveEngine:
                 logger.error(f"Failed to initialize Skills manager: {e}", exc_info=True)
                 self.skills_manager = None  # Disable on failure
 
+        # Initialize Unified Attachment Manager (replaces multimedia_processor)
+        if self.config.attachments.enabled:
+            try:
+                self.attachment_manager = UnifiedAttachmentManager(
+                    config=self.config,
+                    anthropic_client=self.anthropic,
+                    message_memory=self.message_memory
+                )
+                await self.attachment_manager.initialize()
+                logger.info("UnifiedAttachmentManager initialized successfully")
+
+                # Pass attachment_manager to ContextBuilder
+                self.context_builder.attachment_manager = self.attachment_manager
+                logger.debug("ContextBuilder updated with attachment_manager")
+            except Exception as e:
+                logger.error(f"Failed to initialize UnifiedAttachmentManager: {e}", exc_info=True)
+                self.attachment_manager = None  # Disable on failure
+
+    async def _initialize_conversation_from_db(
+        self,
+        channel_id: str,
+        conversation_state,
+        limit: int = None
+    ) -> None:
+        """
+        Initialize conversation state from database with full attachment data.
+
+        Used by both urgent and periodic paths to ensure consistent state after restart.
+        Loads recent messages with attachments, building proper content blocks.
+
+        Fixes Disconnect #1: Both paths now use the same initialization logic.
+        """
+        if limit is None:
+            limit = self.config.api.context_messages
+
+        logger.info("Conversation state empty, initializing from recent DB messages")
+        recent_messages = await self.message_memory.get_recent(
+            channel_id,
+            limit=limit
+        )
+
+        # Add recent messages to state WITH attachments
+        for db_msg in recent_messages:
+            role = "assistant" if db_msg.is_bot else "user"
+
+            # Query attachments for this message if it has any
+            attachment_ids = []
+            content_blocks = []
+
+            if db_msg.has_attachments and self.attachment_manager:
+                try:
+                    # Query attachments table for this message (Phase 2.2: added local_path for expiration checking)
+                    async with self.attachment_manager.attachment_db.db.execute(
+                        "SELECT attachment_id, filename, local_path FROM attachments WHERE message_id = ?",
+                        (str(db_msg.message_id),)
+                    ) as cursor:
+                        rows = await cursor.fetchall()
+
+                    # Retrieve each attachment via retroactive processing
+                    for row in rows:
+                        attachment_id, filename, local_path = row
+
+                        try:
+                            file_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
+
+                            if file_data:
+                                if file_data["method"] == "base64":
+                                    # Add text indicator for visibility
+                                    content_blocks.append({
+                                        "type": "text",
+                                        "text": f"\n[Image: {filename}]"
+                                    })
+                                    # Only add image blocks to user messages (API restriction)
+                                    if role == "user":
+                                        attachment_ids.append(attachment_id)
+                                        content_blocks.append({
+                                            "type": "image",
+                                            "source": {
+                                                "type": "base64",
+                                                "media_type": file_data["media_type"],
+                                                "data": file_data["data"]
+                                            }
+                                        })
+                                        logger.debug(f"Loaded image {filename} from DB")
+                                    else:
+                                        logger.debug(f"Skipped image block for assistant message: {filename}")
+
+                                elif file_data["method"] == "file_id":
+                                    file_id = file_data["data"]
+
+                                    # Add document block for reading (if eligible)
+                                    if file_data.get("use_as_document_block", True):
+                                        attachment_ids.append(attachment_id)
+                                        # Add text indicator for visibility
+                                        content_blocks.append({
+                                            "type": "text",
+                                            "text": f"\n[Document: {filename}]"
+                                        })
+                                        # Add document block (Files API format)
+                                        content_blocks.append({
+                                            "type": "document",
+                                            "source": {
+                                                "type": "file",
+                                                "file_id": file_id
+                                            }
+                                        })
+                                        logger.debug(f"Loaded document {filename} from DB")
+
+                                    # Add container_upload block (matches periodic path behavior)
+                                    else:
+                                        # Phase 2.2: Check expiration and re-upload if needed
+                                        if local_path:
+                                            fresh_file_id = await self.attachment_manager._handle_container_upload_expiration(
+                                                attachment_id=attachment_id,
+                                                file_id=file_id,
+                                                local_path=local_path,
+                                                filename=filename
+                                            )
+                                            if fresh_file_id:
+                                                file_id = fresh_file_id
+                                            else:
+                                                logger.error(f"Failed to verify/re-upload container_upload {filename}, skipping")
+                                                continue  # Skip this attachment
+
+                                        attachment_ids.append(attachment_id)
+                                        content_blocks.append({
+                                            "type": "container_upload",
+                                            "file_id": file_id
+                                        })
+                                        logger.debug(f"Loaded container_upload file {filename} from DB")
+
+                        except Exception as e:
+                            logger.warning(f"Failed to load attachment {attachment_id} ({filename}): {e}")
+                            content_blocks.append({
+                                "type": "text",
+                                "text": f"\n[Attachment: {filename} - no longer available]"
+                            })
+
+                except Exception as e:
+                    logger.error(f"Failed to query attachments for message {db_msg.message_id}: {e}")
+
+            # Build final content (text + attachments)
+            if content_blocks:
+                if db_msg.content:
+                    content_blocks.insert(0, {"type": "text", "text": db_msg.content})
+                content = content_blocks
+            else:
+                content = db_msg.content
+
+            # Add to conversation state with attachment tracking
+            conversation_state.add_message(
+                role,
+                content,
+                attachment_ids=attachment_ids if attachment_ids else None
+            )
+
+        logger.info(f"Initialized conversation state with {len(recent_messages)} messages from DB "
+                    f"({len(conversation_state.document_references)} with documents)")
+
+    async def _generate_uploaded_files_manifest(self, conversation_state) -> str:
+        """
+        Generate manifest of uploaded files currently in context (v0.5.0 Phase 8).
+
+        Shows Claude what Files API files are available with metadata:
+        filename, size, estimated tokens, processing method.
+
+        Args:
+            conversation_state: ConversationState instance
+
+        Returns:
+            XML formatted manifest string, or empty string if no files
+        """
+        if not conversation_state.context_items:
+            return ""
+
+        # Phase 4.1: Collect both document and container_upload items
+        # Design: Both types use Files API, but accessed differently
+        #   - document blocks: Claude reads directly via document content block
+        #   - container_upload: Claude accesses via code_execution tool
+        file_items = [
+            item for item in conversation_state.context_items
+            if item.type in ("document", "container_upload")
+        ]
+
+        if not file_items:
+            return ""
+
+        # Build manifest
+        manifest_lines = [
+            "<uploaded_files>",
+            "Files currently available via Files API:",
+            "",
+            "Note: Files marked as 'container_upload' are accessible in code execution via:",
+            "  1. Check INPUT_DIR environment variable: `input_dir = os.environ.get('INPUT_DIR')`",
+            "  2. Files are located at: `{input_dir}/filename`",
+            "  3. Fallback search: `find / -name \"filename\" 2>/dev/null`",
+            "  4. IMPORTANT: Files are EPHEMERAL - read immediately in same code execution turn",
+            ""
+        ]
+
+        for item in file_items:
+            attachment_id = item.item_id
+            estimated_tokens = item.estimated_tokens
+            metadata = item.metadata or {}
+
+            # Get filename from metadata or database
+            filename = metadata.get("filename", f"file_{attachment_id}")
+
+            # Query attachment database for additional metadata
+            if self.attachment_manager and self.attachment_manager.attachment_db:
+                try:
+                    async with self.attachment_manager.attachment_db.db.execute(
+                        "SELECT filename, size_bytes, attachment_type FROM attachments WHERE attachment_id = ?",
+                        (attachment_id,)
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                        if row:
+                            filename, size_bytes, attachment_type = row
+
+                            # Format file size
+                            if size_bytes < 1024:
+                                size_str = f"{size_bytes} B"
+                            elif size_bytes < 1024**2:
+                                size_str = f"{size_bytes/1024:.1f} KB"
+                            elif size_bytes < 1024**3:
+                                size_str = f"{size_bytes/1024**2:.1f} MB"
+                            else:
+                                size_str = f"{size_bytes/1024**3:.2f} GB"
+
+                            # Phase 4.2: Determine access method from block type
+                            # Design: Use actual block type to determine how Claude accesses the file
+                            if item.type == "document":
+                                access_method = "document block (Claude reads directly)"
+                            elif item.type == "container_upload":
+                                # Bug #8 fix: Use INPUT_DIR env var, not hardcoded /tmp/uploads/
+                                access_method = f"container_upload (code execution - use INPUT_DIR env var)"
+                            else:
+                                # Fallback (shouldn't happen for file items)
+                                access_method = "unknown"
+
+                            # Format line with access method
+                            manifest_lines.append(
+                                f"- {filename} ({size_str}, ~{estimated_tokens:,} tokens, access: {access_method})"
+                            )
+                        else:
+                            # Fallback if not in database
+                            manifest_lines.append(
+                                f"- {filename} (~{estimated_tokens:,} tokens)"
+                            )
+                except Exception as e:
+                    logger.warning(f"Failed to query attachment metadata for {attachment_id}: {e}")
+                    manifest_lines.append(f"- {filename} (~{estimated_tokens:,} tokens)")
+            else:
+                # No database access
+                manifest_lines.append(f"- {filename} (~{estimated_tokens:,} tokens)")
+
+        manifest_lines.append("</uploaded_files>")
+
+        return "\n".join(manifest_lines)
+
     async def handle_urgent(self, message: discord.Message):
         """
         Handle urgent message (@mention) immediately.
@@ -194,6 +487,20 @@ class ReactiveEngine:
 
         channel_id = str(message.channel.id)
 
+        # Load or create conversation state for this channel (v0.5.0)
+        conversation_state = None
+        if self.conversation_state_manager:
+            try:
+                conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
+                logger.debug(f"Loaded conversation state: {conversation_state}")
+
+                # If state is empty, initialize with recent DB messages (Disconnect #1 fix)
+                if len(conversation_state.messages) == 0:
+                    await self._initialize_conversation_from_db(channel_id, conversation_state)
+
+            except Exception as e:
+                logger.error(f"Failed to load conversation state for channel {channel_id}: {e}", exc_info=True)
+
         # Log incoming message
         self.conversation_logger.log_user_message(
             author=message.author.display_name,
@@ -202,17 +509,28 @@ class ReactiveEngine:
             is_mention=True
         )
 
-        # Process multimedia attachments (v0.5.0)
-        multimedia_files = []
-        if self.multimedia_processor and message.attachments:
+        # Process attachments (v0.5.0 - using UnifiedAttachmentManager)
+        # Bug #4 fix: Skip attachment processing for bot messages (treat bots as users, but don't track their attachments)
+        # Bug #5 fix: Allow bot attachments when allow_bot_interactions is enabled (for testing)
+        processed_attachments = []
+        should_process_attachments = (
+            self.attachment_manager and
+            message.attachments and
+            (not message.author.bot or self.config.discord.allow_bot_interactions)
+        )
+        if should_process_attachments:
             for attachment in message.attachments:
                 try:
-                    file_info = await self.multimedia_processor.process_attachment(attachment)
-                    if file_info:
-                        multimedia_files.append(file_info)
-                        logger.info(f"Processed multimedia file: {attachment.filename}")
+                    result = await self.attachment_manager.process_attachment(
+                        attachment=attachment,
+                        message=message,
+                        is_realtime=True
+                    )
+                    if result and result.get("for_api"):
+                        processed_attachments.append(result)
+                        logger.info(f"Processed attachment: {attachment.filename}")
                 except Exception as e:
-                    logger.error(f"Failed to process attachment {attachment.filename}: {e}")
+                    logger.error(f"Failed to process attachment {attachment.filename}: {e}", exc_info=True)
 
         # @mentions ALWAYS bypass rate limits (especially ignore threshold)
         # Get stats for logging but don't check limits
@@ -232,26 +550,105 @@ class ReactiveEngine:
             # Acquire semaphore FIRST to prevent race condition
             # Context is built inside semaphore so each message gets isolated context
             async with self._response_semaphore:
-                # Build context (inside semaphore to prevent overlapping contexts)
+                # Build context (system prompt only - messages come from conversation state)
                 # Exclude messages that are currently being processed to prevent seeing other pending @mentions
                 context = await self.context_builder.build_context(
                     message,
                     exclude_message_ids=list(self._responded_messages)
                 )
 
+                # Initialize tools for API call
+                tools = [{"type": "memory_20250818", "name": "memory"}]
+
+                # Add current user message to conversation state BEFORE API call (v0.5.0)
+                if conversation_state:
+                    try:
+                        # Extract attachment IDs if attachments were processed
+                        attachment_ids = [att["attachment_id"] for att in processed_attachments] if processed_attachments else None
+
+                        # Build user message content (same format as API)
+                        user_content = message.content
+                        if processed_attachments:
+                            # Convert to content blocks if attachments present
+                            # Bug #24 fix: Use default text if message content is empty to prevent API rejection
+                            text_content = message.content if message.content.strip() else "[Attachment]"
+                            user_content = [{"type": "text", "text": text_content}]
+                            for att in processed_attachments:
+                                api_data = att["for_api"]
+                                logger.info(f"Processing attachment {att.get('filename')}: api_data={api_data}")
+                                if api_data["method"] == "file_id":
+                                    file_id = api_data["data"]
+
+                                    # Add document block for reading (if eligible)
+                                    if api_data.get("use_as_document_block", True):
+                                        user_content.append({
+                                            "type": "document",
+                                            "source": {
+                                                "type": "file",
+                                                "file_id": file_id
+                                            }
+                                        })
+                                        logger.info(f"Added document block for {att['filename']} (file_id: {file_id})")
+                                    else:
+                                        # Code execution files: container_upload block
+                                        # Bug #25 fix: Use container_upload instead of text mention
+                                        user_content.append({
+                                            "type": "container_upload",
+                                            "file_id": file_id
+                                        })
+                                        logger.info(f"Added container_upload block for {att['filename']} (file_id: {file_id})")
+                                elif api_data["method"] == "base64":
+                                    user_content.append({
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": api_data["media_type"],
+                                            "data": api_data["data"]
+                                        }
+                                    })
+
+                        # Phase 5: Build attachment metadata for file size disclosure
+                        attachment_metadata = {}
+                        if processed_attachments:
+                            logger.debug(f"Building metadata for {len(processed_attachments)} attachments")
+                            for att in processed_attachments:
+                                att_id = att.get("attachment_id")
+                                if att_id:
+                                    attachment_metadata[att_id] = {
+                                        "filename": att.get("filename"),
+                                        "size_bytes": att.get("size_bytes")
+                                    }
+                                    logger.debug(f"Added metadata for attachment {att_id}: filename={att.get('filename')}, size={att.get('size_bytes')}")
+                                else:
+                                    logger.warning(f"Attachment missing attachment_id: {att}")
+                        else:
+                            logger.debug("No processed_attachments to build metadata from")
+
+                        logger.debug(f"Passing attachment_metadata to add_message: {attachment_metadata}")
+                        conversation_state.add_message("user", user_content, attachment_ids, attachment_metadata)
+                        logger.debug(f"Added user message to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
+
+                        # Enforce message cap immediately
+                        removed_count = conversation_state.enforce_message_cap()
+                        if removed_count > 0:
+                            logger.info(f"Message cap enforced: removed {removed_count} oldest messages")
+
+                    except Exception as e:
+                        logger.error(f"Failed to add user message to conversation state: {e}", exc_info=True)
+
                 # Log context building stats
                 if context.get("stats"):
                     self.conversation_logger.log_context_building(**context["stats"])
 
                 # Log cache status
-                self.conversation_logger.log_cache_status(enabled=self.config.api.context_editing.enabled)
+                self.conversation_logger.log_cache_status(enabled=self._context_editing_config["enabled"])
                 # Show typing indicator
                 async with message.channel.typing():
                     # Small delay for more natural feel
                     await asyncio.sleep(1.5)
 
                     # Build API request parameters
-                    tools = [{"type": "memory_20250818", "name": "memory"}]
+                    # (tools already initialized earlier for context nuke check)
 
                     # Add Discord tools if enabled (Phase 4)
                     if self.discord_tool_executor:
@@ -260,18 +657,13 @@ class ReactiveEngine:
                     else:
                         logger.warning("Discord tool executor is None - tools NOT added!")
 
-                    # Add web search tools if enabled and quota available
+                    # Add web search tools if enabled (all-or-nothing, no rate limits)
                     beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
-                    if self.web_search_manager:
-                        can_search, reason = self.web_search_manager.can_search()
-                        if can_search:
-                            max_uses = self.config.api.web_search.max_per_request
-                            citations_enabled = self.config.api.web_search.citations_enabled
-                            tools.extend(get_web_search_tools(max_uses=max_uses, citations_enabled=citations_enabled))
-                            beta_headers.append("web-fetch-2025-09-10")
-                            logger.debug(f"Web search tools added to API request (max_uses={max_uses}, citations={citations_enabled})")
-                        else:
-                            logger.debug(f"Web search disabled for this request: {reason}")
+                    if self.web_search_enabled:
+                        web_search_config = self.config.get_web_search_config()
+                        tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
+                        beta_headers.append("web-fetch-2025-09-10")
+                        logger.debug("Web search tools added to API request (unlimited)")
 
                     # Add MCP tools if enabled (v0.5.0)
                     if self.mcp_manager:
@@ -280,98 +672,155 @@ class ReactiveEngine:
                             tools.extend(mcp_tools)
                             logger.debug(f"Added {len(mcp_tools)} MCP tools to API request")
 
-                    # Add code execution tool if multimedia or skills enabled (v0.5.0)
-                    code_execution_needed = self.multimedia_processor or self.skills_manager
-                    if code_execution_needed:
+                    # Add files API beta if attachments enabled (Bug #8 fix: match periodic check behavior)
+                    # Always add when attachment_manager exists, since conversation state may contain file_id references
+                    if self.attachment_manager:
+                        beta_headers.append("files-api-2025-04-14")
+                        logger.debug("Files API beta header added")
+
+                    # Add code execution tool and skills (Bug #14 fix: skills REQUIRE code_execution)
+                    # Skills load files into /skills/ directory which is accessed via code_execution tool
+                    if self.skills_manager:
                         tools.append({
                             "type": "code_execution_20250825",
                             "name": "code_execution"
                         })
+                        # Add request_skill tool for progressive disclosure (v0.5.0)
+                        tools.append(get_skill_request_tool())
                         beta_headers.append("code-execution-2025-08-25")
-                        logger.debug("Code execution tool added to API request")
+                        beta_headers.append("skills-2025-10-02")
+                        logger.debug("Code execution tool, request_skill tool, and skills beta headers added")
 
-                        # Add files API beta if multimedia enabled
-                        if self.multimedia_processor:
-                            beta_headers.append("files-api-2025-04-14")
-
-                        # Add skills beta if skills enabled
-                        if self.skills_manager:
-                            beta_headers.append("skills-2025-10-02")
+                    # Bug #14 fix: Track container.id across tool loop iterations
+                    # Per Anthropic docs, multi-turn conversations must reuse container.id
+                    container_id = None
 
                     api_params = {
                         "model": self.config.api.model,
                         "max_tokens": self.config.api.max_tokens,
                         "tools": tools,
-                        "extra_headers": {"anthropic-beta": ",".join(beta_headers)}
+                        "betas": beta_headers  # SDK's beta endpoint uses 'betas' parameter, not extra_headers
                     }
 
-                    # Add skills container if skills enabled (v0.5.0)
+                    # Add skills container with progressive disclosure (v0.5.0)
+                    # Use active_skills from conversation_state, or defaults if empty
                     if self.skills_manager:
-                        skills_list = self.skills_manager.get_all_skills_for_api() if self.config.skills.include_anthropic_skills else self.skills_manager.get_skills_for_api()
+                        # Get active skills from conversation state (progressive disclosure)
+                        active_skill_names = []
+                        if conversation_state:
+                            active_skill_names = conversation_state.get_active_skills()
+
+                        # Use defaults if no skills selected yet
+                        if not active_skill_names:
+                            default_skills = self.config.skills.default_skills
+                            if default_skills:
+                                active_skill_names = default_skills
+                            else:
+                                # Fallback to pdf (most common document skill)
+                                active_skill_names = ["pdf"]
+                            # Initialize conversation state with defaults
+                            if conversation_state:
+                                conversation_state.set_active_skills(active_skill_names, self.skills_manager.MAX_SKILLS_PER_REQUEST)
+
+                        # Select skills by name using progressive disclosure
+                        skills_list = self.skills_manager.select_skills(active_skill_names)
                         if skills_list:
-                            api_params["container"] = {"skills": skills_list}
-                            logger.debug(f"Added {len(skills_list)} skills to container")
+                            container_config = {"skills": skills_list}
+                            if container_id:  # Reuse from previous iteration
+                                container_config["id"] = container_id
+                            api_params["container"] = container_config
+                            logger.debug(f"Container: id={container_id}, skills={active_skill_names}")
+
+                    # Document warning system (Phase 5 - v0.5.0)
+                    document_warning = None
+                    if conversation_state and conversation_state.should_warn_about_tokens():
+                        # At 95% threshold, warn bot about impending document stripping
+                        usage_percent = conversation_state.get_token_usage_percent()
+
+                        # Build list of documents that will be stripped
+                        documents_at_risk = []
+                        for msg_idx_str, att_ids in conversation_state.document_references.items():
+                            msg_idx = int(msg_idx_str)
+                            if msg_idx < len(conversation_state.messages):
+                                msg = conversation_state.messages[msg_idx]
+                                # Approximate which documents are at risk (oldest first)
+                                for att_id in att_ids:
+                                    documents_at_risk.append(att_id)
+
+                        if documents_at_risk:
+                            document_warning = f"""
+<document_warning>
+Your context is at {usage_percent:.1f}% of token capacity. The following documents may be removed soon:
+{chr(10).join(f'- {doc_id}' for doc_id in documents_at_risk[:5])}  {f'(and {len(documents_at_risk)-5} more)' if len(documents_at_risk) > 5 else ''}
+
+If these contain information pertinent to current conversation, consider:
+- Saving key insights to memory files
+- Noting attachment IDs for later retrieval with get_attachment tool
+</document_warning>
+"""
+                            logger.info(f"Document warning triggered at {usage_percent:.1f}% token usage")
 
                     # Add context management if enabled
-                    if self.config.api.context_editing.enabled:
+                    if self._context_editing_config["enabled"]:
                         api_params["context_management"] = {
                             "edits": [
                                 {
                                     "type": "clear_tool_uses_20250919",
                                     "trigger": {
                                         "type": "input_tokens",
-                                        "value": self.config.api.context_editing.trigger_tokens
+                                        "value": self._context_editing_config["trigger_tokens"]
                                     },
                                     "keep": {
                                         "type": "tool_uses",
-                                        "value": self.config.api.context_editing.keep_tool_uses
+                                        "value": self._context_editing_config["keep_tool_uses"]
                                     },
-                                    "exclude_tools": self.config.api.context_editing.exclude_tools,
+                                    "exclude_tools": self._context_editing_config["exclude_tools"],
                                 }
                             ]
                         }
 
+                    # Build system prompt (Phase 5 - inject document warning if present)
+                    system_prompt_text = context["system_prompt"]
+                    if document_warning:
+                        system_prompt_text += document_warning
+
+                    # Add skills catalog for progressive disclosure (v0.5.0)
+                    if self.skills_manager and conversation_state:
+                        skills_prompt = self.context_builder.build_skills_prompt(
+                            conversation_state.get_active_skills()
+                        )
+                        if skills_prompt:
+                            system_prompt_text += "\n\n" + skills_prompt
+
+                    # Generate uploaded_files manifest (v0.5.0 Phase 8)
+                    if conversation_state and self.attachment_manager:
+                        try:
+                            uploaded_files_manifest = await self._generate_uploaded_files_manifest(conversation_state)
+                            if uploaded_files_manifest:
+                                system_prompt_text += "\n\n" + uploaded_files_manifest
+                        except Exception as e:
+                            logger.error(f"Failed to generate uploaded_files manifest: {e}", exc_info=True)
+
                     # Add system prompt with cache control if context editing enabled
-                    if self.config.api.context_editing.enabled:
+                    if self._context_editing_config["enabled"]:
                         api_params["system"] = [
                             {
                                 "type": "text",
-                                "text": context["system_prompt"],
+                                "text": system_prompt_text,
                                 "cache_control": {"type": "ephemeral"}
                             }
                         ]
                     else:
-                        api_params["system"] = context["system_prompt"]
+                        api_params["system"] = system_prompt_text
 
-                    # Add messages
-                    # Include multimedia files in message content if present (v0.5.0)
-                    messages = context["messages"].copy()
-                    if multimedia_files:
-                        # Add multimedia files to the last user message
-                        if messages and messages[-1]["role"] == "user":
-                            # Convert content to list format if it's a string
-                            if isinstance(messages[-1]["content"], str):
-                                messages[-1]["content"] = [
-                                    {"type": "text", "text": messages[-1]["content"]}
-                                ]
-
-                            # Add file uploads
-                            for file_info in multimedia_files:
-                                messages[-1]["content"].append({
-                                    "type": "container_upload",
-                                    "file_id": file_info["file_id"]
-                                })
-                                logger.debug(f"Added multimedia file to message: {file_info['filename']}")
-
-                                # Add processing instructions as a text block
-                                instructions = self.multimedia_processor.get_processing_instructions(
-                                    file_info["file_type"],
-                                    file_info["filename"]
-                                )
-                                messages[-1]["content"].append({
-                                    "type": "text",
-                                    "text": instructions
-                                })
+                    # Get messages from conversation state if available, otherwise use context (v0.5.0)
+                    if conversation_state:
+                        messages = conversation_state.get_messages_for_api()
+                        logger.debug(f"Using {len(messages)} messages from conversation state")
+                    else:
+                        # Fallback to context builder (legacy behavior)
+                        messages = context["messages"].copy()
+                        logger.warning("Conversation state not available, falling back to context builder")
 
                     api_params["messages"] = messages
 
@@ -382,59 +831,181 @@ class ReactiveEngine:
                             "budget_tokens": self.config.api.extended_thinking.budget_tokens
                         }
 
+                    # Token cap enforcement (Phase 4 - v0.5.0)
+                    if conversation_state:
+                        try:
+                            # Get system prompt for counting
+                            system_prompt_for_counting = context["system_prompt"]
+                            if isinstance(api_params.get("system"), list):
+                                # Extract text from structured system prompt
+                                system_prompt_for_counting = api_params["system"][0]["text"]
+
+                            # Count static tokens (system + tools) for logging only
+                            static_tokens = await conversation_state.count_static_tokens(
+                                self.anthropic,
+                                system_prompt_for_counting,
+                                tools
+                            )
+
+                            # Count total input tokens (system + tools + messages)
+                            total_tokens = await conversation_state.count_tokens(
+                                self.anthropic,
+                                system_prompt_for_counting,
+                                tools,
+                                attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                            )
+
+                            # Log token breakdown
+                            messages_only_tokens = total_tokens - static_tokens
+                            logger.debug(
+                                f"Token breakdown: {total_tokens} total "
+                                f"({static_tokens} static + {messages_only_tokens} messages)"
+                            )
+
+                            # Check if over budget and enforce token cap
+                            max_tokens = conversation_state.max_tokens
+
+                            if total_tokens > max_tokens:
+                                logger.warning(
+                                    f"Over token budget: {total_tokens}/{max_tokens} "
+                                    f"({(total_tokens/max_tokens)*100:.1f}%)"
+                                )
+
+                                # Strip documents first (Phase 4)
+                                while total_tokens > max_tokens and conversation_state.document_references:
+                                    # Strip oldest document
+                                    stripped = conversation_state.strip_documents_from_oldest(count=1)
+                                    if stripped:
+                                        logger.info(f"Stripped {len(stripped)} documents to reduce tokens")
+                                        # Invalidate token cache and recount
+                                        conversation_state.invalidate_token_cache()
+                                        total_tokens = await conversation_state.count_tokens(
+                                            self.anthropic,
+                                            system_prompt_for_counting,
+                                            tools,
+                                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                        )
+                                        logger.debug(f"After document stripping: {total_tokens}/{max_tokens}")
+                                    else:
+                                        # No more documents to strip
+                                        break
+
+                                # Remove oldest messages if still over budget (Phase 4)
+                                removal_iterations = 0
+                                max_removal_iterations = 100  # Safety guard against infinite loops
+                                while total_tokens > max_tokens and len(conversation_state.messages) > 2:
+                                    removal_iterations += 1
+                                    if removal_iterations > max_removal_iterations:
+                                        logger.error(f"Token overflow removal exceeded {max_removal_iterations} iterations - breaking")
+                                        break
+
+                                    # Keep at least 2 messages (current conversation turn)
+                                    if conversation_state.remove_oldest_message():
+                                        logger.warning(f"Removed oldest message due to token overflow")
+                                        # Invalidate token cache and recount
+                                        conversation_state.invalidate_token_cache()
+                                        total_tokens = await conversation_state.count_tokens(
+                                            self.anthropic,
+                                            system_prompt_for_counting,
+                                            tools,
+                                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                        )
+                                        logger.debug(f"After message removal: {total_tokens}/{max_tokens}")
+                                    else:
+                                        # No messages to remove
+                                        break
+
+                                # FIX: If still over budget after removing old messages, the current message is too large
+                                # Strip documents from current message to prevent infinite loop / corrupted state
+                                if total_tokens > max_tokens:
+                                    logger.error(
+                                        f"Current message exceeds token budget after removing all older messages: "
+                                        f"{total_tokens}/{max_tokens} ({(total_tokens/max_tokens)*100:.1f}%)"
+                                    )
+                                    stripped = conversation_state.strip_documents_from_current()
+                                    if stripped:
+                                        logger.warning(f"Stripped documents from current message to fit budget")
+                                        conversation_state.invalidate_token_cache()
+                                        total_tokens = await conversation_state.count_tokens(
+                                            self.anthropic,
+                                            system_prompt_for_counting,
+                                            tools,
+                                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                        )
+                                        logger.info(f"After stripping current message: {total_tokens}/{max_tokens}")
+
+                                # Save state after token cap enforcement
+                                await self.conversation_state_manager.save(conversation_state)
+
+                        except Exception as e:
+                            logger.error(f"Token cap enforcement failed: {e}", exc_info=True)
+
                     # Tool use loop - continue until end_turn
                     thinking_text = ""
+                    thinking_block = None  # Store full thinking block for persistence
                     response_text = ""
                     loop_iteration = 0
 
                     while True:
                         loop_iteration += 1
 
+                        # Orphan detection removed - was causing false positives
+                        # API will reject actual orphaned tool_results with clear error message
+
                         # Call Claude API (use beta endpoint if context management enabled)
-                        if self.config.api.context_editing.enabled:
+                        # Debug log API params before call
+                        logger.debug(f"API params: model={api_params.get('model')}, betas={api_params.get('betas')}")
+                        logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
+                        if 'container' in api_params:
+                            logger.debug(f"  Container/Skills: {api_params.get('container')}")
+                        if self._context_editing_config["enabled"]:
                             response = await self.anthropic.beta.messages.create(**api_params)
                         else:
                             response = await self.anthropic.messages.create(**api_params)
 
+                        # Bug #14 fix: Capture container.id from response for subsequent iterations
+                        if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):
+                            container_id = response.container.id
+                            logger.debug(f"Captured container.id: {container_id}")
+
                         # Log tool use loop iteration
                         self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
 
-                        # Track server tool usage (web_search, web_fetch)
+                        # Log server tool usage (web_search, web_fetch)
                         # Server tools appear as server_tool_use blocks in response.content
-                        if self.web_search_manager:
-                            # Log all response blocks for debugging
-                            logger.info(f"Response has {len(response.content)} content blocks")
+                        if self.web_search_enabled:
+                            logger.debug(f"Response has {len(response.content)} content blocks")
                             for i, block in enumerate(response.content):
-                                logger.info(f"  Block {i}: type={block.type} (type class: {type(block.type).__name__}, repr: {repr(block.type)})")
+                                logger.debug(f"  Block {i}: type={block.type}")
 
-                                # Log text blocks
                                 if hasattr(block, 'text'):
-                                    preview = block.text[:300] if len(block.text) > 300 else block.text
-                                    logger.info(f"    Text preview: {preview}")
+                                    preview = block.text[:200] if len(block.text) > 200 else block.text
+                                    logger.debug(f"    Text preview: {preview}")
 
-                                # Log web_fetch_tool_result content
-                                # Structure: block.content.content.source.data contains the fetched text
+                                if block.type == "container_upload":
+                                    file_id = getattr(block, 'file_id', 'unknown')
+                                    filename = getattr(block, 'filename', 'unknown')
+                                    logger.debug(f"    container_upload: file_id={file_id}, filename={filename}")
+
                                 if block.type == "web_fetch_tool_result":
                                     if hasattr(block, 'content') and hasattr(block.content, 'content'):
                                         if hasattr(block.content.content, 'source') and hasattr(block.content.content.source, 'data'):
-                                            fetch_text = block.content.content.source.data[:1000]
-                                            logger.info(f"    WEB_FETCH CONTENT (first 1000 chars): {fetch_text}")
-                                        else:
-                                            logger.warning(f"    web_fetch_tool_result has unexpected structure")
+                                            fetch_text = block.content.content.source.data[:500]
+                                            logger.debug(f"    web_fetch content: {fetch_text}")
 
                                 if hasattr(block, 'type') and block.type == "server_tool_use":
-                                    if hasattr(block, 'name') and block.name in ["web_search", "web_fetch"]:
-                                        self.web_search_manager.record_search()
+                                    if hasattr(block, 'name'):
                                         logger.info(f"Server tool used: {block.name}")
-
-                                        # Log server tool input/output for debugging
-                                        logger.info(f"Server tool {block.name} input: {block.input}")
-                                        logger.info(f"Server tool {block.name} id: {block.id}")
+                                        logger.debug(f"  Server tool {block.name} input: {block.input}")
 
                         # Log current input token count (first iteration only)
                         if loop_iteration == 1 and hasattr(response, 'usage'):
                             input_tokens = response.usage.input_tokens
-                            trigger_threshold = self.config.api.context_editing.trigger_tokens
+                            trigger_threshold = self._context_editing_config["trigger_tokens"]
                             logger.info(f"Input tokens: {input_tokens:,} / {trigger_threshold:,} ({input_tokens/trigger_threshold*100:.1f}%)")
 
                         # Log context management stats if present (first iteration only)
@@ -445,8 +1016,8 @@ class ReactiveEngine:
                             total_cleared_tokens = 0
                             if cm.applied_edits:
                                 for edit in cm.applied_edits:
-                                    total_cleared_tool_uses += getattr(edit, 'cleared_tool_uses', 0)
-                                    total_cleared_tokens += getattr(edit, 'cleared_input_tokens', 0)
+                                    total_cleared_tool_uses += getattr(edit, 'cleared_tool_uses', 0) or 0
+                                    total_cleared_tokens += getattr(edit, 'cleared_input_tokens', 0) or 0
 
                             # Calculate original tokens (current + cleared)
                             current_tokens = response.usage.input_tokens if hasattr(response, 'usage') else 0
@@ -459,10 +1030,27 @@ class ReactiveEngine:
                                     original_tokens=original_tokens
                                 )
 
-                        # Extract thinking if present
+                                # Sync conversation state with server-side clearing (v0.5.0 Phase 2)
+                                if conversation_state:
+                                    try:
+                                        conversation_state.sync_with_server_clearing(
+                                            tool_uses_cleared=total_cleared_tool_uses,
+                                            excluded_tools=self._context_editing_config["exclude_tools"]
+                                        )
+                                        # Save state after syncing
+                                        await self.conversation_state_manager.save(conversation_state)
+                                        logger.info(
+                                            f"Synced conversation state with server-side context editing: "
+                                            f"removed tracking for {total_cleared_tool_uses} cleared tool uses"
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"Failed to sync conversation state with server clearing: {e}", exc_info=True)
+
+                        # Extract thinking if present (store full block for persistence)
                         for block in response.content:
                             if block.type == "thinking":
                                 thinking_text += block.thinking
+                                thinking_block = block  # Store full block with signature
 
                         # Check stop reason
                         if response.stop_reason == "tool_use":
@@ -477,11 +1065,37 @@ class ReactiveEngine:
                                         path = block.input.get('path', 'unknown')
                                         logger.debug(f"Executing memory tool: {command} {path}")
 
-                                        # Execute memory command
-                                        result = self.memory_tool_executor.execute(block.input)
+                                        # Execute memory command with context for data isolation
+                                        result = self.memory_tool_executor.execute(
+                                            block.input,
+                                            current_server_id=str(message.guild.id) if message.guild else None,
+                                            current_channel_id=str(message.channel.id)
+                                        )
 
                                         # Log memory tool operation
                                         self.conversation_logger.log_memory_tool(command, path, result)
+
+                                        tool_results.append({
+                                            "type": "tool_result",
+                                            "tool_use_id": block.id,
+                                            "content": result
+                                        })
+
+                                    # Handle request_skill tool (v0.5.0 Progressive Disclosure)
+                                    elif block.name == "request_skill":
+                                        skill_name = block.input.get('skill_name', 'unknown')
+                                        logger.info(f"Executing request_skill tool: {skill_name}")
+
+                                        if conversation_state:
+                                            result = self.skill_request_executor.execute(
+                                                block.input,
+                                                conversation_state
+                                            )
+                                            # Save updated state with new skills
+                                            await self.conversation_state_manager.save(conversation_state)
+                                            logger.info(f"Skill request processed: {result}")
+                                        else:
+                                            result = "Error: Conversation state not available"
 
                                         tool_results.append({
                                             "type": "tool_result",
@@ -495,14 +1109,83 @@ class ReactiveEngine:
                                             command = block.input.get('command', 'unknown')
                                             logger.debug(f"Executing Discord tool: {command}")
 
-                                            # Execute Discord tool
-                                            result = await self.discord_tool_executor.execute(block.input)
+                                            # Execute Discord tool with context for data isolation
+                                            result = await self.discord_tool_executor.execute(
+                                                block.input,
+                                                current_server_id=str(message.guild.id) if message.guild else None,
+                                                current_channel_id=str(message.channel.id)
+                                            )
 
-                                            tool_results.append({
-                                                "type": "tool_result",
-                                                "tool_use_id": block.id,
-                                                "content": result
-                                            })
+                                            # Check if result is structured data from get_attachment
+                                            if isinstance(result, dict) and result.get("_structured"):
+                                                # Build content blocks array with text + file
+                                                content_blocks = [
+                                                    {"type": "text", "text": result["text"]}
+                                                ]
+
+                                                # Add file content block
+                                                file_data = result["file_data"]
+                                                if file_data.get("method") == "base64":
+                                                    # Image: ephemeral processing
+                                                    content_blocks.append({
+                                                        "type": "image",
+                                                        "source": {
+                                                            "type": "base64",
+                                                            "media_type": file_data["media_type"],
+                                                            "data": file_data["data"]
+                                                        }
+                                                    })
+                                                elif file_data.get("method") == "file_id":
+                                                    # Phase 3: Detect whether to use document block or container_upload
+                                                    # Design: document blocks for PDFs/plaintext (Claude reads directly)
+                                                    #         container_upload for other file types (accessed via code execution tool)
+                                                    use_as_document = file_data.get("use_as_document_block", True)
+
+                                                    if use_as_document:
+                                                        # Document: add to rolling context (PDFs, TXT, CSV, etc.)
+                                                        content_blocks.append({
+                                                            "type": "document",
+                                                            "source": {
+                                                                "type": "file",
+                                                                "file_id": file_data["data"]
+                                                            }
+                                                        })
+                                                    else:
+                                                        # Container upload: add to rolling context (any non-document-eligible files)
+                                                        # These files are accessed via code_execution tool, not read directly
+                                                        content_blocks.append({
+                                                            "type": "container_upload",
+                                                            "file_id": file_data["data"]
+                                                        })
+
+                                                    # Add to conversation state for persistence (Phase 5: include metadata)
+                                                    att_id = result["metadata"]["attachment_id"]
+                                                    attachment_metadata = {
+                                                        att_id: {
+                                                            "filename": result["metadata"].get("filename"),
+                                                            "size_bytes": result["metadata"].get("size_bytes")
+                                                        }
+                                                    }
+                                                    conversation_state.add_message(
+                                                        "user",
+                                                        content_blocks,
+                                                        [att_id],
+                                                        attachment_metadata
+                                                    )
+                                                    logger.info(f"Added fetched attachment to conversation state: {result['metadata']['filename']}")
+
+                                                tool_results.append({
+                                                    "type": "tool_result",
+                                                    "tool_use_id": block.id,
+                                                    "content": content_blocks
+                                                })
+                                            else:
+                                                # Regular text result
+                                                tool_results.append({
+                                                    "type": "tool_result",
+                                                    "tool_use_id": block.id,
+                                                    "content": result
+                                                })
 
                                     # Handle MCP tools (v0.5.0)
                                     elif "_" in block.name and self.mcp_manager:
@@ -539,6 +1222,91 @@ class ReactiveEngine:
                                 "role": "user",
                                 "content": tool_results
                             })
+
+                            # Persist tool use and results to conversation state (v0.5.0 Phase 1)
+                            if conversation_state:
+                                try:
+                                    # Convert ContentBlock objects to dicts for serialization
+                                    assistant_content_dicts = []
+                                    for block in response.content:
+                                        if hasattr(block, 'type'):
+                                            if block.type == "text":
+                                                assistant_content_dicts.append({"type": "text", "text": block.text})
+                                            elif block.type == "thinking":
+                                                # Preserve thinking blocks with signature for tool continuity
+                                                assistant_content_dicts.append({
+                                                    "type": "thinking",
+                                                    "thinking": block.thinking,
+                                                    "signature": block.signature
+                                                })
+                                            elif block.type == "redacted_thinking":
+                                                # Preserve redacted blocks if API returns them (rare)
+                                                assistant_content_dicts.append({
+                                                    "type": "redacted_thinking",
+                                                    "data": block.data
+                                                })
+                                            elif block.type == "tool_use":
+                                                assistant_content_dicts.append({
+                                                    "type": "tool_use",
+                                                    "id": block.id,
+                                                    "name": block.name,
+                                                    "input": block.input
+                                                })
+                                            # Bug #9 fix: Capture server-side tool uses (code_execution, web_search, etc.)
+                                            # Bug #10 fix: Also capture bash_code_execution, text_editor_code_execution tool uses
+                                            elif block.type in ("server_tool_use", "bash_code_execution", "text_editor_code_execution"):
+                                                assistant_content_dicts.append({
+                                                    "type": block.type,  # Bug #10: Preserve original type
+                                                    "id": getattr(block, 'id', 'unknown'),
+                                                    "name": getattr(block, 'name', 'unknown'),
+                                                    "input": getattr(block, 'input', {})
+                                                })
+                                                logger.debug(f"Captured {block.type} for persistence: {getattr(block, 'name', 'unknown')}")
+                                            # Bug #9 fix: Capture server tool results (code execution output, web search results)
+                                            # Bug #10 fix: Added bash_code_execution_tool_result, text_editor_code_execution_tool_result
+                                            elif block.type in ("code_execution_result", "bash_code_execution_tool_result", "text_editor_code_execution_tool_result", "web_search_tool_result", "web_fetch_tool_result"):
+                                                # Store the result block for conversation history
+                                                # Bug #12 fix: Include tool_use_id which is required by token counting API
+                                                result_content = getattr(block, 'content', None) or getattr(block, 'text', 'No content')
+                                                result_block = {
+                                                    "type": block.type,
+                                                    "content": str(result_content)[:5000]  # Truncate very long results
+                                                }
+                                                # Server tool results have tool_use_id referencing the tool call
+                                                if hasattr(block, 'tool_use_id'):
+                                                    result_block["tool_use_id"] = block.tool_use_id
+                                                assistant_content_dicts.append(result_block)
+                                                logger.debug(f"Captured {block.type} for persistence (tool_use_id: {getattr(block, 'tool_use_id', 'N/A')})")
+                                        elif isinstance(block, dict):
+                                            assistant_content_dicts.append(block)
+
+                                    conversation_state.add_tool_use_and_results(
+                                        assistant_content=assistant_content_dicts,
+                                        tool_results=tool_results,
+                                        excluded_tools=self._context_editing_config["exclude_tools"]
+                                    )
+                                    # Save state after adding tool results
+                                    await self.conversation_state_manager.save(conversation_state)
+                                    logger.info("Persisted tool use and results to conversation state")
+
+                                    # Enforce message cap after adding tool results to prevent accumulation
+                                    removed_count = conversation_state.enforce_message_cap()
+                                    if removed_count > 0:
+                                        logger.info(f"Message cap enforced during tool loop: removed {removed_count} messages (now {len(conversation_state.messages)}/{self.config.api.context_messages})")
+                                        # Re-save state after cap enforcement
+                                        await self.conversation_state_manager.save(conversation_state)
+
+                                        # Rebuild api_params["messages"] to stay in sync with conversation_state
+                                        # after message cap removed Discord messages (prevents orphaned tool_results)
+                                        api_params["messages"] = conversation_state.get_messages_for_api()
+                                        logger.debug(f"Rebuilt api_params messages from conversation state after cap enforcement")
+                                except Exception as e:
+                                    logger.error(f"Failed to persist tool results to conversation state: {e}", exc_info=True)
+
+                            # Bug #14 fix: Update container with captured id before next iteration
+                            if container_id and self.skills_manager and 'container' in api_params:
+                                api_params["container"]["id"] = container_id
+                                logger.debug(f"Updated container with id for next iteration: {container_id}")
 
                             # Continue loop for next API call
                             continue
@@ -609,13 +1377,61 @@ class ReactiveEngine:
                 self.conversation_logger.log_thinking(thinking_text, len(thinking_text))
             self.conversation_logger.log_bot_response(response_text, len(response_text))
 
+            # Add assistant response to conversation state (v0.5.0)
+            if conversation_state:
+                try:
+                    # Construct content blocks array (thinking + text)
+                    assistant_content = []
+                    if thinking_block:
+                        # Preserve thinking block with signature for next turn
+                        assistant_content.append({
+                            "type": "thinking",
+                            "thinking": thinking_block.thinking,
+                            "signature": thinking_block.signature
+                        })
+                    if response_text:
+                        assistant_content.append({
+                            "type": "text",
+                            "text": response_text
+                        })
+
+                    # Add assistant response to state
+                    conversation_state.add_message("assistant", assistant_content)
+                    logger.debug("Added assistant response to conversation state (with thinking block)")
+
+                    # Enforce message cap after adding assistant response
+                    removed_count = conversation_state.enforce_message_cap()
+                    if removed_count > 0:
+                        logger.info(f"Message cap enforced after response: removed {removed_count} oldest messages")
+
+                    # Recount tokens after adding response (v0.5.0 token counting fix)
+                    try:
+                        system_prompt_for_counting = context["system_prompt"]
+                        token_count = await conversation_state.count_tokens(
+                            self.anthropic,
+                            system_prompt_for_counting,
+                            tools,
+                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                        )
+                        logger.info(f"Token count after response: {token_count} tokens ({len(conversation_state.messages)} messages)")
+                    except Exception as token_error:
+                        logger.warning(f"Failed to count tokens after response: {token_error}")
+
+                    # Save conversation state to database
+                    await self.conversation_state_manager.save(conversation_state)
+                    logger.debug(f"Saved conversation state: {conversation_state}")
+
+                except Exception as e:
+                    logger.error(f"Failed to update conversation state: {e}", exc_info=True)
+
             # Record response and start engagement tracking
             self.rate_limiter.record_response(channel_id)
 
             # Log engagement tracking start
             self.conversation_logger.log_engagement_tracking(
                 started=True,
-                delay_seconds=self.config.rate_limiting.engagement_tracking_delay
+                delay_seconds=self._rate_limiting_config["engagement_tracking_delay"]
             )
             self.conversation_logger.log_separator()
 
@@ -625,7 +1441,7 @@ class ReactiveEngine:
                     sent_message.id,
                     message.channel,
                     original_author_id=message.author.id,
-                    delay=self.config.rate_limiting.engagement_tracking_delay,
+                    delay=self._rate_limiting_config["engagement_tracking_delay"],
                 )
             )
             self._background_tasks.add(task)
@@ -767,6 +1583,15 @@ class ReactiveEngine:
         # Wait briefly for cancellations to complete
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
+
+        # Cleanup v0.5.0 managers
+        if self.mcp_manager:
+            try:
+                await self.mcp_manager.shutdown()
+                logger.info("MCP manager shut down successfully")
+            except Exception as e:
+                logger.error(f"Error shutting down MCP manager: {e}")
+
         logger.info("ReactiveEngine shutdown complete")
 
     # ========== PERIODIC SCANNING (Phase 3) ==========
@@ -783,7 +1608,11 @@ class ReactiveEngine:
 
     async def _periodic_check_loop(self):
         """
-        Periodic check loop - scans pending channels for response opportunities.
+        Periodic check loop - scans pending messages for response opportunities.
+
+        Bug #7 fix (revised): Two-phase processing
+        1. Process all pending messages (add to conversation state)
+        2. Make one response decision per channel
 
         Runs every check_interval_seconds (default 30s).
         """
@@ -791,39 +1620,184 @@ class ReactiveEngine:
             while self._running:
                 await asyncio.sleep(self.config.reactive.check_interval_seconds)
 
-                if not self.pending_channels:
+                if not self.pending_messages:
                     continue
 
-                # Get copy of pending channels to process
-                channels_to_check = self.pending_channels.copy()
-                self.pending_channels.clear()
+                # Get copy of pending messages to process
+                messages_to_check = self.pending_messages.copy()
+                self.pending_messages.clear()
 
-                for channel_id in channels_to_check:
+                logger.debug(f"Processing {len(messages_to_check)} pending messages")
+
+                # PHASE 1: Process all messages (add to conversation state)
+                # Track which channels received updates
+                channels_with_updates = set()
+                for channel_id, message_id in messages_to_check:
                     try:
-                        await self._check_channel_for_response(channel_id)
+                        if await self._process_message_to_state(channel_id, message_id):
+                            channels_with_updates.add(channel_id)
                     except Exception as e:
-                        logger.error(f"Error checking channel {channel_id}: {e}", exc_info=True)
+                        logger.error(f"Error processing message {message_id} in channel {channel_id}: {e}", exc_info=True)
+
+                logger.debug(f"Phase 1 complete: {len(channels_with_updates)} channels with updates")
+
+                # PHASE 2: Make one response decision per channel
+                for channel_id in channels_with_updates:
+                    try:
+                        await self._decide_channel_response(channel_id)
+                    except Exception as e:
+                        logger.error(f"Error deciding response for channel {channel_id}: {e}", exc_info=True)
 
         except asyncio.CancelledError:
             logger.info("Periodic check loop cancelled")
         except Exception as e:
             logger.error(f"Fatal error in periodic check loop: {e}", exc_info=True)
 
-    async def _check_channel_for_response(self, channel_id: str):
+    async def _process_message_to_state(self, channel_id: str, message_id: int) -> bool:
         """
-        Check if bot should respond to recent messages in channel.
+        Process a specific message and add it to conversation state.
+
+        Bug #7 fix (revised): Phase 1 processing - just add message to state, no response decision.
 
         Args:
-            channel_id: Discord channel ID to check
+            channel_id: Discord channel ID
+            message_id: Specific Discord message ID to process
+
+        Returns:
+            True if message was successfully processed, False otherwise
         """
         if not self.discord_client:
-            logger.warning("Discord client not set, cannot perform periodic check")
-            return
+            logger.warning("Discord client not set, cannot process message")
+            return False
 
-        # Check rate limits first
-        can_respond, reason = self.rate_limiter.can_respond(channel_id)
-        if not can_respond:
-            logger.debug(f"Channel {channel_id} rate limited: {reason}")
+        # Get Discord channel object
+        channel = self.discord_client.get_channel(int(channel_id))
+        if not channel:
+            logger.warning(f"Channel {channel_id} not found")
+            return False
+
+        # Fetch the specific message by ID
+        try:
+            message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            logger.warning(f"Message {message_id} not found (may have been deleted)")
+            return False
+        except discord.Forbidden:
+            logger.warning(f"No permission to fetch message {message_id}")
+            return False
+        except Exception as e:
+            logger.error(f"Error fetching message {message_id}: {e}", exc_info=True)
+            return False
+
+        # Skip if message is from the bot
+        if message.author == self.discord_client.user:
+            logger.debug(f"Message {message_id} is from bot, skipping processing")
+            return False
+
+        # Load or create conversation state for this channel
+        if not self.conversation_state_manager:
+            logger.warning("No conversation state manager, cannot process message")
+            return False
+
+        try:
+            conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
+
+            # If state is empty, initialize with recent DB messages
+            if len(conversation_state.messages) == 0:
+                await self._initialize_conversation_from_db(channel_id, conversation_state)
+
+            # Process attachments if present
+            processed_attachments = []
+            should_process_attachments = (
+                self.attachment_manager and
+                message.attachments and
+                (not message.author.bot or self.config.discord.allow_bot_interactions)
+            )
+            if should_process_attachments:
+                for attachment in message.attachments:
+                    try:
+                        result = await self.attachment_manager.process_attachment(
+                            attachment=attachment,
+                            message=message,
+                            is_realtime=True
+                        )
+                        if result and result.get("for_api"):
+                            processed_attachments.append(result)
+                            logger.info(f"Processed attachment (periodic): {attachment.filename}")
+                    except Exception as e:
+                        logger.error(f"Failed to process attachment {attachment.filename}: {e}", exc_info=True)
+
+            # Build message content with attachments
+            user_content = message.content
+            attachment_ids = None
+            if processed_attachments:
+                text_content = message.content if message.content.strip() else "[Attachment]"
+                user_content = [{"type": "text", "text": text_content}]
+                attachment_ids = []
+                for att in processed_attachments:
+                    attachment_ids.append(att["attachment_id"])
+                    api_data = att["for_api"]
+                    if api_data["method"] == "file_id":
+                        file_id = api_data["data"]
+                        if api_data.get("use_as_document_block", True):
+                            user_content.append({
+                                "type": "document",
+                                "source": {"type": "file", "file_id": file_id}
+                            })
+                            logger.info(f"Added document block for {att['filename']}")
+                        else:
+                            user_content.append({
+                                "type": "container_upload",
+                                "file_id": file_id
+                            })
+                            logger.info(f"Added container_upload block for {att['filename']}")
+                    elif api_data["method"] == "base64":
+                        user_content.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": api_data["media_type"],
+                                "data": api_data["data"]
+                            }
+                        })
+                        logger.info(f"Added image block for {att['filename']}")
+
+            # Build attachment metadata
+            attachment_metadata = {}
+            if processed_attachments:
+                for att in processed_attachments:
+                    att_id = att.get("attachment_id")
+                    if att_id:
+                        attachment_metadata[att_id] = {
+                            "filename": att.get("filename"),
+                            "size_bytes": att.get("size_bytes")
+                        }
+
+            # Add message to conversation state
+            conversation_state.add_message("user", user_content, attachment_ids, attachment_metadata)
+            logger.info(f"Added message {message_id} to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
+
+            # Save state immediately (Bug #7 fix for persistence)
+            await self.conversation_state_manager.save(conversation_state)
+            logger.debug(f"Saved conversation state after processing message {message_id}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to process message {message_id} to state: {e}", exc_info=True)
+            return False
+
+    async def _decide_channel_response(self, channel_id: str):
+        """
+        Make response decision for a channel (Phase 2 of periodic check).
+
+        Bug #7 fix (revised): Called after all messages processed to make ONE decision per channel.
+
+        Args:
+            channel_id: Discord channel ID
+        """
+        if not self.discord_client:
+            logger.warning("Discord client not set, cannot decide response")
             return
 
         # Get Discord channel object
@@ -832,24 +1806,15 @@ class ReactiveEngine:
             logger.warning(f"Channel {channel_id} not found")
             return
 
-        # Get recent messages from this channel
-        recent_messages = await self.message_memory.get_recent(channel_id, limit=5)
-        if not recent_messages:
-            return
-
-        # Get the most recent message for mock discord.Message creation
-        latest_stored = recent_messages[-1]
-
-        # Create a minimal mock message object for context building
-        # This is a workaround since we don't have the actual discord.Message object
+        # Fetch latest message for context building
         try:
-            # Fetch the actual latest message from Discord
             latest_message = None
             async for msg in channel.history(limit=1):
                 latest_message = msg
                 break
 
             if not latest_message:
+                logger.debug(f"No messages found in channel {channel_id}")
                 return
 
             # Don't respond if latest message is from the bot
@@ -857,23 +1822,40 @@ class ReactiveEngine:
                 logger.debug(f"Latest message in {channel_id} is from bot, skipping")
                 return
 
-            # Don't respond if we already responded to this message (prevents race condition)
+            # Don't respond if we already responded to this message
             if latest_message.id in self._responded_messages:
-                logger.debug(f"Already responded to message {latest_message.id} in {channel_id}, skipping")
+                logger.debug(f"Already responded to latest message {latest_message.id}, skipping")
                 return
 
-            # Build context using the actual Discord message
-            context = await self.context_builder.build_context(latest_message)
-
-            # Calculate conversation momentum
-            momentum = await self._calculate_conversation_momentum(channel_id)
-            context["conversation_momentum"] = momentum
-
-            # Call Claude API with response decision focus
-            await self._call_claude_for_response_decision(latest_message, context)
-
         except Exception as e:
-            logger.error(f"Error in periodic check for channel {channel_id}: {e}", exc_info=True)
+            logger.error(f"Error fetching latest message in channel {channel_id}: {e}", exc_info=True)
+            return
+
+        # Detect if latest message is an @mention of this bot
+        # Check both message.mentions and content string (bot-to-bot mentions
+        # may not populate message.mentions in discord.py)
+        is_mention = False
+        if self.discord_client.user in latest_message.mentions:
+            is_mention = True
+        elif self.discord_client.user and f"<@{self.discord_client.user.id}>" in (latest_message.content or ""):
+            is_mention = True
+
+        # Check rate limits (mentions bypass silence threshold)
+        can_respond, reason = self.rate_limiter.can_respond(channel_id, is_mention=is_mention)
+        if not can_respond:
+            logger.debug(f"Channel {channel_id} rate limited: {reason}")
+            return
+
+        # Build context using the latest Discord message
+        context = await self.context_builder.build_context(latest_message)
+
+        # Calculate conversation momentum
+        momentum = await self._calculate_conversation_momentum(channel_id)
+        context["conversation_momentum"] = momentum
+
+        # Call Claude API with response decision focus
+        # Note: Message already in conversation state from Phase 1 processing
+        await self._call_claude_for_response_decision(latest_message, context)
 
     async def _calculate_conversation_momentum(self, channel_id: str) -> str:
         """
@@ -931,6 +1913,24 @@ class ReactiveEngine:
         """
         channel_id = str(message.channel.id)
 
+        # Load or create conversation state for this channel (v0.5.0)
+        conversation_state = None
+        if self.conversation_state_manager:
+            try:
+                conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
+                logger.debug(f"Loaded conversation state for periodic check: {conversation_state}")
+
+                # If state is empty, initialize with recent DB messages (Disconnect #1 fix)
+                if len(conversation_state.messages) == 0:
+                    await self._initialize_conversation_from_db(channel_id, conversation_state)
+
+                # Bug #7 fix (revised): Attachment processing removed - now done in Phase 1
+                # Messages are already in conversation state with attachments from _process_message_to_state()
+
+            except Exception as e:
+                logger.error(f"Failed to load conversation state for periodic check: {e}", exc_info=True)
+                conversation_state = None
+
         # Log periodic check decision attempt
         self.conversation_logger.log_user_message(
             author="[PERIODIC CHECK]",
@@ -948,6 +1948,15 @@ class ReactiveEngine:
             # Build system prompt with response decision criteria
             system_prompt = self._build_response_decision_prompt(context)
 
+            # Add skills catalog for progressive disclosure (v0.5.0)
+            if self.skills_manager and conversation_state:
+                skills_prompt = self.context_builder.build_skills_prompt(
+                    conversation_state.get_active_skills()
+                )
+                if skills_prompt and isinstance(system_prompt, list) and len(system_prompt) > 0:
+                    # Inject skills catalog into the system prompt text
+                    system_prompt[0]["text"] += "\n\n" + skills_prompt
+
             # Prepare API parameters
             tools = [{"type": "memory_20250818", "name": "memory"}]
 
@@ -958,27 +1967,83 @@ class ReactiveEngine:
             else:
                 logger.warning("Discord tool executor is None - tools NOT added to periodic check!")
 
-            # Add web search tools if enabled and quota available
+            # Add web search tools if enabled (all-or-nothing, no rate limits)
             beta_headers = ["context-management-2025-06-27", "prompt-caching-2024-07-31"]
-            if self.web_search_manager:
-                can_search, reason = self.web_search_manager.can_search()
-                if can_search:
-                    max_uses = self.config.api.web_search.max_per_request
-                    citations_enabled = self.config.api.web_search.citations_enabled
-                    tools.extend(get_web_search_tools(max_uses=max_uses, citations_enabled=citations_enabled))
-                    beta_headers.append("web-fetch-2025-09-10")
-                    logger.debug(f"Web search tools added to periodic check (max_uses={max_uses}, citations={citations_enabled})")
-                else:
-                    logger.debug(f"Web search disabled for periodic check: {reason}")
+            if self.web_search_enabled:
+                web_search_config = self.config.get_web_search_config()
+                tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
+                beta_headers.append("web-fetch-2025-09-10")
+                logger.debug("Web search tools added to periodic check (unlimited)")
+
+            # Add MCP tools if enabled (v0.5.0)
+            if self.mcp_manager:
+                mcp_tools = self.mcp_manager.get_tools_for_api()
+                if mcp_tools:
+                    tools.extend(mcp_tools)
+                    logger.debug(f"Added {len(mcp_tools)} MCP tools to periodic check")
+
+            # Add code execution tool and skills (Bug #14 fix: skills REQUIRE code_execution)
+            if self.skills_manager:
+                tools.append({
+                    "type": "code_execution_20250825",
+                    "name": "code_execution"
+                })
+                # Add request_skill tool for progressive disclosure (v0.5.0)
+                tools.append(get_skill_request_tool())
+                beta_headers.append("code-execution-2025-08-25")
+                beta_headers.append("skills-2025-10-02")
+                logger.debug("Code execution, request_skill, and skills beta headers added to periodic check")
+
+            # Add files API beta if attachments enabled
+            if self.attachment_manager:
+                beta_headers.append("files-api-2025-04-14")
+
+            # Get messages from conversation state if available, otherwise use context (v0.5.0)
+            if conversation_state:
+                messages = conversation_state.get_messages_for_api()
+                logger.debug(f"Using {len(messages)} messages from conversation state (periodic)")
+            else:
+                # Fallback to context builder (legacy behavior)
+                messages = context["messages"].copy()
+                logger.warning("Conversation state not available for periodic check, falling back to context builder")
+
+            # Bug #14 fix: Track container.id across tool loop iterations (periodic path)
+            container_id = None
 
             api_params = {
                 "model": self.config.api.model,
                 "max_tokens": self.config.api.max_tokens,
                 "system": system_prompt,
-                "messages": context["messages"],
+                "messages": messages,
                 "tools": tools,
-                "extra_headers": {"anthropic-beta": ",".join(beta_headers)}
+                "betas": beta_headers  # SDK's beta endpoint uses 'betas' parameter, not extra_headers
             }
+
+            # Add skills container with progressive disclosure (v0.5.0)
+            if self.skills_manager:
+                # Get active skills from conversation state (progressive disclosure)
+                active_skill_names = []
+                if conversation_state:
+                    active_skill_names = conversation_state.get_active_skills()
+
+                # Use defaults if no skills selected yet
+                if not active_skill_names:
+                    default_skills = self.config.skills.default_skills
+                    if default_skills:
+                        active_skill_names = default_skills
+                    else:
+                        active_skill_names = ["pdf"]
+                    if conversation_state:
+                        conversation_state.set_active_skills(active_skill_names, self.skills_manager.MAX_SKILLS_PER_REQUEST)
+
+                # Select skills by name using progressive disclosure
+                skills_list = self.skills_manager.select_skills(active_skill_names)
+                if skills_list:
+                    container_config = {"skills": skills_list}
+                    if container_id:  # Reuse from previous iteration
+                        container_config["id"] = container_id
+                    api_params["container"] = container_config
+                    logger.debug(f"Container (periodic): id={container_id}, skills={active_skill_names}")
 
             # Add extended thinking if enabled
             if self.config.api.extended_thinking.enabled:
@@ -988,92 +2053,241 @@ class ReactiveEngine:
                 }
 
             # Add context management if enabled
-            if self.config.api.context_editing.enabled:
+            if self._context_editing_config["enabled"]:
                 api_params["context_management"] = {
                     "edits": [
                         {
                             "type": "clear_tool_uses_20250919",
                             "trigger": {
                                 "type": "input_tokens",
-                                "value": self.config.api.context_editing.trigger_tokens
+                                "value": self._context_editing_config["trigger_tokens"]
                             },
                             "keep": {
                                 "type": "tool_uses",
-                                "value": self.config.api.context_editing.keep_tool_uses
+                                "value": self._context_editing_config["keep_tool_uses"]
                             },
-                            "exclude_tools": self.config.api.context_editing.exclude_tools,
+                            "exclude_tools": self._context_editing_config["exclude_tools"],
                         }
                     ]
                 }
+
+            # Token cap enforcement (Phase 4 - v0.5.0) - PERIODIC PATH
+            if conversation_state:
+                try:
+                    # Get system prompt for counting
+                    system_prompt_for_counting = system_prompt
+                    if isinstance(api_params.get("system"), list):
+                        # Extract text from structured system prompt
+                        system_prompt_for_counting = api_params["system"][0]["text"]
+
+                    # Count static tokens (system + tools) for logging only
+                    static_tokens = await conversation_state.count_static_tokens(
+                        self.anthropic,
+                        system_prompt_for_counting,
+                        tools
+                    )
+
+                    # Count total input tokens (system + tools + messages)
+                    total_tokens = await conversation_state.count_tokens(
+                        self.anthropic,
+                        system_prompt_for_counting,
+                        tools,
+                        attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                        local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                    )
+
+                    # Log token breakdown
+                    messages_only_tokens = total_tokens - static_tokens
+                    logger.debug(
+                        f"Token breakdown (periodic): {total_tokens} total "
+                        f"({static_tokens} static + {messages_only_tokens} messages)"
+                    )
+
+                    # Check if over budget and enforce token cap
+                    max_tokens = conversation_state.max_tokens
+
+                    if total_tokens > max_tokens:
+                        logger.warning(
+                            f"Over token budget (periodic): {total_tokens}/{max_tokens} "
+                            f"({(total_tokens/max_tokens)*100:.1f}%)"
+                        )
+
+                        # Strip documents first (Phase 4)
+                        while total_tokens > max_tokens and conversation_state.document_references:
+                            # Strip oldest document
+                            stripped = conversation_state.strip_documents_from_oldest(count=1)
+                            if stripped:
+                                logger.info(f"Stripped {len(stripped)} documents to reduce tokens (periodic)")
+                                # Invalidate token cache and recount
+                                conversation_state.invalidate_token_cache()
+                                total_tokens = await conversation_state.count_tokens(
+                                    self.anthropic,
+                                    system_prompt_for_counting,
+                                    tools,
+                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                )
+                                logger.debug(f"After document stripping (periodic): {total_tokens}/{max_tokens}")
+                            else:
+                                # No more documents to strip
+                                break
+
+                        # Remove oldest messages if still over budget (Phase 4)
+                        removal_iterations = 0
+                        max_removal_iterations = 100  # Safety guard against infinite loops
+                        while total_tokens > max_tokens and len(conversation_state.messages) > 2:
+                            removal_iterations += 1
+                            if removal_iterations > max_removal_iterations:
+                                logger.error(f"Token overflow removal exceeded {max_removal_iterations} iterations (periodic) - breaking")
+                                break
+
+                            # Keep at least 2 messages (current conversation turn)
+                            if conversation_state.remove_oldest_message():
+                                logger.warning(f"Removed oldest message due to token overflow (periodic)")
+                                # Invalidate token cache and recount
+                                conversation_state.invalidate_token_cache()
+                                total_tokens = await conversation_state.count_tokens(
+                                    self.anthropic,
+                                    system_prompt_for_counting,
+                                    tools,
+                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                )
+                                logger.debug(f"After message removal (periodic): {total_tokens}/{max_tokens}")
+                            else:
+                                # No messages to remove
+                                break
+
+                        # FIX: If still over budget after removing old messages, the current message is too large
+                        # Strip documents from current message to prevent infinite loop / corrupted state
+                        if total_tokens > max_tokens:
+                            logger.error(
+                                f"Current message exceeds token budget after removing all older messages (periodic): "
+                                f"{total_tokens}/{max_tokens} ({(total_tokens/max_tokens)*100:.1f}%)"
+                            )
+                            stripped = conversation_state.strip_documents_from_current()
+                            if stripped:
+                                logger.warning(f"Stripped documents from current message to fit budget (periodic)")
+                                conversation_state.invalidate_token_cache()
+                                total_tokens = await conversation_state.count_tokens(
+                                    self.anthropic,
+                                    system_prompt_for_counting,
+                                    tools,
+                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                )
+                                logger.info(f"After stripping current message (periodic): {total_tokens}/{max_tokens}")
+
+                        # Save state after token cap enforcement
+                        await self.conversation_state_manager.save(conversation_state)
+
+                except Exception as e:
+                    logger.error(f"Token cap enforcement failed (periodic): {e}", exc_info=True)
 
             # Call Claude API
             try:
                 # Initialize response tracking
                 thinking_text = ""
+                thinking_block = None  # Store full thinking block for persistence
                 response_text = ""
                 loop_iteration = 0
+                tools_were_used = False  # Track if any tools were executed (Bug #7 fix)
 
                 while True:
                     loop_iteration += 1
 
+                    # Orphan detection removed - was causing false positives
+                    # API will reject actual orphaned tool_results with clear error message
+
                     # Call API
-                    if self.config.api.context_editing.enabled:
+                    # Debug log API params before call
+                    logger.debug(f"API params (periodic): model={api_params.get('model')}, betas={api_params.get('betas')}")
+                    logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
+                    if 'container' in api_params:
+                        logger.debug(f"  Container/Skills: {api_params.get('container')}")
+                    if self._context_editing_config["enabled"]:
                         response = await self.anthropic.beta.messages.create(**api_params)
                     else:
                         response = await self.anthropic.messages.create(**api_params)
 
-                    # Track server tool usage (web_search, web_fetch)
-                    # Server tools appear as server_tool_use blocks in response.content
-                    if self.web_search_manager:
-                        # Log all response blocks for debugging
-                        logger.info(f"Response has {len(response.content)} content blocks (periodic)")
+                    # Bug #14 fix: Capture container.id from response for subsequent iterations (periodic path)
+                    if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):
+                        container_id = response.container.id
+                        logger.debug(f"Captured container.id (periodic): {container_id}")
+
+                    # Log server tool usage (web_search, web_fetch)
+                    if self.web_search_enabled:
+                        logger.debug(f"Response has {len(response.content)} content blocks (periodic)")
                         for i, block in enumerate(response.content):
-                            logger.info(f"  Block {i}: type={block.type} (type class: {type(block.type).__name__}, repr: {repr(block.type)})")
+                            logger.debug(f"  Block {i}: type={block.type}")
 
-                            # Log text blocks
                             if hasattr(block, 'text'):
-                                preview = block.text[:300] if len(block.text) > 300 else block.text
-                                logger.info(f"    Text preview: {preview}")
+                                preview = block.text[:200] if len(block.text) > 200 else block.text
+                                logger.debug(f"    Text preview: {preview}")
 
-                            # Log web_fetch_tool_result content
-                            # Structure: block.content.content.source.data contains the fetched text
+                            if block.type == "container_upload":
+                                file_id = getattr(block, 'file_id', 'unknown')
+                                filename = getattr(block, 'filename', 'unknown')
+                                logger.debug(f"    container_upload: file_id={file_id}, filename={filename}")
+
                             if block.type == "web_fetch_tool_result":
                                 if hasattr(block, 'content') and hasattr(block.content, 'content'):
                                     if hasattr(block.content.content, 'source') and hasattr(block.content.content.source, 'data'):
-                                        fetch_text = block.content.content.source.data[:1000]
-                                        logger.info(f"    WEB_FETCH CONTENT (first 1000 chars): {fetch_text}")
-                                    else:
-                                        logger.warning(f"    web_fetch_tool_result has unexpected structure")
+                                        fetch_text = block.content.content.source.data[:500]
+                                        logger.debug(f"    web_fetch content: {fetch_text}")
 
                             if hasattr(block, 'type') and block.type == "server_tool_use":
-                                if hasattr(block, 'name') and block.name in ["web_search", "web_fetch"]:
-                                    self.web_search_manager.record_search()
+                                if hasattr(block, 'name'):
                                     logger.info(f"Server tool used (periodic): {block.name}")
-
-                                    # Log server tool input/output for debugging
-                                    logger.info(f"Server tool {block.name} input (periodic): {block.input}")
-                                    logger.info(f"Server tool {block.name} id (periodic): {block.id}")
+                                    logger.debug(f"  Server tool {block.name} input: {block.input}")
 
                     # Log current input token count (first iteration only)
                     if loop_iteration == 1 and hasattr(response, 'usage'):
                         input_tokens = response.usage.input_tokens
-                        trigger_threshold = self.config.api.context_editing.trigger_tokens
+                        trigger_threshold = self._context_editing_config["trigger_tokens"]
                         logger.info(f"Input tokens: {input_tokens:,} / {trigger_threshold:,} ({input_tokens/trigger_threshold*100:.1f}%)")
 
-                    # Extract thinking if present
+                    # Extract thinking if present (store full block for persistence)
                     for block in response.content:
                         if block.type == "thinking":
                             thinking_text += block.thinking
+                            thinking_block = block  # Store full block with signature
 
                     # Check stop reason
                     if response.stop_reason == "tool_use":
                         # Execute tool calls
+                        tools_were_used = True  # Track that tools were executed (Bug #7 fix)
                         tool_results = []
                         for content_block in response.content:
                             if content_block.type == "tool_use":
                                 # Handle memory tool
                                 if content_block.name == "memory":
-                                    result = self.memory_tool_executor.execute(content_block.input)
+                                    result = self.memory_tool_executor.execute(
+                                        content_block.input,
+                                        current_server_id=str(message.guild.id) if message.guild else None,
+                                        current_channel_id=channel_id
+                                    )
+                                    tool_results.append({
+                                        "type": "tool_result",
+                                        "tool_use_id": content_block.id,
+                                        "content": result
+                                    })
+
+                                # Handle request_skill tool (v0.5.0 Progressive Disclosure)
+                                elif content_block.name == "request_skill":
+                                    skill_name = content_block.input.get('skill_name', 'unknown')
+                                    logger.info(f"Executing request_skill tool (periodic): {skill_name}")
+
+                                    if conversation_state:
+                                        result = self.skill_request_executor.execute(
+                                            content_block.input,
+                                            conversation_state
+                                        )
+                                        # Save updated state with new skills
+                                        await self.conversation_state_manager.save(conversation_state)
+                                    else:
+                                        result = "Error: Conversation state not available"
+
                                     tool_results.append({
                                         "type": "tool_result",
                                         "tool_use_id": content_block.id,
@@ -1083,16 +2297,126 @@ class ReactiveEngine:
                                 # Handle Discord tools (Phase 4)
                                 elif content_block.name == "discord_tools":
                                     if self.discord_tool_executor:
-                                        result = await self.discord_tool_executor.execute(content_block.input)
+                                        result = await self.discord_tool_executor.execute(
+                                            content_block.input,
+                                            current_server_id=str(message.guild.id) if message.guild else None,
+                                            current_channel_id=channel_id
+                                        )
                                         tool_results.append({
                                             "type": "tool_result",
                                             "tool_use_id": content_block.id,
                                             "content": result
                                         })
 
+                                # Handle MCP tools (v0.5.0)
+                                elif "_" in content_block.name and self.mcp_manager:
+                                    logger.debug(f"Executing MCP tool (periodic): {content_block.name}")
+                                    try:
+                                        result = await self.mcp_manager.execute_tool(
+                                            tool_name=content_block.name,
+                                            arguments=content_block.input
+                                        )
+                                        tool_results.append({
+                                            "type": "tool_result",
+                                            "tool_use_id": content_block.id,
+                                            "content": str(result)
+                                        })
+                                    except Exception as e:
+                                        logger.error(f"MCP tool execution failed (periodic): {e}", exc_info=True)
+                                        tool_results.append({
+                                            "type": "tool_result",
+                                            "tool_use_id": content_block.id,
+                                            "content": f"Error executing MCP tool: {str(e)}",
+                                            "is_error": True
+                                        })
+
                         # Continue conversation with tool results
                         api_params["messages"].append({"role": "assistant", "content": response.content})
                         api_params["messages"].append({"role": "user", "content": tool_results})
+
+                        # Persist tool use and results to conversation state (periodic path)
+                        try:
+                            # Convert response.content to assistant_content_dicts
+                            assistant_content_dicts = []
+                            for block in response.content:
+                                if hasattr(block, 'type'):
+                                    if block.type == "text":
+                                        assistant_content_dicts.append({"type": "text", "text": block.text})
+                                    elif block.type == "thinking":
+                                        # Preserve thinking blocks with signature for tool continuity
+                                        assistant_content_dicts.append({
+                                            "type": "thinking",
+                                            "thinking": block.thinking,
+                                            "signature": block.signature
+                                        })
+                                    elif block.type == "redacted_thinking":
+                                        # Preserve redacted blocks if API returns them (rare)
+                                        assistant_content_dicts.append({
+                                            "type": "redacted_thinking",
+                                            "data": block.data
+                                        })
+                                    elif block.type == "tool_use":
+                                        assistant_content_dicts.append({
+                                            "type": "tool_use",
+                                            "id": block.id,
+                                            "name": block.name,
+                                            "input": block.input
+                                        })
+                                    # Bug #9 fix: Capture server-side tool uses (code_execution, web_search, etc.)
+                                    # Bug #10 fix: Also capture bash_code_execution, text_editor_code_execution tool uses
+                                    elif block.type in ("server_tool_use", "bash_code_execution", "text_editor_code_execution"):
+                                        assistant_content_dicts.append({
+                                            "type": block.type,  # Preserve original type
+                                            "id": getattr(block, 'id', 'unknown'),
+                                            "name": getattr(block, 'name', 'unknown'),
+                                            "input": getattr(block, 'input', {})
+                                        })
+                                        logger.debug(f"Captured {block.type} for persistence (periodic): {getattr(block, 'name', 'unknown')}")
+                                    # Bug #9 fix: Capture server tool results (code execution output, web search results)
+                                    # Bug #10 fix: Added bash_code_execution_tool_result, text_editor_code_execution_tool_result
+                                    elif block.type in ("code_execution_result", "bash_code_execution_tool_result", "text_editor_code_execution_tool_result", "web_search_tool_result", "web_fetch_tool_result"):
+                                        # Store the result block for conversation history
+                                        # Bug #12 fix: Include tool_use_id which is required by token counting API
+                                        result_content = getattr(block, 'content', None) or getattr(block, 'text', 'No content')
+                                        result_block = {
+                                            "type": block.type,
+                                            "content": str(result_content)[:5000]  # Truncate very long results
+                                        }
+                                        # Server tool results have tool_use_id referencing the tool call
+                                        if hasattr(block, 'tool_use_id'):
+                                            result_block["tool_use_id"] = block.tool_use_id
+                                        assistant_content_dicts.append(result_block)
+                                        logger.debug(f"Captured {block.type} for persistence (periodic) (tool_use_id: {getattr(block, 'tool_use_id', 'N/A')})")
+                                elif isinstance(block, dict):
+                                    assistant_content_dicts.append(block)
+
+                            conversation_state.add_tool_use_and_results(
+                                assistant_content=assistant_content_dicts,
+                                tool_results=tool_results,
+                                excluded_tools=self._context_editing_config["exclude_tools"]
+                            )
+                            # Save state after adding tool results
+                            await self.conversation_state_manager.save(conversation_state)
+                            logger.info("Persisted tool use and results to conversation state (periodic)")
+
+                            # Enforce message cap after adding tool results to prevent accumulation
+                            removed_count = conversation_state.enforce_message_cap()
+                            if removed_count > 0:
+                                logger.info(f"Message cap enforced during tool loop (periodic): removed {removed_count} messages (now {len(conversation_state.messages)}/{self.config.api.context_messages})")
+                                # Re-save state after cap enforcement
+                                await self.conversation_state_manager.save(conversation_state)
+
+                                # Rebuild api_params["messages"] to stay in sync with conversation_state
+                                # after message cap removed Discord messages (prevents orphaned tool_results)
+                                api_params["messages"] = conversation_state.get_messages_for_api()
+                                logger.debug(f"Rebuilt api_params messages from conversation state after cap enforcement (periodic)")
+                        except Exception as e:
+                            logger.error(f"Failed to persist tool results to conversation state (periodic): {e}", exc_info=True)
+
+                        # Bug #14 fix: Update container with captured id before next iteration (periodic path)
+                        if container_id and self.skills_manager and 'container' in api_params:
+                            api_params["container"]["id"] = container_id
+                            logger.debug(f"Updated container with id for next iteration (periodic): {container_id}")
 
                         # Continue loop for next API call
                         if loop_iteration >= 10:
@@ -1119,6 +2443,16 @@ class ReactiveEngine:
                         if citations_list:
                             response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
 
+                        # Bug #7 fix: If tools were used but no text response, prompt Claude to confirm
+                        if not response_text.strip() and tools_were_used and loop_iteration < 10:
+                            logger.warning(f"Tools used but no text response in periodic check - prompting for confirmation (iteration {loop_iteration})")
+                            api_params["messages"].append({"role": "assistant", "content": response.content})
+                            api_params["messages"].append({
+                                "role": "user",
+                                "content": [{"type": "text", "text": "Please provide a brief response confirming what you just did for the user."}]
+                            })
+                            continue  # Loop back to get text response
+
                         # Exit loop
                         break
 
@@ -1133,6 +2467,53 @@ class ReactiveEngine:
                     if thinking_text:
                         self.conversation_logger.log_thinking(thinking_text, len(thinking_text))
                     self.conversation_logger.log_bot_response(response_text, len(response_text))
+
+                    # Add assistant response to conversation state (v0.5.0)
+                    if conversation_state:
+                        try:
+                            # Construct content blocks array (thinking + text)
+                            assistant_content = []
+                            if thinking_block:
+                                # Preserve thinking block with signature for next turn
+                                assistant_content.append({
+                                    "type": "thinking",
+                                    "thinking": thinking_block.thinking,
+                                    "signature": thinking_block.signature
+                                })
+                            if response_text:
+                                assistant_content.append({
+                                    "type": "text",
+                                    "text": response_text
+                                })
+
+                            # Add assistant response to state
+                            conversation_state.add_message("assistant", assistant_content)
+                            logger.debug("Added assistant response to conversation state (with thinking block)")
+
+                            # Enforce message cap after adding assistant response
+                            removed_count = conversation_state.enforce_message_cap()
+                            if removed_count > 0:
+                                logger.info(f"Message cap enforced in periodic response: removed {removed_count} oldest messages")
+
+                            # Recount tokens after adding response (v0.5.0 token counting fix)
+                            try:
+                                token_count = await conversation_state.count_tokens(
+                                    self.anthropic,
+                                    system_prompt,
+                                    tools,
+                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
+                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
+                                )
+                                logger.info(f"Token count after periodic response: {token_count} tokens ({len(conversation_state.messages)} messages)")
+                            except Exception as token_error:
+                                logger.warning(f"Failed to count tokens after periodic response: {token_error}")
+
+                            # Save conversation state to database
+                            await self.conversation_state_manager.save(conversation_state)
+                            logger.debug(f"Saved conversation state: {conversation_state}")
+
+                        except Exception as e:
+                            logger.error(f"Failed to update conversation state: {e}", exc_info=True)
 
                     # Send response as standalone (not a reply)
                     # Split message if it exceeds Discord's limit
@@ -1154,7 +2535,7 @@ class ReactiveEngine:
                     # Log engagement tracking start
                     self.conversation_logger.log_engagement_tracking(
                         started=True,
-                        delay_seconds=self.config.rate_limiting.engagement_tracking_delay
+                        delay_seconds=self._rate_limiting_config["engagement_tracking_delay"]
                     )
                     self.conversation_logger.log_separator()
 
@@ -1175,7 +2556,11 @@ class ReactiveEngine:
 
                     logger.info(f"Periodic response sent in channel {channel_id} ({len(response_text)} chars)")
                 else:
-                    logger.debug(f"Claude decided not to respond in channel {channel_id}")
+                    # Log at INFO level for visibility (Bug #7 fix)
+                    if tools_were_used:
+                        logger.warning(f"Claude used tools but returned no text response in channel {channel_id}")
+                    else:
+                        logger.info(f"Claude decided not to respond in channel {channel_id}")
                     # Log thinking trace if present, then log decision to stay silent
                     if thinking_text:
                         self.conversation_logger.log_thinking(thinking_text, len(thinking_text))
@@ -1201,10 +2586,12 @@ class ReactiveEngine:
         """
         bot_name = self.discord_client.user.display_name if self.discord_client else "Assistant"
 
-        # Get response rates from config
-        cold_rate = int(self.config.personality.cold_conversation_rate * 100)
-        warm_rate = int(self.config.personality.warm_conversation_rate * 100)
-        hot_rate = int(self.config.personality.hot_conversation_rate * 100)
+        # Qualitative momentum descriptions (generic for all bots - v0.5.0 Phase 9)
+        momentum_descriptions = {
+            "cold": "COLD: Conversation is idle or slow - minimal activity, quiet day",
+            "warm": "WARM: Conversation has steady movement - moderate discussion happening",
+            "hot": "HOT: Conversation is active and lively - messages flowing rapidly"
+        }
 
         decision_criteria = f"""
 
@@ -1219,10 +2606,10 @@ You are monitoring an ongoing Discord conversation. Decide whether to participat
 - Someone needs help you can provide
 - Conversation about technical topics you understand
 
-**Conversation Momentum** (Response probability):
-- COLD (idle/slow): {cold_rate}% base chance - only if very valuable contribution
-- WARM (steady): {warm_rate}% base chance - if relevant and helpful
-- HOT (active): {hot_rate}% base chance - participate naturally if appropriate
+**Conversation Momentum**:
+{momentum_descriptions[context["conversation_momentum"]]}
+
+Your personality and base prompt guide whether to participate. Consider relevance, value-add, and whether the activity level matches when you'd naturally engage.
 
 **DON'T Respond If**:
 - Nothing meaningful to add
@@ -1231,7 +2618,7 @@ You are monitoring an ongoing Discord conversation. Decide whether to participat
 - Just agreeing without adding value
 - Making conversation about yourself
 
-**Current Conversation Momentum**: {context["conversation_momentum"].upper()}
+**Current Context**: {context["conversation_momentum"].upper()}
 
 **RESPONSE FORMAT:**
 - If you decide to respond: Output ONLY your message to the channel (no meta-commentary, no explanation of your decision)
@@ -1244,21 +2631,26 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
             {
                 "type": "text",
                 "text": context["system_prompt"] + decision_criteria,
-                "cache_control": {"type": "ephemeral"} if self.config.api.context_editing.enabled else None
+                "cache_control": {"type": "ephemeral"} if self._context_editing_config["enabled"] else None
             }
         ]
 
         # Remove None cache_control if not using context editing
-        if not self.config.api.context_editing.enabled:
+        if not self._context_editing_config["enabled"]:
             system_prompt[0].pop("cache_control", None)
 
         return system_prompt
 
-    def add_pending_channel(self, channel_id: str):
+    def add_pending_message(self, channel_id: str, message_id: int):
         """
-        Add channel to pending list for periodic check.
+        Add message to pending list for periodic check.
+
+        Bug #7 fix: Track individual messages instead of just channels
+        to prevent message loss in rapid multi-message sequences.
 
         Args:
             channel_id: Discord channel ID
+            message_id: Discord message ID
         """
-        self.pending_channels.add(channel_id)
+        self.pending_messages.append((channel_id, message_id))
+        logger.debug(f"Added message {message_id} to pending queue (channel {channel_id})")

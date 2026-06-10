@@ -1,5 +1,6 @@
 # Secrets: NEVER EVER commit these
 .env
+.mcp.json
 
 # Personal deployment data
 logs/
@@ -7,6 +8,8 @@ memories/
 persistence/
 bots/*.yaml
 !bots/*.yaml.example
+test-stuff/
+venv/
 
 # Export backups
 deployment-backup_*.zip
@@ -40,9 +43,28 @@ htmlcov/
 # Temporary files
 *.tmp
 *.log.tmp
+*.stackdump
+
+# Runtime caches and local test resources
+mcp_servers.json
+.skills_cache.json
+Test-MCP-Servers/
+test_files/
 
 # Build artifacts
 dist/
 build/
+
+# Development docs/reports (internal, not shipped)
+BUG_*.md
+TEST_*.md
+TESTING_*.md
+*_TEST_REPORT.md
+*_IMPLEMENTATION_PLAN.md
+*_IMPLEMENTATION_STATUS.md
+ATTACHMENT_SYSTEM_*.md
+DESIGN_ISSUES.md
+MANUAL_TEST_SUITE.md
+V050_TEST_REPORT.md
 
 CLAUDE.md

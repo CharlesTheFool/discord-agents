@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .message_memory import MessageMemory
     from .user_cache import UserCache
     from .conversation_logger import ConversationLogger
+    from .memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,7 @@ class DiscordClient(discord.Client):
         message_memory: "MessageMemory",
         user_cache: "UserCache",
         conversation_logger: "ConversationLogger",
+        memory_manager: "MemoryManager",
     ):
         """
         Initialize Discord client.
@@ -165,6 +167,7 @@ class DiscordClient(discord.Client):
             message_memory: Message storage
             user_cache: User information cache
             conversation_logger: Conversation logger
+            memory_manager: Memory manager for long-term memory
         """
         # Setup intents
         intents = discord.Intents.default()
@@ -181,6 +184,7 @@ class DiscordClient(discord.Client):
         self.message_memory = message_memory
         self.user_cache = user_cache
         self.conversation_logger = conversation_logger
+        self.memory_manager = memory_manager
 
         logger.info(f"Discord client initialized for bot '{config.bot_id}'")
 
@@ -221,18 +225,21 @@ class DiscordClient(discord.Client):
                 logger.error(f"Error processing crash detection: {e}", exc_info=True)
 
         # Insert online tag for each channel in each server
+        # TEMPORARILY DISABLED - causing startup hang (debugging)
+        logger.info("[DEBUG] Skipping online tag insertion (temporarily disabled)")
         online_time = datetime.utcnow()
-        for guild in self.guilds:
-            for channel in guild.text_channels:
-                try:
-                    await self.message_memory.insert_system_message(
-                        content="[YOU CAME ONLINE]",
-                        channel_id=str(channel.id),
-                        guild_id=str(guild.id),
-                        timestamp=online_time
-                    )
-                except Exception as e:
-                    logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
+        # for guild in self.guilds:
+        #     logger.info(f"[DEBUG] Processing guild: {guild.name} ({len(guild.text_channels)} text channels)")
+        #     for channel in guild.text_channels:
+        #         try:
+        #             await self.message_memory.insert_system_message(
+        #                 content="[YOU CAME ONLINE]",
+        #                 channel_id=str(channel.id),
+        #                 guild_id=str(guild.id),
+        #                 timestamp=online_time
+        #             )
+        #         except Exception as e:
+        #             logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
 
         # Write running flag with current timestamp
         flag_file.parent.mkdir(parents=True, exist_ok=True)
@@ -246,11 +253,22 @@ class DiscordClient(discord.Client):
         # Give reactive engine access to Discord client for periodic checks
         self.reactive_engine.discord_client = self
 
+        # Initialize v0.5.0 managers (MCP, Skills)
+        try:
+            await self.reactive_engine.async_initialize()
+            logger.info("v0.5.0 managers initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize v0.5.0 managers: {e}", exc_info=True)
+
         # Initialize Discord tools executor
         from tools.discord_tools import DiscordToolExecutor
         self.reactive_engine.discord_tool_executor = DiscordToolExecutor(
             message_memory=self.message_memory,
-            user_cache=self.user_cache
+            user_cache=self.user_cache,
+            data_isolation=self.reactive_engine.data_isolation,
+            attachment_manager=self.reactive_engine.attachment_manager,
+            # Phase 6.4: Pass conversation_state_manager for in_context_only filtering
+            conversation_state_manager=self.reactive_engine.conversation_state_manager
         )
         logger.info("Discord tools enabled")
 
@@ -276,6 +294,16 @@ class DiscordClient(discord.Client):
                     days_back=self.config.discord.backfill_days,
                     unlimited=self.config.discord.backfill_unlimited
                 )
+
+            # Initialize memory structure with skeleton files (v0.5.0)
+            try:
+                await self.memory_manager.initialize_memory_structure(
+                    message_memory=self.message_memory,
+                    user_cache=self.user_cache,
+                    discord_guilds=self.guilds
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize memory structure: {e}", exc_info=True)
 
             # Start daily re-backfill task to catch edited messages
             asyncio.create_task(self._daily_reindex_task())
@@ -314,19 +342,114 @@ class DiscordClient(discord.Client):
         except Exception as e:
             logger.error(f"Error storing message: {e}")
 
+        # Process attachments if enabled (v0.5.0)
+        processed_attachments = []
+        if self.reactive_engine.attachment_manager and message.attachments:
+            try:
+                for attachment in message.attachments:
+                    result = await self.reactive_engine.attachment_manager.process_attachment(
+                        attachment=attachment,
+                        message=message,
+                        is_realtime=True
+                    )
+                    if result:
+                        processed_attachments.append(result)
+                logger.info(f"Processed {len(message.attachments)} attachments from message {message.id}")
+            except Exception as e:
+                logger.error(f"Error processing attachments: {e}", exc_info=True)
+
+        # Track THIS bot's attachments in conversation state (v0.5.0)
+        # Bug #4 fix: Only track THIS bot's attachments, not other bots (treat them as users)
+        if message.author.id == self.user.id and processed_attachments and self.reactive_engine.conversation_state_manager:
+            try:
+                channel_id = str(message.channel.id)
+                conversation_state = await self.reactive_engine.conversation_state_manager.get_or_create(channel_id)
+
+                # Extract attachment IDs
+                attachment_ids = [att["attachment_id"] for att in processed_attachments]
+
+                # Build content blocks with document content (Bug #5 fix)
+                content_blocks = []
+
+                # Add text content first if exists
+                if message.content:
+                    content_blocks.append({"type": "text", "text": message.content})
+
+                # Add document/image blocks from processed attachments
+                for att in processed_attachments:
+                    api_data = att["for_api"]
+
+                    if api_data["method"] == "base64":
+                        # Image attachment - DON'T include image block in assistant turns (API restriction)
+                        # Just add a text mention for context
+                        content_blocks.append({
+                            "type": "text",
+                            "text": f"\n[Image: {att['filename']}]"
+                        })
+                    elif api_data["method"] == "file_id":
+                        # Document attachment
+                        if api_data.get("use_as_document_block", True):
+                            content_blocks.append({
+                                "type": "document",
+                                "source": {
+                                    "type": "file",
+                                    "file_id": api_data["data"]
+                                }
+                            })
+                        else:
+                            # Code execution file
+                            content_blocks.append({
+                                "type": "text",
+                                "text": f"\n[Attached file: {att['filename']} - available to code execution tool]"
+                            })
+
+                # Use content blocks if we have attachments, otherwise just text
+                content = content_blocks if content_blocks else (message.content or "[File uploaded]")
+
+                # Phase 5: Build attachment metadata for file size disclosure
+                attachment_metadata = {}
+                if processed_attachments:
+                    for att in processed_attachments:
+                        att_id = att.get("attachment_id")
+                        if att_id:
+                            attachment_metadata[att_id] = {
+                                "filename": att.get("filename"),
+                                "size_bytes": att.get("size_bytes")
+                            }
+
+                # Add bot message with attachments to conversation state
+                # This ensures document stripping logic has access to bot-posted files
+                conversation_state.add_message(
+                    role="assistant",  # Bot messages are assistant role
+                    content=content,
+                    attachment_ids=attachment_ids,
+                    attachment_metadata=attachment_metadata
+                )
+
+                # Save updated state
+                await self.reactive_engine.conversation_state_manager.save(conversation_state)
+                logger.info(f"Tracked {len(attachment_ids)} bot attachments in conversation state for testing")
+
+            except Exception as e:
+                logger.error(f"Failed to track bot attachments in conversation state: {e}", exc_info=True)
+
         # Update user cache
         try:
             await self.user_cache.update_user(message.author, increment_messages=True)
         except Exception as e:
             logger.error(f"Error updating user cache: {e}")
 
-        # Don't process bot's own messages or other bots' messages
+        # Don't process bot's own messages
         if message.author == self.user:
             return
 
+        # Filter other bots based on config
         if message.author.bot:
-            logger.debug(f"Ignoring message from bot: {message.author.name}")
-            return
+            if not self.config.discord.allow_bot_interactions:
+                logger.debug(f"Ignoring message from bot: {message.author.name}")
+                return
+            else:
+                logger.debug(f"Processing message from bot: {message.author.name} (allow_bot_interactions=True)")
 
         # Check if this is an urgent message (@mention)
         is_mention = self.user in message.mentions
@@ -375,10 +498,12 @@ class DiscordClient(discord.Client):
 
         else:
             # Non-urgent message - add to pending for periodic check
+            # Bug #7 fix: Track individual message IDs, not just channel IDs
             channel_id = str(message.channel.id)
-            self.reactive_engine.add_pending_channel(channel_id)
+            message_id = message.id
+            self.reactive_engine.add_pending_message(channel_id, message_id)
             logger.debug(
-                f"Message from {message.author.name} in #{message.channel.name} (stored, added to pending)"
+                f"Message {message_id} from {message.author.name} in #{message.channel.name} (stored, added to pending)"
             )
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message):

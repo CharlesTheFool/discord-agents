@@ -1,27 +1,19 @@
-# Discord-Claude Bot Framework Requirements
-# Python 3.9+
-
-# Discord API
 discord.py>=2.3.0
-
-# Anthropic Claude API (v0.5.0 requires skills, code execution, files API support)
 anthropic>=0.69.0
-
-# Environment variables
 python-dotenv>=1.0.0
-
-# HTTP clients
-aiohttp>=3.9.0      # Discord attachments, legacy
-httpx>=0.27.0       # MCP HTTP transport
-
-# Image processing
+aiohttp>=3.9.0      
+httpx>=0.27.0       
 Pillow>=10.0.0
-
-# Configuration
 pyyaml>=6.0.0
-
-# Timezone support
 pytz>=2024.1
-
-# SQLite async support
 aiosqlite>=0.19.0
+aiofiles>=23.0.0
+
+# Office format libraries for file text extraction (v0.5.0)
+openpyxl>=3.1.0
+python-docx>=1.1.0
+python-pptx>=0.6.23
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0

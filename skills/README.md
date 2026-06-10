@@ -2,21 +2,62 @@
 
 This directory is for **Skills** auto-discovery. Skills are modular instruction packages that teach Claude specialized tasks.
 
-## How to Use
+## Supported Formats
 
-1. Drop `.zip` skill files into this directory
-2. The bot will automatically detect and upload them to Anthropic's API on startup
-3. Skills are cached (hash-based) to prevent re-uploading unchanged files
+Skills can be added in two formats:
 
-## Skill Structure
+### 1. Folder-based (recommended)
 
-A valid skill is a folder (or zip) containing:
-- **SKILL.md** (required): Main instruction file with YAML frontmatter
-- Optional: Python scripts, templates, examples, assets
+Create a subdirectory containing a `SKILL.md` file:
 
-## Built-in Skills
+```
+skills/
+  my-skill/
+    SKILL.md          # Required
+    template.md       # Optional supporting files
+    examples/
+      sample.md
+```
 
-The following Anthropic skills are automatically available:
+### 2. Zip archive
+
+Drop a `.zip` file containing a `SKILL.md`:
+
+```
+skills/
+  my-skill.zip        # Contains SKILL.md + supporting files
+```
+
+## SKILL.md Format
+
+Every skill needs a `SKILL.md` with YAML frontmatter:
+
+```markdown
+---
+name: my-skill-name
+description: Brief description of what this skill does
+---
+
+# Skill Instructions
+
+[Detailed instructions for Claude to follow when using this skill]
+```
+
+## How It Works
+
+1. On startup, the bot scans this directory for `.zip` files and folders containing `SKILL.md`
+2. Each skill is hashed (SHA256) for change detection
+3. New or changed skills are uploaded to Anthropic's API
+4. Results are cached in `.skills_cache.json` to prevent re-uploading unchanged skills
+5. Folder-based skills are automatically zipped in memory before upload
+
+## Default Skills
+
+Skills committed to this directory in the repository ship as defaults with the framework. To add a default skill, create a folder here with a `SKILL.md` and commit it.
+
+## Built-in Anthropic Skills
+
+The following Anthropic skills are automatically available (no files needed):
 - `xlsx`: Excel spreadsheet creation/editing
 - `pptx`: PowerPoint presentation creation
 - `docx`: Word document creation/editing
@@ -26,21 +67,14 @@ The following Anthropic skills are automatically available:
 
 You can create your own skills or download them from:
 - [Anthropic Skills Repository](https://github.com/anthropics/skills)
-- [Claude MCP Marketplace](https://www.claudemcp.com/)
+- [Agent Skills Specification](https://agentskills.io/)
 
 ## Reloading Skills
 
-If you add skills while the bot is running, you can reload them:
-- Use a bot command (if implemented): `!reload_skills`
-- Restart the bot
+Skills are scanned on bot startup. To pick up new skills, restart the bot.
 
 ## Notes
 
 - Skills require the code execution tool to be enabled
-- Each skill file is hashed (SHA256) for change detection
 - Cache is stored in `.skills_cache.json` in the project root
 - Only install skills from trusted sources
-
-## Example Skill
-
-See `docs/reference/MCP_AND_SKILLS_INTEGRATION_ARCHITECTURE.md` for detailed documentation on creating custom skills.

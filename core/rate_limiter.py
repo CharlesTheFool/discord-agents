@@ -39,9 +39,13 @@ class RateLimiter:
         self.long_window_max = config.get("long_window_max", 200)
         self.ignore_threshold = config.get("ignore_threshold", 5)
 
-    def can_respond(self, channel_id: str) -> Tuple[bool, Optional[str]]:
+    def can_respond(self, channel_id: str, is_mention: bool = False) -> Tuple[bool, Optional[str]]:
         """
         Check if bot can respond in channel.
+
+        Args:
+            channel_id: Discord channel ID
+            is_mention: If True, bypass silence threshold (explicit engagement)
 
         Returns: (can_respond, reason_if_blocked)
         Reasons: None, "rate_limit_short", "rate_limit_long", "ignored_threshold"
@@ -73,13 +77,21 @@ class RateLimiter:
             )
             return False, "rate_limit_long"
 
-        # Check ignore threshold
+        # Check ignore threshold - @mentions bypass this
         if self.ignored_count[channel_id] >= self.ignore_threshold:
-            logger.debug(
-                f"Channel {channel_id}: Silenced - "
-                f"{self.ignored_count[channel_id]}/{self.ignore_threshold}"
-            )
-            return False, "ignored_threshold"
+            if is_mention:
+                logger.info(
+                    f"Channel {channel_id}: @mention bypasses silence threshold "
+                    f"({self.ignored_count[channel_id]}/{self.ignore_threshold})"
+                )
+                # Reset ignore count on mention - someone is explicitly engaging
+                self.ignored_count[channel_id] = 0
+            else:
+                logger.debug(
+                    f"Channel {channel_id}: Silenced - "
+                    f"{self.ignored_count[channel_id]}/{self.ignore_threshold}"
+                )
+                return False, "ignored_threshold"
 
         return True, None
 

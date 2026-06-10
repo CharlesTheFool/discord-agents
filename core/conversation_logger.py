@@ -133,7 +133,7 @@ class ConversationLogger:
         reply_chain_length: int = 0,
         recent_messages: int = 0,
         reactions_found: int = 0,
-        images_processed: int = 0
+        attachments_processed: int = 0
     ):
         """Log context building details"""
         entry = "\n[CONTEXT] Building context:\n"
@@ -145,8 +145,8 @@ class ConversationLogger:
             entry += f"  - Recent history: {recent_messages} message(s)\n"
         if reactions_found > 0:
             entry += f"  - Found reactions on {reactions_found} message(s)\n"
-        if images_processed > 0:
-            entry += f"  - Processed {images_processed} image(s)\n"
+        if attachments_processed > 0:
+            entry += f"  - Processed {attachments_processed} attachment(s)\n"
         self._write(entry)
 
     def log_cache_status(self, enabled: bool, cache_hit: bool = False):

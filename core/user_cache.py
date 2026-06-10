@@ -65,6 +65,9 @@ class UserCache:
         self._db = await aiosqlite.connect(str(self.db_path))
         self._db.row_factory = aiosqlite.Row
 
+        # Enable WAL mode for better concurrent access (fixes database locked errors)
+        await self._db.execute("PRAGMA journal_mode=WAL;")
+
         await self._db.executescript(self.SCHEMA)
         await self._db.commit()
 

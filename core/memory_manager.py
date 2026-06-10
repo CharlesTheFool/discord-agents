@@ -215,3 +215,65 @@ class MemoryManager:
         except ValueError:
             logger.warning(f"Invalid memory path (traversal attempt): {path}")
             return False
+
+    async def initialize_memory_structure(self, message_memory, user_cache, discord_guilds):
+        """
+        Initialize memory directory structure with skeleton files.
+
+        Creates directory structure and basic markdown files for:
+        - Server culture files
+        - User profile files (with display names)
+        - Channel context files (with channel names)
+
+        Called on bot startup after backfill completes.
+        """
+        logger.info("Initializing memory structure...")
+
+        # Get all unique server IDs from messages
+        server_ids = await message_memory.get_active_servers()
+
+        total_files_created = 0
+
+        for server_id in server_ids:
+            # Get guild object for server name
+            guild = None
+            for g in discord_guilds:
+                if str(g.id) == server_id:
+                    guild = g
+                    break
+
+            server_name = guild.name if guild else f"Server {server_id}"
+
+            # Create server directory
+            server_path = self.base_path / "servers" / server_id
+            server_path.mkdir(parents=True, exist_ok=True)
+
+            # Create server culture file if it doesn't exist
+            culture_file = server_path / "culture.md"
+            if not culture_file.exists():
+                culture_content = f"# {server_name} Culture\n\n[WRITE ABOUT SERVER CULTURE HERE]\n"
+                culture_file.write_text(culture_content)
+                total_files_created += 1
+                logger.debug(f"Created culture file for {server_name}")
+
+            # Get all users who have messaged in this server
+            users = await message_memory.get_users_in_server(server_id)
+
+            # Create user profile directory
+            users_path = server_path / "users"
+            users_path.mkdir(parents=True, exist_ok=True)
+
+            for user_id in users:
+                user_file = users_path / f"{user_id}.md"
+                if not user_file.exists():
+                    # Get display name from user cache
+                    user_data = await user_cache.get_user(user_id)
+                    display_name = user_data.display_name if user_data else "Unknown"
+
+                    user_content = f"# {display_name} ({user_id})\n\n[WRITE ABOUT USER HERE]\n"
+                    user_file.write_text(user_content)
+                    total_files_created += 1
+
+            logger.debug(f"Created {len(users)} user files for {server_name}")
+
+        logger.info(f"Memory structure initialized: {total_files_created} new files created across {len(server_ids)} servers")

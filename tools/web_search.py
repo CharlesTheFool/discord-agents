@@ -117,26 +117,24 @@ class WebSearchManager:
         }
 
 
-def get_web_search_tools(max_uses: int = 3, citations_enabled: bool = True) -> list:
+def get_web_search_tools(citations_enabled: bool = True) -> list:
     """
     Generate web search tool definitions for Claude API.
 
     These are Anthropic's built-in tools, not custom implementations.
+    No rate limiting - all or nothing approach.
 
     Args:
-        max_uses: Maximum searches per request (prevents runaway usage)
         citations_enabled: Enable citations for web_fetch (required for end-user apps)
     """
     return [
         {
             "type": "web_search_20250305",
             "name": "web_search",
-            "max_uses": max_uses
         },
         {
             "type": "web_fetch_20250910",
             "name": "web_fetch",
-            "max_uses": max_uses,
             "citations": {"enabled": citations_enabled}
         }
     ]

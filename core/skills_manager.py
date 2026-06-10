@@ -5,6 +5,7 @@ Handles auto-discovery, uploading, and tracking of Claude Skills.
 Supports hash-based caching to prevent redundant uploads.
 """
 
+import io
 import os
 import json
 import hashlib
@@ -12,7 +13,7 @@ import logging
 import zipfile
 import yaml
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Union
 from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
@@ -22,8 +23,13 @@ class SkillsManager:
     """
     Manages Claude Skills auto-discovery and upload system.
 
+    Supports two skill formats:
+    - .zip files: Archive containing SKILL.md and supporting files
+    - Folders: Directory containing SKILL.md and supporting files
+      (auto-zipped in memory before upload)
+
     Responsibilities:
-    - Scan /skills/ directory for .zip files
+    - Scan /skills/ directory for .zip files and skill folders
     - Calculate SHA256 hashes for change detection
     - Upload new/changed skills to Anthropic API
     - Maintain cache in .skills_cache.json
@@ -40,7 +46,7 @@ class SkillsManager:
         Initialize Skills Manager.
 
         Args:
-            skills_dir: Directory containing skill .zip files
+            skills_dir: Directory containing skill .zip files or skill folders
             cache_file: Path to cache file for tracking uploads
             anthropic_api_key: Anthropic API key for uploading skills
         """
@@ -109,6 +115,35 @@ class SkillsManager:
                 sha256.update(chunk)
         return sha256.hexdigest()
 
+    def _calculate_directory_hash(self, dir_path: Path) -> str:
+        """
+        Calculate SHA256 hash of a directory by hashing all file paths and contents.
+
+        Files are sorted alphabetically by relative path to ensure deterministic output.
+
+        Args:
+            dir_path: Path to directory
+
+        Returns:
+            Hex digest of SHA256 hash
+        """
+        sha256 = hashlib.sha256()
+
+        # Collect all files sorted by relative path for deterministic hashing
+        all_files = sorted(dir_path.rglob("*"))
+        for file_path in all_files:
+            if not file_path.is_file():
+                continue
+            # Hash the relative path
+            rel_path = file_path.relative_to(dir_path).as_posix()
+            sha256.update(rel_path.encode("utf-8"))
+            # Hash the file contents
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    sha256.update(chunk)
+
+        return sha256.hexdigest()
+
     def _extract_skill_metadata(self, zip_path: Path) -> Optional[Dict[str, str]]:
         """
         Extract metadata from SKILL.md inside the zip file.
@@ -152,88 +187,255 @@ class SkillsManager:
             logger.error(f"Failed to extract metadata from {zip_path.name}: {e}")
             return None
 
+    def _extract_folder_metadata(self, folder_path: Path) -> Optional[Dict[str, str]]:
+        """
+        Extract metadata from SKILL.md inside a skill folder.
+
+        Args:
+            folder_path: Path to skill folder containing SKILL.md
+
+        Returns:
+            Dictionary with 'name' and 'description' if found, None otherwise
+        """
+        skill_md = folder_path / "SKILL.md"
+        if not skill_md.exists():
+            logger.warning(f"No SKILL.md found in {folder_path.name}/")
+            return None
+
+        try:
+            content = skill_md.read_text(encoding="utf-8")
+
+            # Parse YAML frontmatter
+            if content.startswith('---'):
+                parts = content.split('---', 2)
+                if len(parts) >= 3:
+                    frontmatter = yaml.safe_load(parts[1])
+                    if frontmatter:
+                        return {
+                            'name': frontmatter.get('name', folder_path.name),
+                            'description': frontmatter.get('description', '')
+                        }
+
+            return {'name': folder_path.name, 'description': ''}
+
+        except Exception as e:
+            logger.error(f"Failed to extract metadata from {folder_path.name}/SKILL.md: {e}")
+            return None
+
+    def _zip_folder_to_bytes(self, folder_path: Path) -> tuple:
+        """
+        Create an in-memory zip archive from a skill folder.
+
+        Args:
+            folder_path: Path to skill folder
+
+        Returns:
+            Tuple of (BytesIO zip archive, filename string)
+        """
+        buf = io.BytesIO()
+
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for file_path in sorted(folder_path.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                # Include folder name as top-level directory (required by Anthropic Skills API)
+                arcname = f"{folder_path.name}/{file_path.relative_to(folder_path).as_posix()}"
+                zf.write(file_path, arcname)
+
+        buf.seek(0)
+        filename = f"{folder_path.name}.zip"
+        return buf, filename
+
     async def scan_and_upload_skills(self) -> List[Dict]:
         """
-        Scan skills directory for .zip files and upload new/changed skills.
+        Scan skills directory for .zip files and skill folders, then upload
+        new or changed skills.
+
+        Supported formats:
+        - .zip files containing SKILL.md
+        - Folders containing SKILL.md (auto-zipped in memory before upload)
 
         Returns:
             List of skill upload results
         """
         results = []
 
-        # Find all .zip files
+        # Find .zip files
         zip_files = list(self.skills_dir.glob("*.zip"))
 
-        if not zip_files:
-            logger.info("No skill .zip files found in skills directory")
+        # Find skill folders (subdirectories containing SKILL.md)
+        skill_folders = [
+            d for d in self.skills_dir.iterdir()
+            if d.is_dir() and (d / "SKILL.md").exists()
+        ]
+
+        total = len(zip_files) + len(skill_folders)
+        if total == 0:
+            logger.info("No skills found in skills directory")
             return results
 
-        logger.info(f"Found {len(zip_files)} skill file(s) in {self.skills_dir}")
+        logger.info(
+            f"Found {total} skill(s) in {self.skills_dir} "
+            f"({len(zip_files)} zip, {len(skill_folders)} folder)"
+        )
 
+        # Process .zip files
         for zip_path in zip_files:
-            try:
-                # Calculate hash
-                file_hash = self._calculate_hash(zip_path)
+            result = await self._process_zip_skill(zip_path)
+            results.append(result)
 
-                # Check if already uploaded
-                if file_hash in self.cache:
-                    logger.debug(f"Skill {zip_path.name} already uploaded (hash match)")
-                    results.append({
-                        'filename': zip_path.name,
-                        'status': 'cached',
-                        'skill_id': self.cache[file_hash]['skill_id']
-                    })
-                    continue
-
-                # New or changed skill - extract metadata
-                metadata = self._extract_skill_metadata(zip_path)
-                if not metadata:
-                    # Fallback to filename
-                    metadata = {'name': zip_path.stem, 'description': ''}
-
-                # Upload to Anthropic API
-                skill_id = await self._upload_skill(zip_path, metadata)
-
-                if skill_id:
-                    # Cache the result
-                    self.cache[file_hash] = {
-                        'skill_id': skill_id,
-                        'filename': zip_path.name,
-                        'display_title': metadata['name'],
-                        'version': '1.0.0',  # Could extract from SKILL.md if present
-                        'uploaded_at': __import__('datetime').datetime.utcnow().isoformat()
-                    }
-                    await self._save_cache()
-
-                    results.append({
-                        'filename': zip_path.name,
-                        'status': 'uploaded',
-                        'skill_id': skill_id
-                    })
-                    logger.info(f"✅ Uploaded skill: {zip_path.name} (ID: {skill_id})")
-                else:
-                    results.append({
-                        'filename': zip_path.name,
-                        'status': 'failed',
-                        'skill_id': None
-                    })
-
-            except Exception as e:
-                logger.error(f"Error processing skill {zip_path.name}: {e}", exc_info=True)
-                results.append({
-                    'filename': zip_path.name,
-                    'status': 'error',
-                    'error': str(e)
-                })
+        # Process skill folders
+        for folder_path in skill_folders:
+            result = await self._process_folder_skill(folder_path)
+            results.append(result)
 
         return results
 
-    async def _upload_skill(self, zip_path: Path, metadata: Dict[str, str]) -> Optional[str]:
+    async def _process_zip_skill(self, zip_path: Path) -> Dict:
+        """Process a .zip skill file: hash, check cache, upload if needed."""
+        try:
+            file_hash = self._calculate_hash(zip_path)
+
+            if file_hash in self.cache:
+                logger.debug(f"Skill {zip_path.name} already uploaded (hash match)")
+                return {
+                    'filename': zip_path.name,
+                    'status': 'cached',
+                    'skill_id': self.cache[file_hash]['skill_id']
+                }
+
+            metadata = self._extract_skill_metadata(zip_path)
+            if not metadata:
+                metadata = {'name': zip_path.stem, 'description': ''}
+
+            skill_id = await self._upload_skill(zip_path, metadata)
+
+            if skill_id == "ALREADY_EXISTS":
+                # Skill exists on Anthropic servers but not in local cache
+                self.cache[file_hash] = {
+                    'skill_id': f"existing_{metadata['name']}",
+                    'filename': zip_path.name,
+                    'display_title': metadata['name'],
+                    'version': '1.0.0',
+                    'uploaded_at': __import__('datetime').datetime.utcnow().isoformat(),
+                    'status': 'already_exists'
+                }
+                await self._save_cache()
+                return {
+                    'filename': zip_path.name,
+                    'status': 'already_exists',
+                    'skill_id': None
+                }
+            elif skill_id:
+                self.cache[file_hash] = {
+                    'skill_id': skill_id,
+                    'filename': zip_path.name,
+                    'display_title': metadata['name'],
+                    'version': '1.0.0',
+                    'uploaded_at': __import__('datetime').datetime.utcnow().isoformat()
+                }
+                await self._save_cache()
+                logger.info(f"Uploaded skill: {zip_path.name} (ID: {skill_id})")
+                return {
+                    'filename': zip_path.name,
+                    'status': 'uploaded',
+                    'skill_id': skill_id
+                }
+            else:
+                return {
+                    'filename': zip_path.name,
+                    'status': 'failed',
+                    'skill_id': None
+                }
+
+        except Exception as e:
+            logger.error(f"Error processing skill {zip_path.name}: {e}", exc_info=True)
+            return {
+                'filename': zip_path.name,
+                'status': 'error',
+                'error': str(e)
+            }
+
+    async def _process_folder_skill(self, folder_path: Path) -> Dict:
+        """Process a folder-based skill: hash directory, check cache, zip in memory, upload."""
+        display_name = f"{folder_path.name}/"
+        try:
+            dir_hash = self._calculate_directory_hash(folder_path)
+
+            if dir_hash in self.cache:
+                logger.debug(f"Skill {display_name} already uploaded (hash match)")
+                return {
+                    'filename': display_name,
+                    'status': 'cached',
+                    'skill_id': self.cache[dir_hash]['skill_id']
+                }
+
+            metadata = self._extract_folder_metadata(folder_path)
+            if not metadata:
+                metadata = {'name': folder_path.name, 'description': ''}
+
+            # Create in-memory zip for API upload
+            buf, zip_filename = self._zip_folder_to_bytes(folder_path)
+            skill_id = await self._upload_skill((buf, zip_filename), metadata)
+
+            if skill_id == "ALREADY_EXISTS":
+                # Skill exists on Anthropic servers but not in local cache
+                # Mark as existing (we don't have the skill_id but it's usable)
+                self.cache[dir_hash] = {
+                    'skill_id': f"existing_{metadata['name']}",
+                    'filename': display_name,
+                    'display_title': metadata['name'],
+                    'version': '1.0.0',
+                    'uploaded_at': __import__('datetime').datetime.utcnow().isoformat(),
+                    'status': 'already_exists'
+                }
+                await self._save_cache()
+                return {
+                    'filename': display_name,
+                    'status': 'already_exists',
+                    'skill_id': None
+                }
+            elif skill_id:
+                self.cache[dir_hash] = {
+                    'skill_id': skill_id,
+                    'filename': display_name,
+                    'display_title': metadata['name'],
+                    'version': '1.0.0',
+                    'uploaded_at': __import__('datetime').datetime.utcnow().isoformat()
+                }
+                await self._save_cache()
+                logger.info(f"Uploaded skill: {display_name} (ID: {skill_id})")
+                return {
+                    'filename': display_name,
+                    'status': 'uploaded',
+                    'skill_id': skill_id
+                }
+            else:
+                return {
+                    'filename': display_name,
+                    'status': 'failed',
+                    'skill_id': None
+                }
+
+        except Exception as e:
+            logger.error(f"Error processing skill {display_name}: {e}", exc_info=True)
+            return {
+                'filename': display_name,
+                'status': 'error',
+                'error': str(e)
+            }
+
+    async def _upload_skill(
+        self,
+        source: Union[Path, tuple],
+        metadata: Dict[str, str]
+    ) -> Optional[str]:
         """
         Upload a skill to Anthropic API.
 
         Args:
-            zip_path: Path to skill .zip file
+            source: Either a Path to a .zip file on disk, or a tuple of
+                    (BytesIO archive, filename) for in-memory uploads
             metadata: Extracted metadata with 'name' and 'description'
 
         Returns:
@@ -244,18 +446,33 @@ class SkillsManager:
             return None
 
         try:
-            # Upload skill using Anthropic SDK
-            with open(zip_path, 'rb') as f:
+            if isinstance(source, Path):
+                # Upload from disk
+                filename = source.name
+                with open(source, 'rb') as f:
+                    skill = self.anthropic_client.beta.skills.create(
+                        display_title=metadata['name'],
+                        files=[(filename, f, 'application/zip')],
+                        betas=["skills-2025-10-02"]
+                    )
+            else:
+                # Upload from in-memory BytesIO
+                buf, filename = source
                 skill = self.anthropic_client.beta.skills.create(
                     display_title=metadata['name'],
-                    files=[(zip_path.name, f, 'application/zip')],
+                    files=[(filename, buf, 'application/zip')],
                     betas=["skills-2025-10-02"]
                 )
 
             return skill.id
 
         except Exception as e:
-            logger.error(f"Failed to upload skill {zip_path.name}: {e}")
+            error_str = str(e)
+            # Handle "already exists" error gracefully
+            if "reuse an existing display_title" in error_str:
+                logger.warning(f"Skill '{metadata['name']}' already exists on Anthropic servers (skipping)")
+                return "ALREADY_EXISTS"
+            logger.error(f"Failed to upload skill {filename}: {e}")
             return None
 
     def get_skills_for_api(self) -> List[Dict[str, str]]:
@@ -266,35 +483,163 @@ class SkillsManager:
             List of skill definitions in API format
         """
         skills = []
-
         for file_hash, skill_info in self.cache.items():
+            # Skip skills that already exist on Anthropic servers but we don't have their ID
+            if skill_info.get('status') == 'already_exists':
+                continue
             skills.append({
                 "type": "custom",
                 "skill_id": skill_info['skill_id'],
                 "version": "latest"
             })
-
         return skills
+
+    # Maximum skills that can be loaded at once (empirically determined, see Bug #14)
+    # With progressive disclosure, this is less of an issue since Claude requests specific skills
+    MAX_SKILLS_PER_REQUEST = 2
+
+    # Anthropic built-in skills with descriptions (for skill catalog)
+    ANTHROPIC_SKILLS = {
+        "pdf": {
+            "description": "Read, analyze, and manipulate PDF documents",
+            "type": "anthropic"
+        },
+        "xlsx": {
+            "description": "Create and edit Excel spreadsheets",
+            "type": "anthropic"
+        },
+        "docx": {
+            "description": "Create and edit Word documents",
+            "type": "anthropic"
+        },
+        "pptx": {
+            "description": "Create and edit PowerPoint presentations",
+            "type": "anthropic"
+        }
+    }
+
+    def get_skill_catalog(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get metadata for all available skills (for system prompt).
+
+        This provides Claude visibility into ALL skills that can be loaded,
+        enabling progressive disclosure - Claude sees the catalog and can
+        request specific skills via the request_skill tool.
+
+        Returns:
+            Dictionary mapping skill names to metadata (description, type, skill_id)
+        """
+        catalog = {}
+
+        # Add Anthropic built-in skills
+        for name, info in self.ANTHROPIC_SKILLS.items():
+            catalog[name] = {
+                "description": info["description"],
+                "type": "anthropic",
+                "skill_id": name
+            }
+
+        # Add custom skills from cache
+        for file_hash, skill_info in self.cache.items():
+            # Skip skills with already_exists status (no usable skill_id)
+            if skill_info.get('status') == 'already_exists':
+                continue
+
+            name = skill_info.get('display_title', skill_info.get('filename', 'unknown'))
+            # Extract description from metadata if available
+            description = skill_info.get('description', f"Custom skill: {name}")
+
+            catalog[name] = {
+                "description": description,
+                "type": "custom",
+                "skill_id": skill_info['skill_id']
+            }
+
+        return catalog
+
+    def select_skills(self, skill_names: List[str]) -> List[Dict[str, str]]:
+        """
+        Select specific skills by name for API request.
+
+        This enables progressive disclosure - Claude requests specific skills
+        and only those are loaded into the container.
+
+        Args:
+            skill_names: List of skill names to load (max MAX_SKILLS_PER_REQUEST)
+
+        Returns:
+            List of skill definitions for container parameter
+        """
+        catalog = self.get_skill_catalog()
+        selected = []
+
+        for name in skill_names[:self.MAX_SKILLS_PER_REQUEST]:
+            if name in catalog:
+                skill_info = catalog[name]
+                selected.append({
+                    "type": skill_info["type"],
+                    "skill_id": skill_info["skill_id"],
+                    "version": "latest"
+                })
+            else:
+                logger.warning(f"Requested skill '{name}' not found in catalog")
+
+        if len(skill_names) > self.MAX_SKILLS_PER_REQUEST:
+            logger.warning(
+                f"Requested {len(skill_names)} skills but max is {self.MAX_SKILLS_PER_REQUEST}. "
+                f"Using: {skill_names[:self.MAX_SKILLS_PER_REQUEST]}"
+            )
+
+        logger.debug(f"Selected skills: {[s['skill_id'] for s in selected]}")
+        return selected
 
     def get_default_anthropic_skills(self) -> List[Dict[str, str]]:
         """
         Get list of built-in Anthropic skills.
 
+        Note: Due to Anthropic API limitation (Bug #14), only 2 skills can be used per request.
+        Prioritizes pdf and xlsx as most commonly needed document skills.
+
         Returns:
-            List of Anthropic skill definitions
+            List of Anthropic skill definitions (limited to MAX_SKILLS_PER_REQUEST)
         """
-        return [
-            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
-            {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
-            {"type": "anthropic", "skill_id": "docx", "version": "latest"},
-            {"type": "anthropic", "skill_id": "pdf", "version": "latest"}
+        # Full list of available skills (prioritized order)
+        all_skills = [
+            {"type": "anthropic", "skill_id": "pdf", "version": "latest"},   # Most common
+            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},  # Spreadsheets
+            {"type": "anthropic", "skill_id": "docx", "version": "latest"},  # Documents
+            {"type": "anthropic", "skill_id": "pptx", "version": "latest"}   # Presentations
         ]
+
+        if len(all_skills) > self.MAX_SKILLS_PER_REQUEST:
+            logger.warning(
+                f"Anthropic API limits skills to {self.MAX_SKILLS_PER_REQUEST} per request. "
+                f"Using: {[s['skill_id'] for s in all_skills[:self.MAX_SKILLS_PER_REQUEST]]}. "
+                f"Skipping: {[s['skill_id'] for s in all_skills[self.MAX_SKILLS_PER_REQUEST:]]}"
+            )
+
+        return all_skills[:self.MAX_SKILLS_PER_REQUEST]
 
     def get_all_skills_for_api(self) -> List[Dict[str, str]]:
         """
         Get combined list of Anthropic + custom skills.
 
+        Note: Due to Anthropic API limitation (Bug #14), total skills limited to MAX_SKILLS_PER_REQUEST.
+        Custom skills take priority if available.
+
         Returns:
-            Complete list of skills for API
+            Complete list of skills for API (limited to MAX_SKILLS_PER_REQUEST)
         """
-        return self.get_default_anthropic_skills() + self.get_skills_for_api()
+        custom_skills = self.get_skills_for_api()
+        anthropic_skills = self.get_default_anthropic_skills()
+
+        # Custom skills take priority
+        combined = custom_skills + anthropic_skills
+
+        if len(combined) > self.MAX_SKILLS_PER_REQUEST:
+            logger.warning(
+                f"Total skills ({len(combined)}) exceeds API limit ({self.MAX_SKILLS_PER_REQUEST}). "
+                f"Using: {[s.get('skill_id', 'custom') for s in combined[:self.MAX_SKILLS_PER_REQUEST]]}"
+            )
+
+        return combined[:self.MAX_SKILLS_PER_REQUEST]

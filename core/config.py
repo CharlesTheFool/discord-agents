@@ -2,94 +2,157 @@
 Configuration system for Discord Agents.
 
 Loads and validates bot configurations from YAML files.
+
+v0.6.0: Simplified configuration - ~80% fewer settings.
+See internal_constants.py for hardcoded implementation details.
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional
 import yaml
 import os
 import logging
 
+from core.internal_constants import (
+    COOLDOWN_PRESETS,
+    RATE_LIMIT_PRESETS,
+    PROACTIVE_INTENSITY_PRESETS,
+    API_MIN_DELAY_SECONDS,
+    API_MAX_CONCURRENT,
+    CONTEXT_EDITING_KEEP_TOOL_USES,
+    CONTEXT_EDITING_EXCLUDE_TOOLS,
+    DOCUMENT_WARNING_THRESHOLD,
+    ENGAGEMENT_TRACKING_DELAY_SECONDS,
+    IGNORE_THRESHOLD,
+    LOG_MAX_SIZE_MB,
+    LOG_BACKUP_COUNT,
+    SKILLS_CACHE_FILE,
+    MCP_CONFIG_FILE,
+    IMAGE_COMPRESSION_TARGET,
+    WEB_SEARCH_CITATIONS_ENABLED,
+    PROACTIVE_LEARNING_WINDOW_DAYS,
+    PROACTIVE_ENGAGEMENT_THRESHOLD,
+    PROACTIVE_MIN_PROVOCATION_GAP_HOURS,
+    FILES_API_CLEANUP_ENABLED,
+    FILES_API_CLEANUP_INTERVAL_HOURS,
+    FILES_API_MAX_AGE_HOURS,
+    LOCAL_STORAGE_PRUNING_ENABLED,
+    LOCAL_STORAGE_MAX_SIZE_GB,
+    LOCAL_STORAGE_MIN_AGE_DAYS,
+)
+
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+class CooldownPreset(str, Enum):
+    """Cooldown preset options"""
+    FAST = "fast"
+    MODERATE = "moderate"
+    RELAXED = "relaxed"
+
+
+class RateLimitPreset(str, Enum):
+    """Rate limit preset options"""
+    STRICT = "strict"
+    MODERATE = "moderate"
+    PERMISSIVE = "permissive"
+    UNLIMITED = "unlimited"
+
+
+class ProactiveIntensity(str, Enum):
+    """Proactive engagement intensity options"""
+    GENTLE = "gentle"
+    MODERATE = "moderate"
+    ACTIVE = "active"
+
+
+class DataIsolationMode(str, Enum):
+    """Data isolation mode options"""
+    OFF = "off"
+    SERVER = "server"
+    CHANNEL = "channel"
+
+
+class ReactionUsage(str, Enum):
+    """Reaction usage frequency options"""
+    NEVER = "never"
+    RARE = "rare"
+    MODERATE = "moderate"
+    FREQUENT = "frequent"
+
+
+# =============================================================================
+# CONFIG DATACLASSES
+# =============================================================================
 
 @dataclass
 class PersonalityConfig:
-    """Bot personality and engagement settings"""
+    """Bot personality configuration - behavioral control via prompting"""
     base_prompt: str
-    formality: float = 0.2  # 0=casual, 1=formal
-    emoji_usage: str = "never"  # never | rare | moderate | frequent
+    # Reactions are programmatic (not part of message generation)
     reaction_usage: str = "moderate"  # never | rare | moderate | frequent
-    formatting: str = "minimal"  # minimal | moderate | rich
-
-    # Engagement rates
-    mention_response_rate: float = 1.0  # Always respond to mentions
-    technical_help_rate: float = 0.8
-    humor_response_rate: float = 0.4
-    cold_conversation_rate: float = 0.1
-    warm_conversation_rate: float = 0.25
-    hot_conversation_rate: float = 0.4
-
-
-@dataclass
-class CooldownsConfig:
-    """Response cooldown settings"""
-    per_user: int = 40  # seconds
-    single_message: int = 45  # seconds
-    multi_message: int = 75  # seconds
-    heavy_activity: int = 105  # seconds
 
 
 @dataclass
 class ReactiveConfig:
     """Reactive engine configuration"""
     enabled: bool = True
-    check_interval_seconds: int = 30
-    context_window: int = 20  # Recent messages to include
-    cooldowns: CooldownsConfig = field(default_factory=CooldownsConfig)
+    always_respond_to_mentions: bool = True  # Guaranteed response to @mentions
+    cooldown: str = "moderate"  # fast | moderate | relaxed
+    rate_limit: str = "moderate"  # strict | moderate | permissive | unlimited
+    check_interval_seconds: int = 60  # Periodic check interval
+
+    def get_cooldown_values(self):
+        """Get actual cooldown values from preset"""
+        preset_name = self.cooldown.lower()
+        if preset_name not in COOLDOWN_PRESETS:
+            logging.warning(f"Unknown cooldown preset '{preset_name}', using 'moderate'")
+            preset_name = "moderate"
+        return COOLDOWN_PRESETS[preset_name]
+
+    def get_rate_limit_values(self):
+        """Get actual rate limit values from preset"""
+        preset_name = self.rate_limit.lower()
+        if preset_name not in RATE_LIMIT_PRESETS:
+            logging.warning(f"Unknown rate_limit preset '{preset_name}', using 'moderate'")
+            preset_name = "moderate"
+        return RATE_LIMIT_PRESETS[preset_name]
 
 
 @dataclass
 class FollowupsConfig:
     """Follow-up system configuration"""
     enabled: bool = False
-    auto_create: bool = True
-    max_pending: int = 20
-    priority_threshold: str = "medium"
-    follow_up_delay_days: int = 1
-    max_age_days: int = 14
 
 
 @dataclass
 class ProactiveConfig:
     """Proactive engagement configuration"""
     enabled: bool = False
-    min_idle_hours: float = 1.0
-    max_idle_hours: float = 8.0
-    min_provocation_gap_hours: float = 1.0
-    max_per_day_global: int = 10
-    max_per_day_per_channel: int = 3
-    engagement_threshold: float = 0.3
-    learning_window_days: int = 7
+    intensity: str = "moderate"  # gentle | moderate | active
     quiet_hours: List[int] = field(default_factory=lambda: [0, 6])
     allowed_channels: List[str] = field(default_factory=list)
+
+    def get_intensity_values(self):
+        """Get actual intensity values from preset"""
+        preset_name = self.intensity.lower()
+        if preset_name not in PROACTIVE_INTENSITY_PRESETS:
+            logging.warning(f"Unknown proactive intensity '{preset_name}', using 'moderate'")
+            preset_name = "moderate"
+        return PROACTIVE_INTENSITY_PRESETS[preset_name]
 
 
 @dataclass
 class AgenticConfig:
     """Agentic engine configuration"""
     enabled: bool = False
-    check_interval_hours: int = 1
+    check_interval_hours: float = 1.0  # Background loop frequency
     followups: FollowupsConfig = field(default_factory=FollowupsConfig)
     proactive: ProactiveConfig = field(default_factory=ProactiveConfig)
-
-
-@dataclass
-class ContextEditingConfig:
-    """Context editing configuration"""
-    enabled: bool = True
-    trigger_tokens: int = 100000
-    keep_tool_uses: int = 3
-    exclude_tools: List[str] = field(default_factory=lambda: ["memory"])
 
 
 @dataclass
@@ -100,19 +163,17 @@ class ExtendedThinkingConfig:
 
 
 @dataclass
-class ThrottlingConfig:
-    """API throttling settings"""
-    min_delay_seconds: float = 1.0
-    max_concurrent: int = 10
+class WebSearchConfig:
+    """Web search configuration - all or nothing (no rate limits)"""
+    enabled: bool = False
 
 
 @dataclass
-class WebSearchConfig:
-    """Web search configuration"""
-    enabled: bool = False
-    max_daily: int = 300
-    max_per_request: int = 3
-    citations_enabled: bool = True  # Required for end-user applications
+class CodeExecutionConfig:
+    """Code execution tool configuration - always enabled when skills are used"""
+    # Note: enabled field removed in v0.5.1 (Bug #14 fix)
+    # Code execution is now automatically enabled when skills are loaded
+    pass
 
 
 @dataclass
@@ -120,32 +181,11 @@ class APIConfig:
     """Claude API configuration"""
     model: str = "claude-sonnet-4-5-20250929"
     max_tokens: int = 4096
-    knowledge_cutoff_date: Optional[str] = None  # Optional model knowledge cutoff (e.g., "2025-01-01")
+    context_messages: int = 30  # Messages to remember (rolling window)
+    context_tokens: int = 100000  # Total input token budget
     extended_thinking: ExtendedThinkingConfig = field(default_factory=ExtendedThinkingConfig)
-    context_editing: ContextEditingConfig = field(default_factory=ContextEditingConfig)
-    throttling: ThrottlingConfig = field(default_factory=ThrottlingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
-    # Note: temperature removed - not compatible with extended thinking
-
-
-@dataclass
-class RateLimitWindowConfig:
-    """Rate limit window configuration"""
-    duration_minutes: int
-    max_responses: int
-
-
-@dataclass
-class RateLimitingConfig:
-    """Rate limiting configuration (SimpleRateLimiter)"""
-    short: RateLimitWindowConfig = field(
-        default_factory=lambda: RateLimitWindowConfig(duration_minutes=5, max_responses=20)
-    )
-    long: RateLimitWindowConfig = field(
-        default_factory=lambda: RateLimitWindowConfig(duration_minutes=60, max_responses=200)
-    )
-    ignore_threshold: int = 5  # Consecutive ignores before silence
-    engagement_tracking_delay: int = 30  # Seconds
+    code_execution: CodeExecutionConfig = field(default_factory=CodeExecutionConfig)
 
 
 @dataclass
@@ -153,51 +193,38 @@ class ImagesConfig:
     """Image processing configuration"""
     enabled: bool = False
     max_per_message: int = 5
-    compression_target: float = 0.73  # 73% of API limit
 
 
 @dataclass
 class MCPConfig:
     """MCP (Model Context Protocol) server configuration"""
     enabled: bool = False
-    config_file: str = "mcp_servers.json"
 
 
 @dataclass
 class SkillsConfig:
-    """Skills auto-discovery configuration"""
-    enabled: bool = False
-    skills_dir: str = "skills"
-    cache_file: str = ".skills_cache.json"
+    """Skills auto-discovery configuration - always enabled"""
+    # Note: enabled field removed in v0.5.1 (Bug #14 fix)
+    # Skills are now always enabled; code_execution is automatically enabled with them
     include_anthropic_skills: bool = True  # Include built-in xlsx, pptx, docx, pdf
+    # Default skills to load initially (v0.5.0 Progressive Disclosure)
+    # Claude can request different skills via request_skill tool
+    default_skills: List[str] = field(default_factory=lambda: ["pdf"])
 
 
 @dataclass
-class DataIsolationConfig:
-    """Data isolation and access control configuration"""
-    enabled: bool = False
-    default_mode: str = "permissive"  # permissive | server | channel
-
-    # Memory access controls
-    memory_scope: str = "global"  # global | server | channel
-    allow_cross_server_memory: bool = True
-
-    # Message search controls
-    search_scope: str = "global"  # global | server | channel
-    allow_cross_channel_search: bool = True
-
-    # Discord tool controls
-    discord_tools_scope: str = "global"  # global | server | channel
+class LocalStorageConfig:
+    """Local storage configuration for attachments"""
+    base_path: str = "persistence/attachments"
 
 
 @dataclass
-class MultimediaConfig:
-    """Multimedia file processing configuration"""
+class AttachmentsConfig:
+    """Unified attachment system configuration"""
     enabled: bool = False
-    max_file_size_mb: int = 32  # Maximum file size to process
-    supported_types: List[str] = field(default_factory=lambda: [
-        "pdf", "docx", "xlsx", "txt", "md", "csv", "json"
-    ])
+    backfill_enabled: bool = True
+    backfill_days: int = 30
+    local_storage: LocalStorageConfig = field(default_factory=LocalStorageConfig)
 
 
 @dataclass
@@ -205,8 +232,18 @@ class LoggingConfig:
     """Logging configuration"""
     level: str = "INFO"
     file: str = "logs/{bot_id}.log"
-    max_size_mb: int = 50
-    backup_count: int = 3
+
+
+@dataclass
+class DataIsolationConfig:
+    """Data isolation configuration for privacy enforcement"""
+    enabled: bool = False
+    default_mode: str = "permissive"
+    memory_scope: str = "global"
+    allow_cross_server_memory: bool = True
+    search_scope: str = "global"
+    allow_cross_channel_search: bool = True
+    discord_tools_scope: str = "global"
 
 
 @dataclass
@@ -214,14 +251,13 @@ class DiscordConfig:
     """Discord-specific configuration"""
     token_env_var: str = "DISCORD_BOT_TOKEN"  # Environment variable containing bot token
     servers: List[str] = field(default_factory=list)  # Guild IDs
-    default_timezone: str = "UTC"  # Default server timezone (IANA format, e.g., "America/New_York")
-    status: str = "Powered by Claude"  # Bot activity status shown in Discord
-
-    # Historical message backfill
-    backfill_enabled: bool = True  # Fetch historical messages on startup
-    backfill_days: int = 30  # How many days of history to fetch (ignored if backfill_unlimited=True)
-    backfill_unlimited: bool = False  # Fetch ALL message history (ignores backfill_days)
-    backfill_in_background: bool = True  # Run backfill in background (don't block startup)
+    timezone: str = "UTC"  # Default server timezone (IANA format)
+    status: str = "Powered by Claude"  # Bot activity status
+    allow_bot_interactions: bool = False  # Allow responding to other bots
+    backfill_enabled: bool = True
+    backfill_days: int = 30  # 0 = unlimited
+    backfill_in_background: bool = True  # Run backfill in background task
+    backfill_unlimited: bool = False  # No limit on backfill days
 
 
 @dataclass
@@ -229,7 +265,8 @@ class BotConfig:
     """
     Complete bot configuration.
 
-    Loaded from YAML files in bots/ directory.
+    v0.6.0: Simplified to ~30 user-facing settings.
+    Implementation details are in internal_constants.py.
     """
     bot_id: str
     name: str
@@ -240,15 +277,14 @@ class BotConfig:
     reactive: ReactiveConfig = field(default_factory=ReactiveConfig)
     agentic: AgenticConfig = field(default_factory=AgenticConfig)
     api: APIConfig = field(default_factory=APIConfig)
-    rate_limiting: RateLimitingConfig = field(default_factory=RateLimitingConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
-    # v0.5.0 features
+    # v0.5.0+ features
     mcp: MCPConfig = field(default_factory=MCPConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
-    data_isolation: DataIsolationConfig = field(default_factory=DataIsolationConfig)
-    multimedia: MultimediaConfig = field(default_factory=MultimediaConfig)
+    data_isolation: str = "off"  # off | server | channel
+    attachments: AttachmentsConfig = field(default_factory=AttachmentsConfig)
 
     @classmethod
     def load(cls, yaml_path: Path) -> 'BotConfig':
@@ -280,27 +316,74 @@ class BotConfig:
         if "name" not in data:
             raise ValueError("Config missing required field: name")
 
+        # Check for deprecated settings and warn
+        cls._warn_deprecated(data)
+
         # Parse nested configs
         return cls._from_dict(data)
 
     @classmethod
+    def _warn_deprecated(cls, data: dict):
+        """Warn about deprecated configuration settings"""
+        deprecated_mappings = {
+            "personality.formality": "Move formality instructions to personality.base_prompt",
+            "personality.emoji_usage": "Move emoji instructions to personality.base_prompt",
+            "personality.formatting": "Move formatting instructions to personality.base_prompt",
+            "personality.mention_response_rate": "Removed - bot uses agentic judgment via mandatory prompt",
+            "personality.technical_help_rate": "Removed - bot uses agentic judgment via mandatory prompt",
+            "personality.humor_response_rate": "Removed - bot uses agentic judgment via mandatory prompt",
+            "personality.cold_conversation_rate": "Removed - bot uses agentic judgment via mandatory prompt",
+            "personality.warm_conversation_rate": "Removed - bot uses agentic judgment via mandatory prompt",
+            "personality.hot_conversation_rate": "Removed - bot uses agentic judgment via mandatory prompt",
+            "reactive.context_window": "Removed - use api.context_messages instead",
+            "reactive.cooldowns": "Replaced with reactive.cooldown preset (fast/moderate/relaxed)",
+            "rate_limiting": "Replaced with reactive.rate_limit preset (strict/moderate/permissive/unlimited)",
+            "api.throttling": "Internalized - no longer configurable",
+            "api.context_editing.keep_tool_uses": "Internalized - no longer configurable",
+            "api.context_editing.exclude_tools": "Internalized - no longer configurable",
+            "api.context_management.document_warning_threshold": "Internalized - no longer configurable",
+            "api.context_management.max_total_tokens": "Renamed to api.context_tokens",
+            "api.context_management.max_conversation_messages": "Renamed to api.context_messages",
+            "agentic.proactive.min_idle_hours": "Replaced with proactive.intensity preset",
+            "agentic.proactive.max_idle_hours": "Replaced with proactive.intensity preset",
+            "agentic.proactive.min_provocation_gap_hours": "Internalized",
+            "agentic.proactive.max_per_day_global": "Replaced with proactive.intensity preset",
+            "agentic.proactive.max_per_day_per_channel": "Replaced with proactive.intensity preset",
+            "agentic.proactive.engagement_threshold": "Internalized",
+            "agentic.proactive.learning_window_days": "Internalized",
+            "logging.max_size_mb": "Internalized - no longer configurable",
+            "logging.backup_count": "Internalized - no longer configurable",
+            "skills.cache_file": "Internalized - no longer configurable",
+            "mcp.config_file": "Internalized - always uses mcp_servers.json",
+            "images.compression_target": "Internalized - no longer configurable",
+            "multimedia": "Removed - use attachments instead",
+            "discord.backfill_unlimited": "Removed - use backfill_days: 0 for unlimited",
+            "discord.backfill_in_background": "Internalized - always runs in background",
+            "discord.default_timezone": "Renamed to discord.timezone",
+            "skills.enabled": "Removed - skills are always enabled (Bug #14 fix)",
+            "api.code_execution.enabled": "Removed - code_execution is automatically enabled with skills (Bug #14 fix)",
+        }
+
+        def check_nested(d: dict, prefix: str = ""):
+            for key, value in d.items():
+                full_key = f"{prefix}.{key}" if prefix else key
+                if full_key in deprecated_mappings:
+                    logging.warning(f"Deprecated config '{full_key}': {deprecated_mappings[full_key]}")
+                if isinstance(value, dict):
+                    check_nested(value, full_key)
+
+        check_nested(data)
+
+    @classmethod
     def _from_dict(cls, data: dict) -> 'BotConfig':
         """Parse nested configuration dictionaries"""
+
         # Parse personality
         personality_data = data.get("personality", {})
         if personality_data and "base_prompt" in personality_data:
             personality = PersonalityConfig(
                 base_prompt=personality_data["base_prompt"],
-                formality=personality_data.get("formality", 0.2),
-                emoji_usage=personality_data.get("emoji_usage", "never"),
                 reaction_usage=personality_data.get("reaction_usage", "moderate"),
-                formatting=personality_data.get("formatting", "minimal"),
-                mention_response_rate=personality_data.get("mention_response_rate", 1.0),
-                technical_help_rate=personality_data.get("technical_help_rate", 0.8),
-                humor_response_rate=personality_data.get("humor_response_rate", 0.4),
-                cold_conversation_rate=personality_data.get("cold_conversation_rate", 0.1),
-                warm_conversation_rate=personality_data.get("warm_conversation_rate", 0.25),
-                hot_conversation_rate=personality_data.get("hot_conversation_rate", 0.4),
             )
         else:
             personality = None
@@ -310,62 +393,41 @@ class BotConfig:
         discord = DiscordConfig(
             token_env_var=discord_data.get("token_env_var", "DISCORD_BOT_TOKEN"),
             servers=discord_data.get("servers", []),
-            default_timezone=discord_data.get("default_timezone", "UTC"),
+            timezone=discord_data.get("timezone", discord_data.get("default_timezone", "UTC")),
             status=discord_data.get("status", "Powered by Claude"),
+            allow_bot_interactions=discord_data.get("allow_bot_interactions", False),
             backfill_enabled=discord_data.get("backfill_enabled", True),
             backfill_days=discord_data.get("backfill_days", 30),
-            backfill_unlimited=discord_data.get("backfill_unlimited", False),
-            backfill_in_background=discord_data.get("backfill_in_background", True)
         )
 
         # Parse reactive config
         reactive_data = data.get("reactive", {})
-        cooldowns_data = reactive_data.get("cooldowns", {})
-        cooldowns = CooldownsConfig(
-            per_user=cooldowns_data.get("per_user", 40),
-            single_message=cooldowns_data.get("single_message", 45),
-            multi_message=cooldowns_data.get("multi_message", 75),
-            heavy_activity=cooldowns_data.get("heavy_activity", 105),
-        )
         reactive = ReactiveConfig(
             enabled=reactive_data.get("enabled", True),
-            check_interval_seconds=reactive_data.get("check_interval_seconds", 30),
-            context_window=reactive_data.get("context_window", 20),
-            cooldowns=cooldowns,
+            always_respond_to_mentions=reactive_data.get("always_respond_to_mentions", True),
+            cooldown=reactive_data.get("cooldown", "moderate"),
+            rate_limit=reactive_data.get("rate_limit", "moderate"),
         )
 
         # Parse agentic config
         agentic_data = data.get("agentic", {})
 
-        # Parse followups config
         followups_data = agentic_data.get("followups", {})
         followups = FollowupsConfig(
             enabled=followups_data.get("enabled", False),
-            auto_create=followups_data.get("auto_create", True),
-            max_pending=followups_data.get("max_pending", 20),
-            priority_threshold=followups_data.get("priority_threshold", "medium"),
-            follow_up_delay_days=followups_data.get("follow_up_delay_days", 1),
-            max_age_days=followups_data.get("max_age_days", 14),
         )
 
-        # Parse proactive config
         proactive_data = agentic_data.get("proactive", {})
         proactive = ProactiveConfig(
             enabled=proactive_data.get("enabled", False),
-            min_idle_hours=proactive_data.get("min_idle_hours", 1.0),
-            max_idle_hours=proactive_data.get("max_idle_hours", 8.0),
-            min_provocation_gap_hours=proactive_data.get("min_provocation_gap_hours", 1.0),
-            max_per_day_global=proactive_data.get("max_per_day_global", 10),
-            max_per_day_per_channel=proactive_data.get("max_per_day_per_channel", 3),
-            engagement_threshold=proactive_data.get("engagement_threshold", 0.3),
-            learning_window_days=proactive_data.get("learning_window_days", 7),
+            intensity=proactive_data.get("intensity", "moderate"),
             quiet_hours=proactive_data.get("quiet_hours", [0, 6]),
             allowed_channels=proactive_data.get("allowed_channels", []),
         )
 
         agentic = AgenticConfig(
             enabled=agentic_data.get("enabled", False),
-            check_interval_hours=agentic_data.get("check_interval_hours", 1),
+            check_interval_hours=agentic_data.get("check_interval_hours", 1.0),
             followups=followups,
             proactive=proactive,
         )
@@ -379,54 +441,34 @@ class BotConfig:
             budget_tokens=extended_thinking_data.get("budget_tokens", 10000),
         )
 
-        context_editing_data = api_data.get("context_editing", {})
-        context_editing = ContextEditingConfig(
-            enabled=context_editing_data.get("enabled", True),
-            trigger_tokens=context_editing_data.get("trigger_tokens", 100000),
-            keep_tool_uses=context_editing_data.get("keep_tool_uses", 3),
-            exclude_tools=context_editing_data.get("exclude_tools", ["memory"]),
-        )
-
-        throttling_data = api_data.get("throttling", {})
-        throttling = ThrottlingConfig(
-            min_delay_seconds=throttling_data.get("min_delay_seconds", 1.0),
-            max_concurrent=throttling_data.get("max_concurrent", 10),
-        )
-
         web_search_data = api_data.get("web_search", {})
         web_search = WebSearchConfig(
             enabled=web_search_data.get("enabled", False),
-            max_daily=web_search_data.get("max_daily", 300),
-            max_per_request=web_search_data.get("max_per_request", 3),
-            citations_enabled=web_search_data.get("citations_enabled", True),
+        )
+
+        # CodeExecutionConfig no longer has enabled field (Bug #14 fix)
+        # It's automatically enabled when skills are loaded
+        code_execution = CodeExecutionConfig()
+
+        # Handle legacy context_management structure
+        context_management_data = api_data.get("context_management", {})
+        context_messages = api_data.get(
+            "context_messages",
+            context_management_data.get("max_conversation_messages", 30)
+        )
+        context_tokens = api_data.get(
+            "context_tokens",
+            context_management_data.get("max_total_tokens", 100000)
         )
 
         api = APIConfig(
             model=api_data.get("model", "claude-sonnet-4-5-20250929"),
             max_tokens=api_data.get("max_tokens", 4096),
-            knowledge_cutoff_date=api_data.get("knowledge_cutoff_date"),
+            context_messages=context_messages,
+            context_tokens=context_tokens,
             extended_thinking=extended_thinking,
-            context_editing=context_editing,
-            throttling=throttling,
             web_search=web_search,
-        )
-
-        # Parse rate limiting config
-        rate_limiting_data = data.get("rate_limiting", {})
-        short_data = rate_limiting_data.get("short", {})
-        long_data = rate_limiting_data.get("long", {})
-
-        rate_limiting = RateLimitingConfig(
-            short=RateLimitWindowConfig(
-                duration_minutes=short_data.get("duration_minutes", 5),
-                max_responses=short_data.get("max_responses", 20),
-            ),
-            long=RateLimitWindowConfig(
-                duration_minutes=long_data.get("duration_minutes", 60),
-                max_responses=long_data.get("max_responses", 200),
-            ),
-            ignore_threshold=rate_limiting_data.get("ignore_threshold", 5),
-            engagement_tracking_delay=rate_limiting_data.get("engagement_tracking_delay", 30),
+            code_execution=code_execution,
         )
 
         # Parse images config
@@ -434,7 +476,6 @@ class BotConfig:
         images = ImagesConfig(
             enabled=images_data.get("enabled", False),
             max_per_message=images_data.get("max_per_message", 5),
-            compression_target=images_data.get("compression_target", 0.73)
         )
 
         # Parse logging config
@@ -442,43 +483,47 @@ class BotConfig:
         logging_config = LoggingConfig(
             level=logging_data.get("level", "INFO"),
             file=logging_data.get("file", "logs/{bot_id}.log"),
-            max_size_mb=logging_data.get("max_size_mb", 50),
-            backup_count=logging_data.get("backup_count", 3),
         )
 
-        # Parse v0.5.0 features
+        # Parse v0.5.0+ features
         mcp_data = data.get("mcp", {})
         mcp = MCPConfig(
             enabled=mcp_data.get("enabled", False),
-            config_file=mcp_data.get("config_file", "mcp_servers.json")
         )
 
+        # SkillsConfig no longer has enabled field (Bug #14 fix)
+        # Skills are always enabled
         skills_data = data.get("skills", {})
         skills = SkillsConfig(
-            enabled=skills_data.get("enabled", False),
-            skills_dir=skills_data.get("skills_dir", "skills"),
-            cache_file=skills_data.get("cache_file", ".skills_cache.json"),
-            include_anthropic_skills=skills_data.get("include_anthropic_skills", True)
+            include_anthropic_skills=skills_data.get("include_anthropic_skills", True),
+            default_skills=skills_data.get("default_skills", ["pdf"]),
         )
 
-        data_isolation_data = data.get("data_isolation", {})
-        data_isolation = DataIsolationConfig(
-            enabled=data_isolation_data.get("enabled", False),
-            default_mode=data_isolation_data.get("default_mode", "permissive"),
-            memory_scope=data_isolation_data.get("memory_scope", "global"),
-            allow_cross_server_memory=data_isolation_data.get("allow_cross_server_memory", True),
-            search_scope=data_isolation_data.get("search_scope", "global"),
-            allow_cross_channel_search=data_isolation_data.get("allow_cross_channel_search", True),
-            discord_tools_scope=data_isolation_data.get("discord_tools_scope", "global")
-        )
+        # Data isolation - handle both old object format and new string format
+        data_isolation_raw = data.get("data_isolation", "off")
+        if isinstance(data_isolation_raw, dict):
+            # Legacy format - convert to string
+            if not data_isolation_raw.get("enabled", False):
+                data_isolation = "off"
+            else:
+                # Use most restrictive scope from old config
+                memory_scope = data_isolation_raw.get("memory_scope", "global")
+                search_scope = data_isolation_raw.get("search_scope", "global")
+                if memory_scope == "channel" or search_scope == "channel":
+                    data_isolation = "channel"
+                elif memory_scope == "server" or search_scope == "server":
+                    data_isolation = "server"
+                else:
+                    data_isolation = "off"
+        else:
+            data_isolation = data_isolation_raw
 
-        multimedia_data = data.get("multimedia", {})
-        multimedia = MultimediaConfig(
-            enabled=multimedia_data.get("enabled", False),
-            max_file_size_mb=multimedia_data.get("max_file_size_mb", 32),
-            supported_types=multimedia_data.get("supported_types", [
-                "pdf", "docx", "xlsx", "txt", "md", "csv", "json"
-            ])
+        # Parse attachments config
+        attachments_data = data.get("attachments", {})
+        attachments = AttachmentsConfig(
+            enabled=attachments_data.get("enabled", False),
+            backfill_enabled=attachments_data.get("backfill_enabled", True),
+            backfill_days=attachments_data.get("backfill_days", 30),
         )
 
         return cls(
@@ -490,13 +535,12 @@ class BotConfig:
             reactive=reactive,
             agentic=agentic,
             api=api,
-            rate_limiting=rate_limiting,
             images=images,
             logging=logging_config,
             mcp=mcp,
             skills=skills,
             data_isolation=data_isolation,
-            multimedia=multimedia
+            attachments=attachments,
         )
 
     def validate(self) -> List[str]:
@@ -532,38 +576,202 @@ class BotConfig:
         if not self.discord.servers:
             logging.warning(f"[{self.bot_id}] No servers configured - bot won't join any servers")
 
-        # Validate personality rates
-        if self.personality:
-            if not (0 <= self.personality.formality <= 1):
-                errors.append("personality.formality must be between 0 and 1")
-
-            rates = [
-                ("mention_response_rate", self.personality.mention_response_rate),
-                ("technical_help_rate", self.personality.technical_help_rate),
-                ("humor_response_rate", self.personality.humor_response_rate),
-                ("cold_conversation_rate", self.personality.cold_conversation_rate),
-                ("warm_conversation_rate", self.personality.warm_conversation_rate),
-                ("hot_conversation_rate", self.personality.hot_conversation_rate),
-            ]
-            for name, rate in rates:
-                if not (0 <= rate <= 1):
-                    errors.append(f"personality.{name} must be between 0 and 1, got {rate}")
-
         # Validate API config
         if self.api.max_tokens <= 0:
             errors.append("api.max_tokens must be positive")
 
-        # Validate rate limiting
-        if self.rate_limiting.short.max_responses < 1:
-            errors.append("rate_limiting.short.max_responses must be >= 1")
-        if self.rate_limiting.long.max_responses < 1:
-            errors.append("rate_limiting.long.max_responses must be >= 1")
-        if self.rate_limiting.ignore_threshold < 1:
-            errors.append("rate_limiting.ignore_threshold must be >= 1")
+        if self.api.context_tokens <= 0:
+            errors.append("api.context_tokens must be positive")
+
+        if not (5 <= self.api.context_messages <= 100):
+            errors.append(
+                f"api.context_messages must be between 5 and 100, got {self.api.context_messages}"
+            )
+
+        # Validate presets
+        if self.reactive.cooldown.lower() not in COOLDOWN_PRESETS:
+            errors.append(
+                f"reactive.cooldown must be one of {list(COOLDOWN_PRESETS.keys())}, "
+                f"got '{self.reactive.cooldown}'"
+            )
+
+        if self.reactive.rate_limit.lower() not in RATE_LIMIT_PRESETS:
+            errors.append(
+                f"reactive.rate_limit must be one of {list(RATE_LIMIT_PRESETS.keys())}, "
+                f"got '{self.reactive.rate_limit}'"
+            )
+
+        if self.agentic.proactive.intensity.lower() not in PROACTIVE_INTENSITY_PRESETS:
+            errors.append(
+                f"agentic.proactive.intensity must be one of {list(PROACTIVE_INTENSITY_PRESETS.keys())}, "
+                f"got '{self.agentic.proactive.intensity}'"
+            )
+
+        # Validate data isolation mode
+        valid_isolation_modes = ["off", "server", "channel"]
+        if self.data_isolation.lower() not in valid_isolation_modes:
+            errors.append(
+                f"data_isolation must be one of {valid_isolation_modes}, "
+                f"got '{self.data_isolation}'"
+            )
 
         # Validate logging level
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         if self.logging.level not in valid_levels:
             errors.append(f"logging.level must be one of {valid_levels}, got '{self.logging.level}'")
 
+        # Validate reaction_usage if personality is set
+        if self.personality:
+            valid_reactions = ["never", "rare", "moderate", "frequent"]
+            if self.personality.reaction_usage.lower() not in valid_reactions:
+                errors.append(
+                    f"personality.reaction_usage must be one of {valid_reactions}, "
+                    f"got '{self.personality.reaction_usage}'"
+                )
+
         return errors
+
+    # =========================================================================
+    # HELPER METHODS FOR ACCESSING INTERNAL CONSTANTS
+    # =========================================================================
+
+    def get_throttling_config(self):
+        """Get internal throttling configuration"""
+        return {
+            "min_delay_seconds": API_MIN_DELAY_SECONDS,
+            "max_concurrent": API_MAX_CONCURRENT,
+        }
+
+    def get_context_editing_config(self):
+        """Get internal context editing configuration"""
+        return {
+            "enabled": True,  # Always enabled
+            "trigger_tokens": int(self.api.context_tokens * 0.8),  # 80% of budget
+            "keep_tool_uses": CONTEXT_EDITING_KEEP_TOOL_USES,
+            "exclude_tools": CONTEXT_EDITING_EXCLUDE_TOOLS,
+        }
+
+    def get_rate_limiting_config(self):
+        """Get rate limiting configuration from preset"""
+        preset = self.reactive.get_rate_limit_values()
+        return {
+            "short": {
+                "duration_minutes": preset.short_duration_minutes,
+                "max_responses": preset.short_max_responses,
+            },
+            "long": {
+                "duration_minutes": preset.long_duration_minutes,
+                "max_responses": preset.long_max_responses,
+            },
+            "ignore_threshold": IGNORE_THRESHOLD,
+            "engagement_tracking_delay": ENGAGEMENT_TRACKING_DELAY_SECONDS,
+        }
+
+    def get_logging_config(self):
+        """Get full logging configuration with internal values"""
+        return {
+            "level": self.logging.level,
+            "file": self.logging.file,
+            "max_size_mb": LOG_MAX_SIZE_MB,
+            "backup_count": LOG_BACKUP_COUNT,
+        }
+
+    def get_skills_config(self):
+        """Get full skills configuration with internal values"""
+        return {
+            "enabled": True,  # Always enabled (Bug #14 fix)
+            "skills_dir": "skills",  # Standardized
+            "cache_file": SKILLS_CACHE_FILE,
+            "include_anthropic_skills": self.skills.include_anthropic_skills,
+        }
+
+    def get_mcp_config(self):
+        """Get full MCP configuration with internal values"""
+        return {
+            "enabled": self.mcp.enabled,
+            "config_file": MCP_CONFIG_FILE,
+        }
+
+    def get_images_config(self):
+        """Get full images configuration with internal values"""
+        return {
+            "enabled": self.images.enabled,
+            "max_per_message": self.images.max_per_message,
+            "compression_target": IMAGE_COMPRESSION_TARGET,
+        }
+
+    def get_web_search_config(self):
+        """Get web search configuration - all or nothing, no rate limits"""
+        return {
+            "enabled": self.api.web_search.enabled,
+            "citations_enabled": WEB_SEARCH_CITATIONS_ENABLED,
+        }
+
+    def get_proactive_config(self):
+        """Get full proactive configuration with internal and preset values"""
+        intensity = self.agentic.proactive.get_intensity_values()
+        return {
+            "enabled": self.agentic.proactive.enabled,
+            "min_idle_hours": intensity.min_idle_hours,
+            "max_idle_hours": intensity.max_idle_hours,
+            "min_provocation_gap_hours": PROACTIVE_MIN_PROVOCATION_GAP_HOURS,
+            "max_per_day_global": intensity.max_per_day_global,
+            "max_per_day_per_channel": intensity.max_per_day_per_channel,
+            "engagement_threshold": PROACTIVE_ENGAGEMENT_THRESHOLD,
+            "learning_window_days": PROACTIVE_LEARNING_WINDOW_DAYS,
+            "quiet_hours": self.agentic.proactive.quiet_hours,
+            "allowed_channels": self.agentic.proactive.allowed_channels,
+        }
+
+    def get_attachments_config(self):
+        """Get full attachments configuration with internal values"""
+        return {
+            "enabled": self.attachments.enabled,
+            "local_storage": {
+                "base_path": "persistence/attachments",
+                "pruning_enabled": LOCAL_STORAGE_PRUNING_ENABLED,
+                "max_size_gb": LOCAL_STORAGE_MAX_SIZE_GB,
+                "min_age_days": LOCAL_STORAGE_MIN_AGE_DAYS,
+            },
+            "files_api": {
+                "cleanup_enabled": FILES_API_CLEANUP_ENABLED,
+                "cleanup_interval_hours": FILES_API_CLEANUP_INTERVAL_HOURS,
+                "max_age_hours": FILES_API_MAX_AGE_HOURS,
+            },
+            "backfill_enabled": self.attachments.backfill_enabled,
+            "backfill_days": self.attachments.backfill_days,
+        }
+
+    def get_data_isolation_config(self) -> DataIsolationConfig:
+        """Get data isolation configuration expanded from mode"""
+        mode = self.data_isolation.lower()
+        if mode == "off":
+            return DataIsolationConfig(
+                enabled=False,
+                default_mode="permissive",
+                memory_scope="global",
+                allow_cross_server_memory=True,
+                search_scope="global",
+                allow_cross_channel_search=True,
+                discord_tools_scope="global",
+            )
+        elif mode == "server":
+            return DataIsolationConfig(
+                enabled=True,
+                default_mode="server",
+                memory_scope="server",
+                allow_cross_server_memory=False,
+                search_scope="server",
+                allow_cross_channel_search=True,
+                discord_tools_scope="server",
+            )
+        else:  # channel
+            return DataIsolationConfig(
+                enabled=True,
+                default_mode="channel",
+                memory_scope="channel",
+                allow_cross_server_memory=False,
+                search_scope="channel",
+                allow_cross_channel_search=False,
+                discord_tools_scope="channel",
+            )

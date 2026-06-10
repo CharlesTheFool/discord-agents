@@ -96,8 +96,11 @@ class MessageMemory:
 
     async def initialize(self):
         """Initialize database connection and create tables"""
-        self._db = await aiosqlite.connect(str(self.db_path))
+        self._db = await aiosqlite.connect(str(self.db_path), timeout=30.0)
         self._db.row_factory = aiosqlite.Row
+
+        # Enable WAL mode for better concurrent access (fixes database locked errors)
+        await self._db.execute("PRAGMA journal_mode=WAL;")
 
         await self._db.executescript(self.SCHEMA)
         await self._db.commit()
@@ -571,6 +574,37 @@ class MessageMemory:
         row = await cursor.fetchone()
         await cursor.close()
         return row[0] if row else None
+
+    async def get_users_in_server(self, server_id: str) -> List[str]:
+        """Get list of unique user IDs who have messaged in a server"""
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        cursor = await self._db.execute(
+            "SELECT DISTINCT author_id FROM messages WHERE guild_id = ? ORDER BY author_id",
+            (server_id,)
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [row[0] for row in rows]
+
+    async def get_channels_in_server(self, server_id: str) -> List[str]:
+        """Get list of unique channel IDs for a server"""
+        if not self._db:
+            raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
+
+        cursor = await self._db.execute(
+            """
+            SELECT DISTINCT channel_id
+            FROM messages
+            WHERE guild_id = ?
+            ORDER BY channel_id
+            """,
+            (server_id,)
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return [row[0] for row in rows]
 
     async def check_user_activity(self, user_id: str, hours: int = 24) -> bool:
         """Check if user has posted messages within timeframe"""
