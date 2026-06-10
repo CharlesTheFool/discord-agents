@@ -103,7 +103,7 @@ class FilesAPIClient:
             None if retrieval fails
         """
         try:
-            response = await self.anthropic_client.beta.files.retrieve(file_id)
+            response = await self.anthropic_client.beta.files.retrieve_metadata(file_id)
 
             return {
                 "file_id": response.id,
@@ -113,11 +113,6 @@ class FilesAPIClient:
                 "created_at": response.created_at
             }
 
-        except AttributeError:
-            # AsyncFiles API doesn't support retrieve() method yet
-            # Quietly return None to trigger fallback to local storage
-            logger.debug(f"File retrieval not supported by SDK, treating {file_id} as unavailable")
-            return None
         except NotFoundError as e:
             # File expired, deleted, or never existed (404)
             logger.warning(f"File {file_id} not found (expired/deleted): {e}")
@@ -142,9 +137,10 @@ class FilesAPIClient:
             None if download fails
         """
         try:
-            response = await self.anthropic_client.beta.files.content(file_id)
+            response = await self.anthropic_client.beta.files.download(file_id)
+            data = await response.read()
             logger.info(f"Downloaded content for file: {file_id}")
-            return response
+            return data
 
         except Exception as e:
             logger.error(f"Failed to download content for file {file_id}: {e}")
