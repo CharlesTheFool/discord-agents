@@ -296,13 +296,15 @@ class SkillsManager:
         try:
             file_hash = self._calculate_hash(zip_path)
 
-            if file_hash in self.cache:
+            cached = self.cache.get(file_hash)
+            if cached and cached.get('status') != 'already_exists':
                 logger.debug(f"Skill {zip_path.name} already uploaded (hash match)")
                 return {
                     'filename': zip_path.name,
                     'status': 'cached',
-                    'skill_id': self.cache[file_hash]['skill_id']
+                    'skill_id': cached['skill_id']
                 }
+            # already_exists entries are stale placeholders (no usable ID) - retry
 
             metadata = self._extract_skill_metadata(zip_path)
             if not metadata:
@@ -310,23 +312,7 @@ class SkillsManager:
 
             skill_id = await self._upload_skill(zip_path, metadata)
 
-            if skill_id == "ALREADY_EXISTS":
-                # Skill exists on Anthropic servers but not in local cache
-                self.cache[file_hash] = {
-                    'skill_id': f"existing_{metadata['name']}",
-                    'filename': zip_path.name,
-                    'display_title': metadata['name'],
-                    'version': '1.0.0',
-                    'uploaded_at': __import__('datetime').datetime.utcnow().isoformat(),
-                    'status': 'already_exists'
-                }
-                await self._save_cache()
-                return {
-                    'filename': zip_path.name,
-                    'status': 'already_exists',
-                    'skill_id': None
-                }
-            elif skill_id:
+            if skill_id:
                 self.cache[file_hash] = {
                     'skill_id': skill_id,
                     'filename': zip_path.name,
@@ -362,13 +348,15 @@ class SkillsManager:
         try:
             dir_hash = self._calculate_directory_hash(folder_path)
 
-            if dir_hash in self.cache:
+            cached = self.cache.get(dir_hash)
+            if cached and cached.get('status') != 'already_exists':
                 logger.debug(f"Skill {display_name} already uploaded (hash match)")
                 return {
                     'filename': display_name,
                     'status': 'cached',
-                    'skill_id': self.cache[dir_hash]['skill_id']
+                    'skill_id': cached['skill_id']
                 }
+            # already_exists entries are stale placeholders (no usable ID) - retry
 
             metadata = self._extract_folder_metadata(folder_path)
             if not metadata:
@@ -378,24 +366,7 @@ class SkillsManager:
             buf, zip_filename = self._zip_folder_to_bytes(folder_path)
             skill_id = await self._upload_skill((buf, zip_filename), metadata)
 
-            if skill_id == "ALREADY_EXISTS":
-                # Skill exists on Anthropic servers but not in local cache
-                # Mark as existing (we don't have the skill_id but it's usable)
-                self.cache[dir_hash] = {
-                    'skill_id': f"existing_{metadata['name']}",
-                    'filename': display_name,
-                    'display_title': metadata['name'],
-                    'version': '1.0.0',
-                    'uploaded_at': __import__('datetime').datetime.utcnow().isoformat(),
-                    'status': 'already_exists'
-                }
-                await self._save_cache()
-                return {
-                    'filename': display_name,
-                    'status': 'already_exists',
-                    'skill_id': None
-                }
-            elif skill_id:
+            if skill_id:
                 self.cache[dir_hash] = {
                     'skill_id': skill_id,
                     'filename': display_name,
@@ -468,12 +439,32 @@ class SkillsManager:
 
         except Exception as e:
             error_str = str(e)
-            # Handle "already exists" error gracefully
+            # Display-title conflict: skill already on the server, recover its real ID
             if "reuse an existing display_title" in error_str:
-                logger.warning(f"Skill '{metadata['name']}' already exists on Anthropic servers (skipping)")
-                return "ALREADY_EXISTS"
+                skill_id = self._find_existing_skill_id(metadata['name'])
+                if skill_id:
+                    logger.info(
+                        f"Skill '{metadata['name']}' already on Anthropic servers, "
+                        f"recovered ID {skill_id}"
+                    )
+                    return skill_id
+                logger.error(
+                    f"Skill '{metadata['name']}' exists on server but its ID "
+                    f"could not be recovered from the skills list"
+                )
+                return None
             logger.error(f"Failed to upload skill {filename}: {e}")
             return None
+
+    def _find_existing_skill_id(self, display_title: str) -> Optional[str]:
+        """Look up a skill's ID on the server by display title (auto-paginates)."""
+        try:
+            for skill in self.anthropic_client.beta.skills.list(betas=["skills-2025-10-02"]):
+                if skill.display_title == display_title:
+                    return skill.id
+        except Exception as e:
+            logger.error(f"Failed to list skills while recovering '{display_title}': {e}")
+        return None
 
     def get_skills_for_api(self) -> List[Dict[str, str]]:
         """
@@ -484,7 +475,7 @@ class SkillsManager:
         """
         skills = []
         for file_hash, skill_info in self.cache.items():
-            # Skip skills that already exist on Anthropic servers but we don't have their ID
+            # Stale placeholder from a pre-recovery cache file: no usable ID
             if skill_info.get('status') == 'already_exists':
                 continue
             skills.append({
@@ -541,7 +532,7 @@ class SkillsManager:
 
         # Add custom skills from cache
         for file_hash, skill_info in self.cache.items():
-            # Skip skills with already_exists status (no usable skill_id)
+            # Stale placeholder from a pre-recovery cache file: no usable ID
             if skill_info.get('status') == 'already_exists':
                 continue
 
