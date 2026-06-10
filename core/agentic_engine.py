@@ -491,12 +491,13 @@ class AgenticEngine:
         Returns:
             Hours since last message
         """
-        recent = await self.message_memory.get_recent(channel_id, limit=1)
+        # System markers (crash/online tags) are bookkeeping, not channel
+        # activity - counting them reset the idle clock on every bot restart
+        last_message = await self.message_memory.get_latest_message(channel_id)
 
-        if not recent:
+        if not last_message:
             return 999.0  # Very idle
 
-        last_message = recent[0]
         now = datetime.utcnow()  # Naive UTC to match database timestamps
         delta = now - last_message.timestamp
         hours = delta.total_seconds() / 3600
