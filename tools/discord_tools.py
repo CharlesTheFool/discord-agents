@@ -365,7 +365,7 @@ class DiscordToolExecutor:
         try:
             # Query database for full metadata
             async with self.attachment_manager.attachment_db.db.execute(
-                "SELECT filename, attachment_type, size_bytes, message_id, channel_id, server_id, uploaded_at FROM attachments WHERE attachment_id = ?",
+                "SELECT filename, attachment_type, size_bytes, message_id, channel_id, server_id, uploaded_at, local_path FROM attachments WHERE attachment_id = ?",
                 (attachment_id,)
             ) as cursor:
                 row = await cursor.fetchone()
@@ -390,12 +390,19 @@ class DiscordToolExecutor:
                 return f"Error: Attachment {attachment_id} not found or no longer available in storage"
 
             # Build text description with provenance
-            lines = [
-                f"✓ Retrieved: {filename} ({size_str})",
-                f"📍 Source: Message {source_message_id} in channel {source_channel_id}",
-                f"📅 Uploaded: {uploaded_at}",
-                f"📎 Type: {attachment_type}"
-            ]
+            if source_channel_id == "repository":
+                lines = [
+                    f"✓ Retrieved: {filename} ({size_str})",
+                    f"📍 Source: bot repository — {row['local_path']}",
+                    f"📎 Type: {attachment_type}"
+                ]
+            else:
+                lines = [
+                    f"✓ Retrieved: {filename} ({size_str})",
+                    f"📍 Source: Message {source_message_id} in channel {source_channel_id}",
+                    f"📅 Uploaded: {uploaded_at}",
+                    f"📎 Type: {attachment_type}"
+                ]
 
             text_description = "\n".join(lines)
 
@@ -493,8 +500,11 @@ class DiscordToolExecutor:
 
                 size_str = format_size(size_bytes)
 
-                # Format line with message_id for context lookup
-                line = f"- {filename} ({size_str}, type: {attachment_type}, ID: {attachment_id}, from message: {message_id})"
+                # Format line with provenance for context lookup
+                if row["channel_id"] == "repository":
+                    line = f"- {filename} ({size_str}, type: {attachment_type}, ID: {attachment_id}) [repository]"
+                else:
+                    line = f"- {filename} ({size_str}, type: {attachment_type}, ID: {attachment_id}, from message: {message_id})"
                 lines.append(line)
 
             # Add tips about re-accessing and viewing context
