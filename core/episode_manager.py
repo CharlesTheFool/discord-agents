@@ -375,9 +375,7 @@ Distill this episode and return the updated channel state per the schema."""
         # Episode file - filename keyed by range-start ID (idempotent overwrite)
         slug = re.sub(r"[^a-z0-9-]", "", data["slug"].lower().replace(" ", "-"))[:40] or "episode"
         episodes_dir_virtual = self.memory_manager.get_episodes_dir_path(server_id, channel_id)
-        episodes_dir = self.memory_manager.base_path / episodes_dir_virtual.replace(
-            f"/memories/{self.memory_manager.bot_id}/", ""
-        )
+        episodes_dir = self.memory_manager.resolve_path(episodes_dir_virtual)
         episodes_dir.mkdir(parents=True, exist_ok=True)
         range_start = segment[0].message_id
         for stale in episodes_dir.glob(f"*_{range_start}_*.md"):

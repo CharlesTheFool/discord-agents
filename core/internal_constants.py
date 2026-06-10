@@ -12,13 +12,6 @@ from typing import List
 
 
 # =============================================================================
-# API THROTTLING (Internal)
-# =============================================================================
-API_MIN_DELAY_SECONDS = 1.0
-API_MAX_CONCURRENT = 10
-
-
-# =============================================================================
 # EPISODIC SESSIONS (Internal)
 # =============================================================================
 EPISODE_IDLE_GAP_HOURS = 5          # Channel idle longer than this => episode boundary
@@ -62,13 +55,6 @@ IGNORE_THRESHOLD = 5  # Consecutive ignores before silence
 
 
 # =============================================================================
-# LOGGING (Internal)
-# =============================================================================
-LOG_MAX_SIZE_MB = 50
-LOG_BACKUP_COUNT = 3
-
-
-# =============================================================================
 # SKILLS (Internal)
 # =============================================================================
 SKILLS_CACHE_FILE = ".skills_cache.json"
@@ -81,18 +67,10 @@ MCP_CONFIG_FILE = "mcp_servers.json"
 
 
 # =============================================================================
-# IMAGES (Internal)
-# =============================================================================
-IMAGE_COMPRESSION_TARGET = 0.73  # 73% of API limit
-
-
-# =============================================================================
 # WEB SEARCH (Internal)
 # =============================================================================
-# No rate limiting - all or nothing approach
-# If enabled, bot has full search capability
-# If disabled, bot is prompted that it cannot search
 WEB_SEARCH_CITATIONS_ENABLED = True  # Required for end-user applications
+WEB_SEARCH_MAX_USES = 8  # Per-request cap on search/fetch calls (cost guard)
 
 
 # =============================================================================
@@ -103,49 +81,15 @@ PROACTIVE_ENGAGEMENT_THRESHOLD = 0.3
 PROACTIVE_MIN_PROVOCATION_GAP_HOURS = 1.0
 
 
-# =============================================================================
-# ATTACHMENTS (Internal)
-# =============================================================================
-FILES_API_CLEANUP_ENABLED = True
-FILES_API_CLEANUP_INTERVAL_HOURS = 24
-FILES_API_MAX_AGE_HOURS = 168  # 7 days
-LOCAL_STORAGE_PRUNING_ENABLED = False
-LOCAL_STORAGE_MAX_SIZE_GB = 50
-LOCAL_STORAGE_MIN_AGE_DAYS = 90
-
-
-# =============================================================================
-# COOLDOWN PRESETS
-# =============================================================================
-@dataclass(frozen=True)
-class CooldownPresetValues:
-    """Actual values for a cooldown preset"""
-    per_user: int
-    single_message: int
-    multi_message: int
-    heavy_activity: int
-
-
-COOLDOWN_PRESETS = {
-    "fast": CooldownPresetValues(
-        per_user=20,
-        single_message=25,
-        multi_message=40,
-        heavy_activity=60
-    ),
-    "moderate": CooldownPresetValues(
-        per_user=40,
-        single_message=45,
-        multi_message=75,
-        heavy_activity=105
-    ),
-    "relaxed": CooldownPresetValues(
-        per_user=60,
-        single_message=70,
-        multi_message=120,
-        heavy_activity=180
-    )
-}
+def format_size(size_bytes: int) -> str:
+    """Human-readable byte size ('1.3 MB') - the one shared implementation."""
+    size = float(size_bytes or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
 
 
 # =============================================================================

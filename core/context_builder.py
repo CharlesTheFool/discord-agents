@@ -710,17 +710,10 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         return None
 
     @staticmethod
-    def _get_media_type_from_filename(filename: str) -> str:
-        """Determine media type from file extension."""
-        ext = filename.lower().split('.')[-1] if '.' in filename else ''
-        media_types = {
-            'png': 'image/png',
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'gif': 'image/gif',
-            'webp': 'image/webp'
-        }
-        return media_types.get(ext, 'image/jpeg')
+    def _get_media_type_from_filename(self, filename: str) -> str:
+        """Media type for image blocks (single map in AttachmentClassifier)."""
+        from core.attachment_classifier import AttachmentClassifier
+        return AttachmentClassifier.image_media_type(filename)
 
     async def _get_reply_chain(self, message: discord.Message) -> List[discord.Message]:
         """

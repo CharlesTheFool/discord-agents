@@ -342,10 +342,6 @@ class ConversationState:
             for msg in self.messages[start:]
         ]
 
-    def get_message_count(self) -> int:
-        """Get current message count"""
-        return len(self.messages)
-
     def set_active_skills(self, skill_names: List[str], max_skills: int = 2) -> None:
         """Set currently active skills for this conversation."""
         self.active_skills = skill_names[:max_skills]

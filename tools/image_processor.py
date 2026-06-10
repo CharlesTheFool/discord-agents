@@ -265,16 +265,9 @@ class ImageProcessor:
         img.save(buffer, format='WEBP', quality=85, method=6)
         return buffer.getvalue()
 
-    def _guess_mime_type(self, filename: str) -> str:
-        """Map file extension to MIME type"""
-        ext = filename.lower().split('.')[-1]
+    @staticmethod
+    def _guess_mime_type(filename: str) -> str:
+        """Media type for image blocks (single map in AttachmentClassifier)."""
+        from core.attachment_classifier import AttachmentClassifier
+        return AttachmentClassifier.image_media_type(filename)
 
-        mime_types = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'gif': 'image/gif',
-            'webp': 'image/webp'
-        }
-
-        return mime_types.get(ext, 'image/jpeg')

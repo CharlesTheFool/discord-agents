@@ -123,37 +123,3 @@ class AttachmentDatabase:
             logger.error(f"Unexpected error during messages table migration: {e}")
             raise
 
-    async def get_quota_stats(self) -> Dict:
-        """
-        Query Files API quota usage statistics.
-
-        Returns:
-            Dict with keys:
-                - total_files: Number of files uploaded to Files API
-                - bytes_used: Total bytes stored in Files API
-                - bytes_remaining: Remaining quota (100 GB total)
-                - percent_used: Percentage of quota consumed
-        """
-        try:
-            async with self.db.execute("SELECT * FROM files_api_usage") as cursor:
-                row = await cursor.fetchone()
-
-                if row:
-                    return {
-                        "total_files": row[0] or 0,
-                        "bytes_used": row[1] or 0,
-                        "bytes_remaining": row[2] or 107374182400,
-                        "percent_used": row[3] or 0.0
-                    }
-                else:
-                    # No files uploaded yet
-                    return {
-                        "total_files": 0,
-                        "bytes_used": 0,
-                        "bytes_remaining": 107374182400,
-                        "percent_used": 0.0
-                    }
-
-        except Exception as e:
-            logger.error(f"Error querying quota stats: {e}")
-            raise

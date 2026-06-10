@@ -648,27 +648,3 @@ class SkillsManager:
             )
 
         return all_skills[:self.MAX_SKILLS_PER_REQUEST]
-
-    def get_all_skills_for_api(self) -> List[Dict[str, str]]:
-        """
-        Get combined list of Anthropic + custom skills.
-
-        Note: Due to Anthropic API limitation (Bug #14), total skills limited to MAX_SKILLS_PER_REQUEST.
-        Custom skills take priority if available.
-
-        Returns:
-            Complete list of skills for API (limited to MAX_SKILLS_PER_REQUEST)
-        """
-        custom_skills = self.get_skills_for_api()
-        anthropic_skills = self.get_default_anthropic_skills()
-
-        # Custom skills take priority
-        combined = custom_skills + anthropic_skills
-
-        if len(combined) > self.MAX_SKILLS_PER_REQUEST:
-            logger.warning(
-                f"Total skills ({len(combined)}) exceeds API limit ({self.MAX_SKILLS_PER_REQUEST}). "
-                f"Using: {[s.get('skill_id', 'custom') for s in combined[:self.MAX_SKILLS_PER_REQUEST]]}"
-            )
-
-        return combined[:self.MAX_SKILLS_PER_REQUEST]

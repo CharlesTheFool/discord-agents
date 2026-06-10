@@ -60,20 +60,24 @@ class AttachmentClassifier:
 
         return 'other'
 
+    # Extensions Claude reads directly as a document block (with pdf); the
+    # same set maps to text/plain for Files API / Messages API compatibility
+    PLAINTEXT_EXTENSIONS = frozenset({
+        'txt', 'md', 'csv', 'json', 'xml', 'html', 'yaml', 'yml',
+        'py', 'js', 'ts', 'java', 'cpp', 'c', 'rs', 'go', 'rb',
+        'php', 'sh', 'css', 'rtf'
+    })
+
+    IMAGE_MEDIA_TYPES = {
+        'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+        'gif': 'image/gif', 'webp': 'image/webp',
+    }
+
     @staticmethod
-    def is_supported(filename: str, supported_types: List[str]) -> bool:
-        """
-        Check if file type is in list of supported types.
-
-        Args:
-            filename: Name of the file
-            supported_types: List of supported category strings
-
-        Returns:
-            True if file's category is in supported_types
-        """
-        category = AttachmentClassifier.classify(filename)
-        return category in supported_types
+    def image_media_type(filename: str) -> str:
+        """Media type for image blocks (image/jpeg fallback - Discord's most common)."""
+        ext = AttachmentClassifier.get_extension(filename).lower()
+        return AttachmentClassifier.IMAGE_MEDIA_TYPES.get(ext, 'image/jpeg')
 
     @staticmethod
     def guess_mime_type(filename: str) -> str:
@@ -105,49 +109,7 @@ class AttachmentClassifier:
             True if file can be used as document content block
         """
         ext = AttachmentClassifier.get_extension(filename).lower()
-
-        # Document block eligible: PDF and plaintext files
-        # These can be directly viewed by Claude in conversation
-        plaintext_extensions = {
-            'txt', 'md', 'csv', 'json', 'xml', 'html', 'yaml', 'yml',
-            'py', 'js', 'ts', 'java', 'cpp', 'c', 'rs', 'go', 'rb',
-            'php', 'sh', 'css', 'rtf'
-        }
-
-        return ext == 'pdf' or ext in plaintext_extensions
-
-    @staticmethod
-    def is_plaintext_native(filename: str) -> bool:
-        """
-        Check if file is plaintext that Claude API can process natively.
-
-        These files can be:
-        - Embedded inline if <100k tokens (v0.5.0 Phase 3)
-        - Uploaded to Files API if ≥100k tokens (use code execution)
-
-        Binary/exotic files (xlsx, docx, pptx) are NOT plaintext native
-        and should always use Files API + code execution regardless of size.
-
-        Args:
-            filename: Name of the file
-
-        Returns:
-            True if file is plaintext natively processable by Claude API
-        """
-        ext = AttachmentClassifier.get_extension(filename).lower()
-
-        # Plaintext extensions Claude can process natively
-        plaintext_extensions = {
-            'txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm',
-            'yaml', 'yml', 'ini', 'cfg', 'conf', 'log', 'rtf',
-            # Code files
-            'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'cpp', 'c', 'h', 'hpp',
-            'rs', 'go', 'rb', 'php', 'sh', 'bash', 'zsh', 'fish',
-            'css', 'scss', 'sass', 'less', 'sql', 'r', 'swift', 'kt', 'scala'
-        }
-
-        # PDF is also natively processable
-        return ext == 'pdf' or ext in plaintext_extensions
+        return ext == 'pdf' or ext in AttachmentClassifier.PLAINTEXT_EXTENSIONS
 
     @staticmethod
     def get_files_api_mime_type(filename: str) -> str:
@@ -171,13 +133,7 @@ class AttachmentClassifier:
             return 'application/pdf'
 
         # All plaintext files use text/plain for Messages API compatibility
-        plaintext_extensions = {
-            'txt', 'md', 'csv', 'json', 'xml', 'html', 'yaml', 'yml',
-            'py', 'js', 'ts', 'java', 'cpp', 'c', 'rs', 'go', 'rb',
-            'php', 'sh', 'css', 'rtf'
-        }
-
-        if ext in plaintext_extensions:
+        if ext in AttachmentClassifier.PLAINTEXT_EXTENSIONS:
             return 'text/plain'
 
         # For other file types (Excel, DOCX, images, archives), use standard guess

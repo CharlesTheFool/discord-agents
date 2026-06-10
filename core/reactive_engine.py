@@ -34,7 +34,7 @@ from .unified_attachment_manager import UnifiedAttachmentManager
 from .files_api_client import FilesAPIClient
 from .data_isolation import DataIsolationEnforcer
 from .conversation_state_manager import ConversationStateManager
-from .internal_constants import TOOL_STUB_KEEP_TURNS
+from .internal_constants import TOOL_STUB_KEEP_TURNS, format_size
 from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
 from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
@@ -507,20 +507,13 @@ class ReactiveEngine:
         for msg in conversation_state.messages:
             in_context_ids.update(msg.get("attachment_ids", []))
 
-        def _size(n: int) -> str:
-            if n < 1024:
-                return f"{n} B"
-            if n < 1024 ** 2:
-                return f"{n / 1024:.1f} KB"
-            return f"{n / 1024 ** 2:.1f} MB"
-
         lines = [
             "<attachments_index>",
             "Recent attachments in this channel (newest first):",
         ]
         for att_id, filename, size_bytes, att_type in rows:
             marker = "in context" if att_id in in_context_ids else "not in context"
-            lines.append(f"- {att_id} | {filename} | {_size(size_bytes or 0)} | {att_type} | {marker}")
+            lines.append(f"- {att_id} | {filename} | {format_size(size_bytes)} | {att_type} | {marker}")
         lines += [
             "",
             "Retrieve any 'not in context' file with the discord tool: get_attachment + attachment_id.",

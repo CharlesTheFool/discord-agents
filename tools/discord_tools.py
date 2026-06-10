@@ -9,6 +9,8 @@ Provides Claude with tools to:
 
 import logging
 from typing import List, Dict, Optional, TYPE_CHECKING
+
+from core.internal_constants import format_size
 from datetime import datetime, timedelta
 
 if TYPE_CHECKING:
@@ -379,13 +381,7 @@ class DiscordToolExecutor:
             server_id = row["server_id"]
             uploaded_at = row["uploaded_at"]
 
-            # Format size
-            if size_bytes < 1024:
-                size_str = f"{size_bytes}B"
-            elif size_bytes < 1024 * 1024:
-                size_str = f"{size_bytes / 1024:.1f}KB"
-            else:
-                size_str = f"{size_bytes / (1024 * 1024):.1f}MB"
+            size_str = format_size(size_bytes)
 
             # Retrieve attachment from storage
             attachment_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
@@ -495,13 +491,7 @@ class DiscordToolExecutor:
                 size_bytes = row["size_bytes"]
                 message_id = row["message_id"]
 
-                # Format size
-                if size_bytes < 1024:
-                    size_str = f"{size_bytes}B"
-                elif size_bytes < 1024 * 1024:
-                    size_str = f"{size_bytes / 1024:.1f}KB"
-                else:
-                    size_str = f"{size_bytes / (1024 * 1024):.1f}MB"
+                size_str = format_size(size_bytes)
 
                 # Format line with message_id for context lookup
                 line = f"- {filename} ({size_str}, type: {attachment_type}, ID: {attachment_id}, from message: {message_id})"

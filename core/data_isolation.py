@@ -137,44 +137,6 @@ class DataIsolationEnforcer:
 
         return scope
 
-    def validate_discord_tool_access(
-        self,
-        target_channel_id: str,
-        target_server_id: str,
-        current_server_id: str,
-        current_channel_id: str
-    ) -> tuple[bool, Optional[str]]:
-        """
-        Validate if Discord tool can access the target channel/server.
-
-        Args:
-            target_channel_id: Channel being accessed
-            target_server_id: Server of target channel
-            current_server_id: Current server/guild ID
-            current_channel_id: Current channel ID
-
-        Returns:
-            Tuple of (is_allowed, reason_if_denied)
-        """
-        if not self.config.enabled:
-            return True, None
-
-        if self.config.discord_tools_scope == "global":
-            return True, None
-
-        elif self.config.discord_tools_scope == "server":
-            if target_server_id != current_server_id:
-                return False, "Discord tools restricted to current server only"
-            return True, None
-
-        elif self.config.discord_tools_scope == "channel":
-            if target_channel_id != current_channel_id:
-                return False, "Discord tools restricted to current channel only"
-            return True, None
-
-        # Default: allow
-        return True, None
-
     def get_transparency_message(self) -> str:
         """
         Generate a transparency message explaining current access scope.

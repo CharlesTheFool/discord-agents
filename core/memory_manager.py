@@ -58,6 +58,10 @@ class MemoryManager:
 
         return data
 
+    def resolve_path(self, path: str):
+        """Filesystem path for a /memories/{bot_id}/... virtual path."""
+        return self.base_path / path.replace(f"/memories/{self.bot_id}/", "")
+
     async def write_followups(self, server_id: str, data: dict):
         """
         System-level write for follow-up completion/cleanup.
@@ -66,8 +70,7 @@ class MemoryManager:
         Claude creates follow-ups via memory tool.
         """
         path = self.get_followups_path(server_id)
-        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
-        file_path = self.base_path / relative_path
+        file_path = self.resolve_path(path)
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -112,8 +115,7 @@ class MemoryManager:
     async def write_engagement_stats(self, server_id: str, channel_id: str, data: dict):
         """System-level write for engagement tracking"""
         path = self.get_channel_stats_path(server_id, channel_id)
-        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
-        file_path = self.base_path / relative_path
+        file_path = self.resolve_path(path)
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -128,8 +130,7 @@ class MemoryManager:
     async def read(self, path: str) -> Optional[str]:
         """Read memory file, returning None if not found"""
         # Convert memory tool path to filesystem path
-        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
-        file_path = self.base_path / relative_path
+        file_path = self.resolve_path(path)
 
         if not file_path.exists():
             logger.debug(f"Memory file not found: {path}")
@@ -151,8 +152,7 @@ class MemoryManager:
 
         Claude writes via the memory tool; this is for framework-owned files.
         """
-        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
-        file_path = self.base_path / relative_path
+        file_path = self.resolve_path(path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)

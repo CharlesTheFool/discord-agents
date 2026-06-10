@@ -145,32 +145,3 @@ class FilesAPIClient:
         except Exception as e:
             logger.error(f"Failed to download content for file {file_id}: {e}")
             return None
-
-    async def list_files(self) -> List[Dict]:
-        """
-        List all files in Anthropic Files API.
-
-        Returns:
-            List of dicts with file metadata
-            Empty list if listing fails
-        """
-        try:
-            response = await self.anthropic_client.beta.files.list()
-
-            files = [
-                {
-                    "file_id": file.id,
-                    "filename": file.filename,
-                    "size_bytes": file.size_bytes,
-                    "mime_type": file.mime_type,
-                    "created_at": file.created_at
-                }
-                for file in response.data
-            ]
-
-            logger.info(f"Listed {len(files)} files")
-            return files
-
-        except Exception as e:
-            logger.error(f"Failed to list files: {e}")
-            return []

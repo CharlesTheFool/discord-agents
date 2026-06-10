@@ -16,8 +16,8 @@ from anthropic import AsyncAnthropic
 from core.files_api_client import FilesAPIClient
 from core.local_storage_manager import LocalStorageManager
 from core.attachment_classifier import AttachmentClassifier
+from core.internal_constants import format_size
 from core.attachment_database import AttachmentDatabase
-from core.quota_manager import QuotaManager
 from tools.image_processor import ImageProcessor
 
 if TYPE_CHECKING:
@@ -91,9 +91,8 @@ class UnifiedAttachmentManager:
         )
         self.image_processor = ImageProcessor()
 
-        # Database and quota tracking
+        # Database
         self.attachment_db = AttachmentDatabase(message_memory._db)
-        self.quota_manager = QuotaManager(self.attachment_db)
 
         # Per-attachment locks: concurrent processing of the same attachment
         # must not race the file_id check past each other (duplicate uploads)
@@ -699,7 +698,7 @@ class UnifiedAttachmentManager:
 
             logger.info(
                 f"Stored attachment record: {filename} "
-                f"(type={attachment_type}, size={self.quota_manager.format_size(size_bytes)})"
+                f"(type={attachment_type}, size={format_size(size_bytes)})"
             )
 
         except Exception as e:

@@ -8,7 +8,6 @@ See internal_constants.py for hardcoded implementation details.
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 import yaml
@@ -16,71 +15,18 @@ import os
 import logging
 
 from core.internal_constants import (
-    COOLDOWN_PRESETS,
     RATE_LIMIT_PRESETS,
     PROACTIVE_INTENSITY_PRESETS,
-    API_MIN_DELAY_SECONDS,
-    API_MAX_CONCURRENT,
     ENGAGEMENT_TRACKING_DELAY_SECONDS,
     IGNORE_THRESHOLD,
-    LOG_MAX_SIZE_MB,
-    LOG_BACKUP_COUNT,
     SKILLS_CACHE_FILE,
     MCP_CONFIG_FILE,
-    IMAGE_COMPRESSION_TARGET,
     WEB_SEARCH_CITATIONS_ENABLED,
     PROACTIVE_LEARNING_WINDOW_DAYS,
     PROACTIVE_ENGAGEMENT_THRESHOLD,
     PROACTIVE_MIN_PROVOCATION_GAP_HOURS,
-    FILES_API_CLEANUP_ENABLED,
-    FILES_API_CLEANUP_INTERVAL_HOURS,
-    FILES_API_MAX_AGE_HOURS,
-    LOCAL_STORAGE_PRUNING_ENABLED,
-    LOCAL_STORAGE_MAX_SIZE_GB,
-    LOCAL_STORAGE_MIN_AGE_DAYS,
     model_supports_effort,
 )
-
-
-# =============================================================================
-# ENUMS
-# =============================================================================
-
-class CooldownPreset(str, Enum):
-    """Cooldown preset options"""
-    FAST = "fast"
-    MODERATE = "moderate"
-    RELAXED = "relaxed"
-
-
-class RateLimitPreset(str, Enum):
-    """Rate limit preset options"""
-    STRICT = "strict"
-    MODERATE = "moderate"
-    PERMISSIVE = "permissive"
-    UNLIMITED = "unlimited"
-
-
-class ProactiveIntensity(str, Enum):
-    """Proactive engagement intensity options"""
-    GENTLE = "gentle"
-    MODERATE = "moderate"
-    ACTIVE = "active"
-
-
-class DataIsolationMode(str, Enum):
-    """Data isolation mode options"""
-    OFF = "off"
-    SERVER = "server"
-    CHANNEL = "channel"
-
-
-class ReactionUsage(str, Enum):
-    """Reaction usage frequency options"""
-    NEVER = "never"
-    RARE = "rare"
-    MODERATE = "moderate"
-    FREQUENT = "frequent"
 
 
 # =============================================================================
@@ -100,17 +46,8 @@ class ReactiveConfig:
     """Reactive engine configuration"""
     enabled: bool = True
     always_respond_to_mentions: bool = True  # Guaranteed response to @mentions
-    cooldown: str = "moderate"  # fast | moderate | relaxed
     rate_limit: str = "moderate"  # strict | moderate | permissive | unlimited
     check_interval_seconds: int = 60  # Periodic check interval
-
-    def get_cooldown_values(self):
-        """Get actual cooldown values from preset"""
-        preset_name = self.cooldown.lower()
-        if preset_name not in COOLDOWN_PRESETS:
-            logging.warning(f"Unknown cooldown preset '{preset_name}', using 'moderate'")
-            preset_name = "moderate"
-        return COOLDOWN_PRESETS[preset_name]
 
     def get_rate_limit_values(self):
         """Get actual rate limit values from preset"""
@@ -188,13 +125,6 @@ class APIConfig:
 
 
 @dataclass
-class ImagesConfig:
-    """Image processing configuration"""
-    enabled: bool = False
-    max_per_message: int = 5
-
-
-@dataclass
 class MCPConfig:
     """MCP (Model Context Protocol) server configuration"""
     enabled: bool = False
@@ -239,9 +169,7 @@ class DataIsolationConfig:
     enabled: bool = False
     default_mode: str = "permissive"
     memory_scope: str = "global"
-    allow_cross_server_memory: bool = True
     search_scope: str = "global"
-    allow_cross_channel_search: bool = True
     discord_tools_scope: str = "global"
 
 
@@ -255,8 +183,6 @@ class DiscordConfig:
     allow_bot_interactions: bool = False  # Allow responding to other bots
     backfill_enabled: bool = True
     backfill_days: int = 30  # 0 = unlimited
-    backfill_in_background: bool = True  # Run backfill in background task
-    backfill_unlimited: bool = False  # No limit on backfill days
 
 
 @dataclass
@@ -276,7 +202,6 @@ class BotConfig:
     reactive: ReactiveConfig = field(default_factory=ReactiveConfig)
     agentic: AgenticConfig = field(default_factory=AgenticConfig)
     api: APIConfig = field(default_factory=APIConfig)
-    images: ImagesConfig = field(default_factory=ImagesConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     # v0.5.0+ features
@@ -404,8 +329,8 @@ class BotConfig:
         reactive = ReactiveConfig(
             enabled=reactive_data.get("enabled", True),
             always_respond_to_mentions=reactive_data.get("always_respond_to_mentions", True),
-            cooldown=reactive_data.get("cooldown", "moderate"),
             rate_limit=reactive_data.get("rate_limit", "moderate"),
+            check_interval_seconds=reactive_data.get("check_interval_seconds", 60),
         )
 
         # Parse agentic config
@@ -471,13 +396,6 @@ class BotConfig:
             code_execution=code_execution,
         )
 
-        # Parse images config
-        images_data = data.get("images", {})
-        images = ImagesConfig(
-            enabled=images_data.get("enabled", False),
-            max_per_message=images_data.get("max_per_message", 5),
-        )
-
         # Parse logging config
         logging_data = data.get("logging", {})
         logging_config = LoggingConfig(
@@ -535,7 +453,6 @@ class BotConfig:
             reactive=reactive,
             agentic=agentic,
             api=api,
-            images=images,
             logging=logging_config,
             mcp=mcp,
             skills=skills,
@@ -601,12 +518,6 @@ class BotConfig:
             )
 
         # Validate presets
-        if self.reactive.cooldown.lower() not in COOLDOWN_PRESETS:
-            errors.append(
-                f"reactive.cooldown must be one of {list(COOLDOWN_PRESETS.keys())}, "
-                f"got '{self.reactive.cooldown}'"
-            )
-
         if self.reactive.rate_limit.lower() not in RATE_LIMIT_PRESETS:
             errors.append(
                 f"reactive.rate_limit must be one of {list(RATE_LIMIT_PRESETS.keys())}, "
@@ -647,13 +558,6 @@ class BotConfig:
     # HELPER METHODS FOR ACCESSING INTERNAL CONSTANTS
     # =========================================================================
 
-    def get_throttling_config(self):
-        """Get internal throttling configuration"""
-        return {
-            "min_delay_seconds": API_MIN_DELAY_SECONDS,
-            "max_concurrent": API_MAX_CONCURRENT,
-        }
-
     def get_rate_limiting_config(self):
         """Get rate limiting configuration from preset"""
         preset = self.reactive.get_rate_limit_values()
@@ -670,15 +574,6 @@ class BotConfig:
             "engagement_tracking_delay": ENGAGEMENT_TRACKING_DELAY_SECONDS,
         }
 
-    def get_logging_config(self):
-        """Get full logging configuration with internal values"""
-        return {
-            "level": self.logging.level,
-            "file": self.logging.file,
-            "max_size_mb": LOG_MAX_SIZE_MB,
-            "backup_count": LOG_BACKUP_COUNT,
-        }
-
     def get_skills_config(self):
         """Get full skills configuration with internal values"""
         return {
@@ -693,14 +588,6 @@ class BotConfig:
         return {
             "enabled": self.mcp.enabled,
             "config_file": MCP_CONFIG_FILE,
-        }
-
-    def get_images_config(self):
-        """Get full images configuration with internal values"""
-        return {
-            "enabled": self.images.enabled,
-            "max_per_message": self.images.max_per_message,
-            "compression_target": IMAGE_COMPRESSION_TARGET,
         }
 
     def get_web_search_config(self):
@@ -726,25 +613,6 @@ class BotConfig:
             "allowed_channels": self.agentic.proactive.allowed_channels,
         }
 
-    def get_attachments_config(self):
-        """Get full attachments configuration with internal values"""
-        return {
-            "enabled": self.attachments.enabled,
-            "local_storage": {
-                "base_path": "persistence/attachments",
-                "pruning_enabled": LOCAL_STORAGE_PRUNING_ENABLED,
-                "max_size_gb": LOCAL_STORAGE_MAX_SIZE_GB,
-                "min_age_days": LOCAL_STORAGE_MIN_AGE_DAYS,
-            },
-            "files_api": {
-                "cleanup_enabled": FILES_API_CLEANUP_ENABLED,
-                "cleanup_interval_hours": FILES_API_CLEANUP_INTERVAL_HOURS,
-                "max_age_hours": FILES_API_MAX_AGE_HOURS,
-            },
-            "backfill_enabled": self.attachments.backfill_enabled,
-            "backfill_days": self.attachments.backfill_days,
-        }
-
     def get_data_isolation_config(self) -> DataIsolationConfig:
         """Get data isolation configuration expanded from mode"""
         mode = self.data_isolation.lower()
@@ -753,9 +621,7 @@ class BotConfig:
                 enabled=False,
                 default_mode="permissive",
                 memory_scope="global",
-                allow_cross_server_memory=True,
                 search_scope="global",
-                allow_cross_channel_search=True,
                 discord_tools_scope="global",
             )
         elif mode == "server":
@@ -763,9 +629,7 @@ class BotConfig:
                 enabled=True,
                 default_mode="server",
                 memory_scope="server",
-                allow_cross_server_memory=False,
                 search_scope="server",
-                allow_cross_channel_search=True,
                 discord_tools_scope="server",
             )
         else:  # channel
@@ -773,8 +637,6 @@ class BotConfig:
                 enabled=True,
                 default_mode="channel",
                 memory_scope="channel",
-                allow_cross_server_memory=False,
                 search_scope="channel",
-                allow_cross_channel_search=False,
                 discord_tools_scope="channel",
             )

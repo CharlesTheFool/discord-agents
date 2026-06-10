@@ -292,20 +292,12 @@ class DiscordClient(discord.Client):
             self.agentic_engine._task = self._track_task(self.agentic_engine.agentic_loop())
             logger.info("Agentic loop started")
 
-        # Backfill historical messages if enabled
+        # Backfill historical messages if enabled (always in background -
+        # blocking the gateway on startup is never right)
         if self.config.discord.backfill_enabled:
-            if self.config.discord.backfill_in_background:
-                # Run in background - don't block bot startup
-                self._track_task(self.backfill_message_history(
-                    days_back=self.config.discord.backfill_days,
-                    unlimited=self.config.discord.backfill_unlimited
-                ))
-            else:
-                # Block until backfill completes
-                await self.backfill_message_history(
-                    days_back=self.config.discord.backfill_days,
-                    unlimited=self.config.discord.backfill_unlimited
-                )
+            self._track_task(self.backfill_message_history(
+                days_back=self.config.discord.backfill_days,
+            ))
 
             # Initialize memory structure with skeleton files (v0.5.0)
             try:
@@ -451,8 +443,7 @@ class DiscordClient(discord.Client):
                 try:
                     total = await self.backfill_message_history(
                         days_back=self.config.discord.backfill_days,
-                        unlimited=self.config.discord.backfill_unlimited
-                    )
+                        )
                     complete_msg = f"Reindex complete! Updated {total} messages.\n*Note: If you edited messages during reindex, run again to catch them.*"
                     await message.channel.send(complete_msg)
                     logger.info(f"Sent Discord message: {complete_msg[:80]}...")
@@ -576,7 +567,7 @@ class DiscordClient(discord.Client):
         """Bot removed from server"""
         logger.info(f"Removed from server: {guild.name} (ID: {guild.id})")
 
-    async def backfill_message_history(self, days_back: int = 30, unlimited: bool = False):
+    async def backfill_message_history(self, days_back: int = 30):
         """
         Fetch and index historical messages from accessible channels.
 
@@ -584,13 +575,13 @@ class DiscordClient(discord.Client):
         powerful search capabilities beyond current session.
 
         Args:
-            days_back: Number of days of history to fetch (default: 30, ignored if unlimited=True)
-            unlimited: If True, fetch ALL message history (ignores days_back)
+            days_back: Number of days of history to fetch; 0 = unlimited
+                       (all accessible history)
         """
         from datetime import datetime, timedelta
 
-        if unlimited:
-            logger.info(f"Starting UNLIMITED message history backfill (all accessible history)...")
+        if days_back <= 0:
+            logger.info("Starting UNLIMITED message history backfill (all accessible history)...")
             cutoff = None
         else:
             logger.info(f"Starting message history backfill ({days_back} days)...")
@@ -712,10 +703,7 @@ class DiscordClient(discord.Client):
             user_id = message.author.name  # Use username for readable filenames
             memory_path = self.reactive_engine.memory_manager.get_user_profile_path(server_id, user_id)
 
-            # Convert memory path to filesystem path
-            from pathlib import Path
-            relative_path = memory_path.replace(f"/memories/{self.config.bot_id}/", "")
-            file_path = Path(f"memories/{self.config.bot_id}") / relative_path
+            file_path = self.reactive_engine.memory_manager.resolve_path(memory_path)
 
             # Ensure directory exists
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -796,7 +784,6 @@ class DiscordClient(discord.Client):
                 logger.info("Starting scheduled daily re-backfill...")
                 total = await self.backfill_message_history(
                     days_back=self.config.discord.backfill_days,
-                    unlimited=self.config.discord.backfill_unlimited
                 )
                 logger.info(f"Daily re-backfill complete: {total} messages indexed")
 

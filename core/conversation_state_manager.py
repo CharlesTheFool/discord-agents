@@ -229,11 +229,6 @@ class ConversationStateManager:
 
         return deleted
 
-    async def clear_cache(self) -> None:
-        """Clear in-memory cache of conversation states"""
-        self._cache.clear()
-        logger.debug("ConversationState cache cleared")
-
     async def get_stats(self) -> Dict[str, int]:
         """
         Get statistics about conversation states.
