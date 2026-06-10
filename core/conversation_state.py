@@ -12,6 +12,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from core.internal_constants import TOOL_STUB_TEXT, TOOL_STUB_MIN_CHARS
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +43,10 @@ class ConversationState:
 
         # Active skills tracking (v0.5.0 Progressive Disclosure)
         self.active_skills: List[str] = []
+
+        # Session metadata (v0.6.0 episodic sessions)
+        self.session_started_at = datetime.utcnow()
+        self.session_input_tokens = 0  # usage watermark from response.usage
 
         logger.debug(f"ConversationState initialized for channel {channel_id} (max_messages={max_messages})")
 
@@ -148,6 +154,88 @@ class ConversationState:
             )
 
         return removed_count
+
+    def record_usage(self, input_tokens: int) -> None:
+        """Record the session usage watermark from response.usage.input_tokens."""
+        if input_tokens > self.session_input_tokens:
+            self.session_input_tokens = input_tokens
+
+    def reseed(self, keep_last_discord: int) -> None:
+        """
+        Start a fresh session after the previous one was episodized.
+
+        Keeps the last N Discord messages (drops tool messages and any leading
+        assistant messages so the array starts with a user turn) and resets
+        session metadata.
+        """
+        discord_msgs = [
+            m for m in self.messages
+            if m.get("message_type", "discord_user").startswith("discord_")
+        ]
+        tail = discord_msgs[-keep_last_discord:] if keep_last_discord > 0 else []
+        while tail and tail[0]["role"] != "user":
+            tail.pop(0)
+
+        self.messages = tail
+        self.session_started_at = datetime.utcnow()
+        self.session_input_tokens = 0
+        self.last_updated = datetime.utcnow()
+        logger.info(
+            f"Session reseeded for channel {self.channel_id}: "
+            f"{len(self.messages)} messages kept"
+        )
+
+    def stub_old_tool_results(self, keep_turns: int) -> int:
+        """
+        Replace heavy tool results in turns older than the last keep_turns with
+        a one-line stub (REDESIGN: turn-scoped working memory). Idempotent.
+
+        Returns number of blocks stubbed.
+        """
+        server_result_types = {
+            "code_execution_result",
+            "bash_code_execution_tool_result",
+            "text_editor_code_execution_tool_result",
+            "web_search_tool_result",
+            "web_fetch_tool_result",
+        }
+
+        assistant_indices = [
+            i for i, m in enumerate(self.messages)
+            if m.get("message_type") == "discord_assistant"
+        ]
+        if len(assistant_indices) <= keep_turns:
+            return 0
+        # Stub through the end of the turn keep_turns+1 turns ago; the last
+        # keep_turns turns keep their tool results in full
+        cutoff = assistant_indices[-(keep_turns + 1)] + 1
+
+        def _stub_block(block) -> bool:
+            content = block.get("content")
+            if content == TOOL_STUB_TEXT:
+                return False  # already stubbed
+            if isinstance(content, str) and len(content) < TOOL_STUB_MIN_CHARS:
+                return False  # small results stay
+            block["content"] = TOOL_STUB_TEXT
+            return True
+
+        stubbed = 0
+        for msg in self.messages[:cutoff]:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            msg_type = msg.get("message_type")
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if msg_type == "tool_result" and block.get("type") == "tool_result":
+                    stubbed += _stub_block(block)
+                elif msg_type == "tool_use" and block.get("type") in server_result_types:
+                    stubbed += _stub_block(block)
+
+        if stubbed:
+            logger.info(f"Stubbed {stubbed} old tool result block(s) in channel {self.channel_id}")
+        return stubbed
 
     def get_messages_for_api(self) -> List[Dict[str, Any]]:
         """
@@ -274,7 +362,9 @@ class ConversationState:
             "messages": self.messages,
             "active_skills": self.active_skills,
             "messages_removed": self.messages_removed,
-            "last_updated": self.last_updated.isoformat()
+            "last_updated": self.last_updated.isoformat(),
+            "session_started_at": self.session_started_at.isoformat(),
+            "session_input_tokens": self.session_input_tokens,
         }
 
     @classmethod
@@ -297,6 +387,10 @@ class ConversationState:
 
         if "last_updated" in data:
             state.last_updated = datetime.fromisoformat(data["last_updated"])
+
+        if "session_started_at" in data:
+            state.session_started_at = datetime.fromisoformat(data["session_started_at"])
+        state.session_input_tokens = data.get("session_input_tokens", 0)
 
         return state
 
