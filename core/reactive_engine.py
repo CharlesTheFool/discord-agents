@@ -912,7 +912,8 @@ class ReactiveEngine:
                 logger.debug(f"  Server tool {block.name} input: {block.input}")
 
     async def _execute_tool_blocks(self, response, message: discord.Message,
-                                   conversation_state, api_params: dict):
+                                   conversation_state, api_params: dict,
+                                   container_file_ids: list = None):
         """
         Execute the client-side tool_use blocks in a response.
 
@@ -1002,7 +1003,8 @@ class ReactiveEngine:
                 if self.repository_manager:
                     logger.debug(f"Executing repository tool: {block.input.get('action', 'unknown')}")
                     result = await self.repository_manager.execute(
-                        block.input, current_server_id=server_id
+                        block.input, current_server_id=server_id,
+                        container_file_ids=container_file_ids,
                     )
                 else:
                     result = "Error: repository feature not enabled"
@@ -1073,7 +1075,8 @@ class ReactiveEngine:
             logger.debug(f"API params{log_suffix}: model={api_params.get('model')}, betas={api_params.get('betas')}")
             logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
             if 'container' in api_params:
-                logger.debug(f"  Container/Skills: {api_params.get('container')}")
+                # TEMP-DIAG (v0.6.1 live test): INFO-level container tracing
+                logger.info(f"  Iter {loop_iteration} request container: {api_params.get('container')}")
 
             try:
                 response = await self.anthropic.beta.messages.create(
@@ -1098,6 +1101,12 @@ class ReactiveEngine:
             # Multi-iteration turns must reuse the container (per Anthropic docs)
             if getattr(response, "container", None) and getattr(response.container, "id", None):
                 container_id = response.container.id
+                # TEMP-DIAG (v0.6.1 live test)
+                logger.info(f"  Iter {loop_iteration} response container: {container_id}")
+            for _b in response.content:
+                if getattr(_b, "type", "") in ("bash_code_execution_tool_result", "code_execution_tool_result"):
+                    _c = getattr(_b, "content", None)
+                    logger.info(f"  Iter {loop_iteration} code-exec stdout: {getattr(_c, 'stdout', None)!r:.300} stderr: {getattr(_c, 'stderr', None)!r:.200}")
 
             # Collect files written by code execution for Discord delivery
             result.container_file_ids.extend(collect_container_output_file_ids(response))
@@ -1129,7 +1138,8 @@ class ReactiveEngine:
                 result.tools_were_used = True
 
                 tool_results, pending_file_blocks, container_rebuilt = await self._execute_tool_blocks(
-                    response, message, conversation_state, api_params
+                    response, message, conversation_state, api_params,
+                    container_file_ids=result.container_file_ids,
                 )
 
                 # Tool results ride in the next user message; fetched file

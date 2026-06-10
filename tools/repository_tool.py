@@ -42,7 +42,7 @@ def get_repository_tool() -> dict:
                 },
                 "file_id": {
                     "type": "string",
-                    "description": "[save_output] Files API id of a code-execution output to download into the repository",
+                    "description": "[save_output] Files API id (looks like 'file_...') of a code-execution output, shown in the code execution result. NOT a container path. If this turn produced exactly one output file you can omit it.",
                 },
                 "old_path": {
                     "type": "string",

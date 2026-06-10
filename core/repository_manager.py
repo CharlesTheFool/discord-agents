@@ -215,10 +215,13 @@ class RepositoryManager:
 
     # ========== TOOL ACTIONS ==========
 
-    async def execute(self, tool_input: dict, current_server_id: str) -> str:
+    async def execute(self, tool_input: dict, current_server_id: str,
+                      container_file_ids: Optional[list] = None) -> str:
         """
         Execute a repository tool action. Always returns a string for the
         tool_result; never raises. Scans first so views match the disk.
+        container_file_ids: Files API ids of this turn's code-exec outputs,
+        used to resolve save_output when the model passes a container path.
         """
         action = tool_input.get("action", "")
         try:
@@ -231,7 +234,7 @@ class RepositoryManager:
             elif action == "save_attachment":
                 return await self._save_attachment(current_server_id, tool_input)
             elif action == "save_output":
-                return await self._save_output(current_server_id, tool_input)
+                return await self._save_output(current_server_id, tool_input, container_file_ids)
             elif action == "delete":
                 return await self._delete(current_server_id, tool_input)
             elif action == "rename":
@@ -322,16 +325,29 @@ class RepositoryManager:
         return (f"Copied {row['filename']} into your repository as {rel} "
                 f"({format_size(len(data))}). Attachment ID: {new_row['attachment_id']}")
 
-    async def _save_output(self, server_id: str, tool_input: dict) -> str:
+    async def _save_output(self, server_id: str, tool_input: dict,
+                           container_file_ids: Optional[list] = None) -> str:
         file_id = tool_input.get("file_id", "")
-        if not file_id:
-            return "Error: save_output requires 'file_id'"
+        candidates = list(dict.fromkeys(container_file_ids or []))
+
+        # The model often passes the container path ('/tmp/chart.png') instead
+        # of the Files API id - resolve unambiguously from this turn's outputs
+        if not file_id.startswith("file_"):
+            if len(candidates) == 1:
+                file_id = candidates[0]
+            else:
+                hint = (f" This turn's output file ids: {', '.join(candidates)}."
+                        if candidates else
+                        " No code-execution outputs were produced this turn.")
+                return (f"Error: save_output needs the Files API id of a code-execution "
+                        f"output (looks like 'file_...'), got {file_id!r}.{hint}")
 
         meta = await self.files_api.retrieve(file_id)
         data = await self.files_api.content(file_id)
         if not data:
+            hint = f" This turn's output file ids: {', '.join(candidates)}." if candidates else ""
             return (f"Error: Could not download {file_id}. Only files created by "
-                    f"code execution or skills are downloadable from the Files API.")
+                    f"code execution or skills are downloadable from the Files API.{hint}")
 
         default_name = (meta or {}).get("filename") or f"{file_id}.bin"
         rel_path = tool_input.get("path") or Path(default_name).name
