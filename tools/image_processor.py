@@ -73,13 +73,21 @@ class ImageProcessor:
             logger.error(f"Failed to download image: {e}")
             return None
 
+        return await self.process_bytes(attachment.filename, image_data)
+
+    async def process_bytes(self, filename: str, image_data: bytes) -> Optional[Dict]:
+        """
+        Process raw image bytes into Claude API format - same contract as
+        process_attachment, without the Discord download. Used for files that
+        never went through upload-time processing (bot repository, v0.6.1).
+        """
         # Skip compression if already small enough
-        if not self._needs_compression(image_data, attachment.size):
+        if not self._needs_compression(image_data, len(image_data)):
             return {
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": self._guess_mime_type(attachment.filename),
+                    "media_type": self._guess_mime_type(filename),
                     "data": base64.b64encode(image_data).decode()
                 }
             }

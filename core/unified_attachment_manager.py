@@ -415,6 +415,43 @@ class UnifiedAttachmentManager:
         filename = attachment_data.get("filename")
         size_bytes = attachment_data.get("size_bytes") or 0  # For large file detection
 
+        # Images always present as image blocks - a cached file_id must NOT
+        # shortcut them into the document/container route. Prefer cached
+        # base64, then on-demand processing from the local file (repository
+        # rows have no upload-time cache).
+        if attachment_type == "image":
+            if processed_base64:
+                logger.info(f"Using cached base64 for attachment {attachment_id}")
+                return {
+                    "method": "base64",
+                    "data": processed_base64,
+                    "media_type": processed_mime,
+                    "use_as_document_block": False
+                }
+            if local_path and self.local_storage.exists(local_path):
+                try:
+                    file_data = await self.local_storage.load(local_path)
+                    image_result = await self.image_processor.process_bytes(filename, file_data)
+                    if image_result:
+                        b64 = image_result["source"]["data"]
+                        mime = image_result["source"]["media_type"]
+                        await self.attachment_db.db.execute(
+                            "UPDATE attachments SET processed_base64 = ?, processed_mime = ? "
+                            "WHERE attachment_id = ?",
+                            (b64, mime, attachment_id)
+                        )
+                        await self.attachment_db.db.commit()
+                        logger.info(f"Processed image on demand: {attachment_id}")
+                        return {
+                            "method": "base64",
+                            "data": b64,
+                            "media_type": mime,
+                            "use_as_document_block": False
+                        }
+                except Exception as e:
+                    logger.error(f"On-demand image processing failed: {e}", exc_info=True)
+            # No usable local data - fall through to the generic strategies
+
         # Strategy 1: Use file_id if cached
         if file_id:
             # Check if file still exists in Files API
@@ -468,17 +505,8 @@ class UnifiedAttachmentManager:
             try:
                 file_data = await self.local_storage.load(local_path)
 
-                # For images: use cached base64
-                if attachment_type == "image" and processed_base64:
-                    logger.info(f"Using cached base64 from local storage: {attachment_id}")
-                    return {
-                        "method": "base64",
-                        "data": processed_base64,
-                        "media_type": processed_mime,
-                        "use_as_document_block": False  # Images use image blocks
-                    }
-
                 # Upload to Files API on-demand with correct MIME type
+                # (images were already handled above and never reach here)
                 mime_type = AttachmentClassifier.get_files_api_mime_type(filename)
                 upload_result = await self.files_api_client.upload(
                     filename=filename,
@@ -506,17 +534,8 @@ class UnifiedAttachmentManager:
             except Exception as e:
                 logger.error(f"Failed to load from local storage: {e}", exc_info=True)
 
-        # Strategy 3: Use cached base64 (images only)
-        if processed_base64 and attachment_type == "image":
-            logger.info(f"Using cached base64 for attachment {attachment_id}")
-            return {
-                "method": "base64",
-                "data": processed_base64,
-                "media_type": processed_mime,
-                "use_as_document_block": False  # Images use image blocks
-            }
-
-        # Strategy 4: Try Discord URL (may be expired)
+        # Strategy 3: Try Discord URL (may be expired)
+        # (cached-base64 fallback for images now lives at the top of the chain)
         if discord_url:
             logger.warning(
                 f"All cached sources failed for {attachment_id}. "
