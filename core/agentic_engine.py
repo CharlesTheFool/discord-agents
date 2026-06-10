@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from .proactive_action import ProactiveAction
 from .engagement_tracker import EngagementTracker
 from .internal_constants import AGENTIC_EFFORT
+from .memory_tool_executor import MemoryToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,14 @@ class AgenticEngine:
         self.message_memory = message_memory
         self.anthropic = anthropic_client
         self.discord_client = None  # Set after Discord client initialization
+
+        # Memory tool executor for the proactive tool loop (MemoryManager has
+        # no execute(); calling it crashed any memory tool use in this engine)
+        self.memory_tool = MemoryToolExecutor(
+            memory_base_path=Path("memories"),
+            bot_id=config.bot_id,
+            data_isolation=None,
+        )
 
         # Cache proactive config (v0.6.0 - simplified config with presets)
         self._proactive_config = config.get_proactive_config()
@@ -737,11 +746,23 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 user_parts.append("")
                 user_parts.append(memory_context)
 
+                # Inline the channel state: unprompted messages are where the
+                # bot reaches for old material, so it must SEE its used bits
+                # and settled questions, not a file path to them
+                state_path = self.memory.get_channel_context_path(server_id, action.channel_id)
+                channel_state = await self.memory.read(state_path)
+                if channel_state:
+                    from .context_builder import ContextBuilder
+                    channel_state = ContextBuilder._trim_episode_index(channel_state)
+                    user_parts.append("")
+                    user_parts.append(f"<channel_state>\n{channel_state}\n</channel_state>")
+
             user_parts.append("")
             user_parts.append(
                 "Start a brief, natural conversation. Be relevant and engaging, but don't overthink it. "
-                "If nothing genuinely invites a fresh message (stale topics, nothing new to add), "
-                "set should_send to false instead of forcing one."
+                "You know how it reads when someone re-tells their own bit or re-opens something the "
+                "group already settled - the channel state above tracks what's been covered. "
+                "If nothing genuinely invites a fresh message, set should_send to false instead of forcing one."
             )
 
             # Build API params with extended thinking and memory tool
@@ -787,7 +808,11 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                     tool_results = []
                     for content_block in response.content:
                         if content_block.type == "tool_use":
-                            result = self.memory.execute(content_block.input)
+                            result = self.memory_tool.execute(
+                                content_block.input,
+                                current_server_id=str(guild.id) if guild else None,
+                                current_channel_id=action.channel_id,
+                            )
                             tool_results.append({
                                 "type": "tool_result",
                                 "tool_use_id": content_block.id,
