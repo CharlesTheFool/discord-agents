@@ -160,3 +160,178 @@ class RepositoryManager:
             await self.files_api.delete(file_id)
         except Exception as e:
             logger.warning(f"Could not delete stale Files API copy {file_id}: {e}")
+
+    # ========== TOOL ACTIONS ==========
+
+    async def execute(self, tool_input: dict, current_server_id: str) -> str:
+        """
+        Execute a repository tool action. Always returns a string for the
+        tool_result; never raises. Scans first so views match the disk.
+        """
+        action = tool_input.get("action", "")
+        try:
+            await self.scan(current_server_id)
+
+            if action == "list":
+                return await self._list(current_server_id)
+            elif action == "save_file":
+                return await self._save_file(current_server_id, tool_input)
+            elif action == "save_attachment":
+                return await self._save_attachment(current_server_id, tool_input)
+            elif action == "save_output":
+                return await self._save_output(current_server_id, tool_input)
+            elif action == "delete":
+                return await self._delete(current_server_id, tool_input)
+            elif action == "rename":
+                return await self._rename(current_server_id, tool_input)
+            else:
+                return f"Error: Unknown repository action '{action}'"
+
+        except ValueError as e:
+            return f"Error: {e}"
+        except Exception as e:
+            logger.error(f"Repository action '{action}' failed: {e}", exc_info=True)
+            return f"Error executing repository action '{action}': {e}"
+
+    async def _row_for_path(self, server_id: str, full_path: Path):
+        async with self.db.execute(
+            "SELECT * FROM attachments WHERE channel_id = ? AND server_id = ? AND local_path = ?",
+            (self.SENTINEL, server_id, str(full_path.resolve())),
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def _list(self, server_id: str) -> str:
+        async with self.db.execute(
+            "SELECT attachment_id, filename, size_bytes, attachment_type, local_path "
+            "FROM attachments WHERE channel_id = ? AND server_id = ? ORDER BY local_path",
+            (self.SENTINEL, server_id),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return ("Repository is empty. Save files with save_file, save_attachment "
+                    "or save_output - or the user can drop files into the folder directly.")
+
+        lines = [f"Repository contents ({len(rows)} file(s)):"]
+        for row in rows:
+            rel = self._relpath(server_id, row["local_path"])
+            lines.append(
+                f"- {rel} | {format_size(row['size_bytes'])} | "
+                f"{row['attachment_type']} | {row['attachment_id']}"
+            )
+        lines.append("\nRetrieve any file with the discord tool: get_attachment + attachment_id.")
+        return "\n".join(lines)
+
+    async def _save_file(self, server_id: str, tool_input: dict) -> str:
+        rel_path = tool_input.get("path", "")
+        content = tool_input.get("content")
+        if not rel_path or content is None:
+            return "Error: save_file requires 'path' and 'content'"
+
+        full = self._resolve(server_id, rel_path)
+        full.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(full, "w", encoding="utf-8") as f:
+            await f.write(content)
+
+        await self.scan(server_id)  # registers new / refreshes existing row
+        row = await self._row_for_path(server_id, full)
+        rel = self._relpath(server_id, str(full))
+        return (f"Saved {rel} ({format_size(len(content.encode('utf-8')))}) "
+                f"to your repository. Attachment ID: {row['attachment_id']}")
+
+    async def _save_attachment(self, server_id: str, tool_input: dict) -> str:
+        source_id = tool_input.get("attachment_id", "")
+        if not source_id:
+            return "Error: save_attachment requires 'attachment_id'"
+
+        async with self.db.execute(
+            "SELECT filename, local_path FROM attachments WHERE attachment_id = ?",
+            (source_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            return f"Error: Attachment {source_id} not found"
+        if not row["local_path"] or not Path(row["local_path"]).exists():
+            return (f"Error: Attachment {source_id} has no local copy to import "
+                    f"(try get_attachment first, or the file is metadata-only)")
+
+        rel_path = tool_input.get("path") or Path(row["filename"]).name
+        full = self._resolve(server_id, rel_path)
+        full.parent.mkdir(parents=True, exist_ok=True)
+
+        async with aiofiles.open(row["local_path"], "rb") as src:
+            data = await src.read()
+        async with aiofiles.open(full, "wb") as dst:
+            await dst.write(data)
+
+        await self.scan(server_id)
+        new_row = await self._row_for_path(server_id, full)
+        rel = self._relpath(server_id, str(full))
+        return (f"Copied {row['filename']} into your repository as {rel} "
+                f"({format_size(len(data))}). Attachment ID: {new_row['attachment_id']}")
+
+    async def _save_output(self, server_id: str, tool_input: dict) -> str:
+        file_id = tool_input.get("file_id", "")
+        if not file_id:
+            return "Error: save_output requires 'file_id'"
+
+        meta = await self.files_api.retrieve(file_id)
+        data = await self.files_api.content(file_id)
+        if not data:
+            return (f"Error: Could not download {file_id}. Only files created by "
+                    f"code execution or skills are downloadable from the Files API.")
+
+        default_name = (meta or {}).get("filename") or f"{file_id}.bin"
+        rel_path = tool_input.get("path") or Path(default_name).name
+        full = self._resolve(server_id, rel_path)
+        full.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(full, "wb") as f:
+            await f.write(data)
+
+        await self.scan(server_id)
+        new_row = await self._row_for_path(server_id, full)
+        rel = self._relpath(server_id, str(full))
+        return (f"Saved container output to your repository as {rel} "
+                f"({format_size(len(data))}). Attachment ID: {new_row['attachment_id']}")
+
+    async def _delete(self, server_id: str, tool_input: dict) -> str:
+        rel_path = tool_input.get("path", "")
+        if not rel_path:
+            return "Error: delete requires 'path'"
+
+        full = self._resolve(server_id, rel_path)
+        if not full.is_file():
+            return f"Error: No repository file at {rel_path!r}"
+
+        row = await self._row_for_path(server_id, full)
+        full.unlink()
+        if row:
+            await self._deregister(row["attachment_id"], row["file_id"])
+            await self.db.commit()
+        rel = self._relpath(server_id, str(full))
+        return f"Deleted {rel} from your repository."
+
+    async def _rename(self, server_id: str, tool_input: dict) -> str:
+        old_rel = tool_input.get("old_path", "")
+        new_rel = tool_input.get("new_path", "")
+        if not old_rel or not new_rel:
+            return "Error: rename requires 'old_path' and 'new_path'"
+
+        old_full = self._resolve(server_id, old_rel)
+        new_full = self._resolve(server_id, new_rel)
+        if not old_full.is_file():
+            return f"Error: No repository file at {old_rel!r}"
+        if new_full.exists():
+            return f"Error: Destination already exists: {new_rel!r}"
+
+        row = await self._row_for_path(server_id, old_full)
+        new_full.parent.mkdir(parents=True, exist_ok=True)
+        old_full.rename(new_full)
+
+        if row:  # identity survives a bot-initiated rename
+            await self.db.execute(
+                "UPDATE attachments SET local_path = ?, filename = ? WHERE attachment_id = ?",
+                (str(new_full.resolve()), new_full.name, row["attachment_id"]),
+            )
+            await self.db.commit()
+        return f"Renamed {old_rel} to {self._relpath(server_id, str(new_full))}."
