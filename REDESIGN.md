@@ -23,8 +23,13 @@ Facts a new session must know:
   `docs/archive/v0.5.0-dev/`. They describe machinery this redesign deletes; read for history
   only.
 - Local test instrumentation: stdio discord-mcp configured in `.mcp.json` (gitignored; the bot
-  token that sat in it should be ROTATED). The official Claude Code Discord plugin does NOT
-  replace it (it's an inbound chat channel, not an automation surface).
+  token that sat in it should be ROTATED — and `.mcp.json` updated when it is). The official
+  Claude Code Discord plugin does NOT replace it (inbound chat channel, not automation).
+  The server is [GustyCube/discord-mcp](https://github.com/GustyCube/discord-mcp), installed
+  at `C:\Users\charl\mcp\discord-mcp`. It went missing once (dir deleted) and was reinstalled
+  2026-06-09; if lost again: `git clone https://github.com/GustyCube/discord-mcp
+  C:\Users\charl\mcp\discord-mcp && cd ... && npm install` (build runs via `prepare`).
+  Verified working: MCP stdio handshake OK, tools served, bot token valid as of 2026-06-09.
 
 ## 2. Context architecture: EPISODIC SESSIONS (the core redesign)
 
