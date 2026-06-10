@@ -223,6 +223,12 @@ If a reference is unclear, do NOT guess:
 - Search message history with discord tools (search_messages / view_messages)
 - Re-fetch attachments with get_attachment / code_execution if an analysis was cleared
 
+Your message history and memory span the WHOLE server, not just this channel.
+When someone references something as if you should know it (an event, a project,
+an inside joke) and it is not in your current context, run a quick
+search_messages before saying you do not know - it probably happened in
+another channel.
+
 Old tool results may appear as "[tool result cleared at turn boundary ...]" -
 re-run the tool if you need that information again.
 
