@@ -36,6 +36,10 @@ class MemoryManager:
         """Standard path for channel context memory file"""
         return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}.md"
 
+    def get_episodes_dir_path(self, server_id: str, channel_id: str) -> str:
+        """Standard path for a channel's episode directory"""
+        return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}/episodes"
+
     def get_server_culture_path(self, server_id: str) -> str:
         """Standard path for server culture/overview memory file"""
         return f"/memories/{self.bot_id}/servers/{server_id}/culture.md"
@@ -133,7 +137,7 @@ class MemoryManager:
             return None
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
             logger.debug(f"Read memory file: {path} ({len(content)} chars)")
             return content
@@ -141,6 +145,19 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"Error reading memory file {path}: {e}")
             return None
+
+    async def write(self, path: str, content: str) -> None:
+        """
+        System-level write of a memory file (used by the episodizer).
+
+        Claude writes via the memory tool; this is for framework-owned files.
+        """
+        relative_path = path.replace(f"/memories/{self.bot_id}/", "")
+        file_path = self.base_path / relative_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        logger.debug(f"Wrote memory file {path}")
 
     async def read_json(self, path: str) -> Optional[dict]:
         """Read and parse JSON memory file, returning None if not found/invalid"""
