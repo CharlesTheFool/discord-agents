@@ -508,16 +508,26 @@ class DiscordClient(discord.Client):
         except Exception as e:
             logger.error(f"[EDIT EVENT] Error updating edited message: {e}", exc_info=True)
 
-    async def on_message_delete(self, message: discord.Message):
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
         """
         Message deleted - remove from storage to maintain accuracy.
 
-        Args:
-            message: Deleted message
+        Raw event: fires for ALL deletions, unlike on_message_delete which
+        only covers messages still in discord.py's in-process cache (anything
+        older than the current process would silently stay re-surfaceable).
         """
+        await self._purge_deleted_message(payload.message_id)
+
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent):
+        """Bulk deletions (mod sweeps) get the same purge per message."""
+        for message_id in payload.message_ids:
+            await self._purge_deleted_message(message_id)
+
+    async def _purge_deleted_message(self, message_id: int):
+        """Remove a deleted message from storage and the attachment pipeline."""
         try:
-            await self.message_memory.delete_message(message.id)
-            logger.debug(f"Deleted message {message.id} from storage")
+            await self.message_memory.delete_message(message_id)
+            logger.info(f"Deleted message {message_id} from storage")
         except Exception as e:
             logger.error(f"Error deleting message from storage: {e}")
 
@@ -525,7 +535,7 @@ class DiscordClient(discord.Client):
         # attachment pipeline (local copy, Files API upload, index rows)
         if self.reactive_engine and self.reactive_engine.attachment_manager:
             try:
-                await self.reactive_engine.attachment_manager.delete_attachments_for_message(message.id)
+                await self.reactive_engine.attachment_manager.delete_attachments_for_message(message_id)
             except Exception as e:
                 logger.error(f"Error purging attachments for deleted message: {e}")
 

@@ -120,14 +120,15 @@ class ContextBuilder:
             bot_display_name = message.guild.me.display_name
 
         # Build date/time awareness context in server timezone. Everything
-        # per-message (time, channel, speaker) lives in this UNCACHED block -
-        # the big system prefix must stay byte-stable for prompt caching.
+        # per-message (time, channel, speaker) is volatile context - it rides
+        # the uncached request tail, never the cached system prefix.
         server_tz = pytz.timezone(self.config.discord.timezone)
         current_time_obj = datetime.utcnow().replace(tzinfo=pytz.UTC).astimezone(server_tz)
         current_time = current_time_obj.strftime('%Y-%m-%d %H:%M %Z')
+        channel_name = getattr(message.channel, "name", None)  # DMs have no name
         date_context = (
             f"Current server date/time: {current_time}\n"
-            f"Current channel ID: {message.channel.id}\n"
+            f"Current channel: {f'#{channel_name} ' if channel_name else ''}(ID: {message.channel.id})\n"
             f"Triggering message from: {message.author.display_name} "
             f"(user ID: {message.author.id})"
         )

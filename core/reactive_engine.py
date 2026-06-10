@@ -1048,8 +1048,12 @@ class ReactiveEngine:
             self._log_response_blocks(response, log_suffix)
 
             if loop_iteration == 1 and result.usage is not None:
-                logger.info(f"Input tokens: {total_input_tokens(result.usage):,} "
-                            f"(uncached: {result.usage.input_tokens:,})")
+                logger.info(
+                    f"Input tokens: {total_input_tokens(result.usage):,} "
+                    f"(uncached: {result.usage.input_tokens:,}, "
+                    f"cache_read: {getattr(result.usage, 'cache_read_input_tokens', 0) or 0:,}, "
+                    f"cache_write: {getattr(result.usage, 'cache_creation_input_tokens', 0) or 0:,})"
+                )
 
             # Extract thinking (full block kept for persistence with signature)
             for block in response.content:
