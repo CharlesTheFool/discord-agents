@@ -394,93 +394,58 @@ class ReactiveEngine:
 
     async def _generate_uploaded_files_manifest(self, conversation_state) -> str:
         """
-        Generate manifest of uploaded files currently in context (v0.5.0 Phase 8).
+        Attachment index for the system prompt (v0.6.0 Phase 4).
 
-        Shows Claude what Files API files are available with metadata:
-        filename, size, estimated tokens, processing method.
-
-        Args:
-            conversation_state: ConversationState instance
-
-        Returns:
-            XML formatted manifest string, or empty string if no files
+        A slim index of recent channel attachments - IDs plus one-liners -
+        rather than a mirror of pinned content blocks. Survives session
+        reseeds: anything "not in context" is retrievable via get_attachment.
         """
-        # Collect (attachment_id, block_type) for document/container_upload blocks,
-        # pairing each message's attachment_ids annotation with its blocks in order
-        # (same pairing order as ConversationState.add_message).
-        file_items = []
-        for msg in conversation_state.messages:
-            attachment_ids = msg.get("attachment_ids")
-            content = msg.get("content")
-            if not attachment_ids or not isinstance(content, list):
-                continue
-            attachment_idx = 0
-            for block in content:
-                block_type = block.get("type") if isinstance(block, dict) else None
-                if block_type in ("document", "container_upload", "image"):
-                    if attachment_idx < len(attachment_ids):
-                        if block_type in ("document", "container_upload"):
-                            file_items.append((attachment_ids[attachment_idx], block_type))
-                        attachment_idx += 1
-
-        if not file_items:
+        if not (self.attachment_manager and self.attachment_manager.attachment_db):
             return ""
 
-        # Build manifest
-        manifest_lines = [
-            "<uploaded_files>",
-            "Files currently available via Files API:",
-            "",
-            "Note: Files marked as 'container_upload' are accessible in code execution via:",
-            "  1. Check INPUT_DIR environment variable: `input_dir = os.environ.get('INPUT_DIR')`",
-            "  2. Files are located at: `{input_dir}/filename`",
-            "  3. Fallback search: `find / -name \"filename\" 2>/dev/null`",
-            "  4. IMPORTANT: Files are EPHEMERAL - read immediately in same code execution turn",
-            ""
+        try:
+            async with self.attachment_manager.attachment_db.db.execute(
+                """
+                SELECT attachment_id, filename, size_bytes, attachment_type
+                FROM attachments WHERE channel_id = ?
+                ORDER BY CAST(attachment_id AS INTEGER) DESC LIMIT 15
+                """,
+                (conversation_state.channel_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        except Exception as e:
+            logger.warning(f"Failed to query attachment index: {e}")
+            return ""
+
+        if not rows:
+            return ""
+
+        in_context_ids = set()
+        for msg in conversation_state.messages:
+            in_context_ids.update(msg.get("attachment_ids", []))
+
+        def _size(n: int) -> str:
+            if n < 1024:
+                return f"{n} B"
+            if n < 1024 ** 2:
+                return f"{n / 1024:.1f} KB"
+            return f"{n / 1024 ** 2:.1f} MB"
+
+        lines = [
+            "<attachments_index>",
+            "Recent attachments in this channel (newest first):",
         ]
-
-        for attachment_id, block_type in file_items:
-            filename = f"file_{attachment_id}"
-
-            if block_type == "document":
-                access_method = "document block (Claude reads directly)"
-            else:
-                # Bug #8 fix: Use INPUT_DIR env var, not hardcoded /tmp/uploads/
-                access_method = "container_upload (code execution - use INPUT_DIR env var)"
-
-            # Query attachment database for metadata
-            if self.attachment_manager and self.attachment_manager.attachment_db:
-                try:
-                    async with self.attachment_manager.attachment_db.db.execute(
-                        "SELECT filename, size_bytes, attachment_type FROM attachments WHERE attachment_id = ?",
-                        (attachment_id,)
-                    ) as cursor:
-                        row = await cursor.fetchone()
-                        if row:
-                            filename, size_bytes, _ = row
-
-                            # Format file size
-                            if size_bytes < 1024:
-                                size_str = f"{size_bytes} B"
-                            elif size_bytes < 1024**2:
-                                size_str = f"{size_bytes/1024:.1f} KB"
-                            elif size_bytes < 1024**3:
-                                size_str = f"{size_bytes/1024**2:.1f} MB"
-                            else:
-                                size_str = f"{size_bytes/1024**3:.2f} GB"
-
-                            manifest_lines.append(
-                                f"- {filename} ({size_str}, access: {access_method})"
-                            )
-                            continue
-                except Exception as e:
-                    logger.warning(f"Failed to query attachment metadata for {attachment_id}: {e}")
-
-            manifest_lines.append(f"- {filename} (access: {access_method})")
-
-        manifest_lines.append("</uploaded_files>")
-
-        return "\n".join(manifest_lines)
+        for att_id, filename, size_bytes, att_type in rows:
+            marker = "in context" if att_id in in_context_ids else "not in context"
+            lines.append(f"- {att_id} | {filename} | {_size(size_bytes or 0)} | {att_type} | {marker}")
+        lines += [
+            "",
+            "Retrieve any 'not in context' file with the discord tool: get_attachment + attachment_id.",
+            "Spreadsheets and large files are processed via code execution; container files are",
+            "mounted at the INPUT_DIR env var and are EPHEMERAL - read them in the same turn.",
+            "</attachments_index>",
+        ]
+        return "\n".join(lines)
 
     async def handle_urgent(self, message: discord.Message):
         """
@@ -732,14 +697,14 @@ class ReactiveEngine:
                         if skills_prompt:
                             system_prompt_text += "\n\n" + skills_prompt
 
-                    # Generate uploaded_files manifest (v0.5.0 Phase 8)
+                    # Attachment index (v0.6.0 Phase 4)
                     if conversation_state and self.attachment_manager:
                         try:
-                            uploaded_files_manifest = await self._generate_uploaded_files_manifest(conversation_state)
-                            if uploaded_files_manifest:
-                                system_prompt_text += "\n\n" + uploaded_files_manifest
+                            attachments_index = await self._generate_uploaded_files_manifest(conversation_state)
+                            if attachments_index:
+                                system_prompt_text += "\n\n" + attachments_index
                         except Exception as e:
-                            logger.error(f"Failed to generate uploaded_files manifest: {e}", exc_info=True)
+                            logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
 
                     # Add system prompt with cache control (prompt caching)
                     api_params["system"] = [
@@ -1729,6 +1694,16 @@ class ReactiveEngine:
                 if skills_prompt and isinstance(system_prompt, list) and len(system_prompt) > 0:
                     # Inject skills catalog into the system prompt text
                     system_prompt[0]["text"] += "\n\n" + skills_prompt
+
+            # Attachment index (v0.6.0 Phase 4) - this path handles bot-posted
+            # files too, so it needs the same retrieval awareness
+            if conversation_state and self.attachment_manager:
+                try:
+                    attachments_index = await self._generate_uploaded_files_manifest(conversation_state)
+                    if attachments_index and isinstance(system_prompt, list) and len(system_prompt) > 0:
+                        system_prompt[0]["text"] += "\n\n" + attachments_index
+                except Exception as e:
+                    logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
 
             # Prepare API parameters
             tools = [{"type": "memory_20250818", "name": "memory"}]

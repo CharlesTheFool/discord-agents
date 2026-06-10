@@ -267,12 +267,13 @@ When you have access to the code_execution tool:
 
 Example for spreadsheet:
 ```python
-import pandas as pd
-df = pd.read_excel('/tmp/uploads/filename.xlsx')  # Path from uploaded_files manifest
+import os, pandas as pd
+df = pd.read_excel(os.path.join(os.environ.get('INPUT_DIR', '.'), 'filename.xlsx'))
 print(df.describe())
 ```
 
-The uploaded_files manifest shows available files with their access method and path.
+The attachments_index section lists this channel's recent files with their IDs;
+retrieve anything marked 'not in context' with the discord get_attachment tool.
 
 CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response.
 </instructions>"""
