@@ -107,6 +107,7 @@ class UnifiedAttachmentManager:
         """Create schema and run migrations."""
         await self.attachment_db.create_schema()
         await self.attachment_db.migrate_messages_table()
+        await self.attachment_db.migrate_repository_columns()
         logger.info("UnifiedAttachmentManager initialized with local-first storage")
 
     async def process_attachment(

@@ -123,3 +123,23 @@ class AttachmentDatabase:
             logger.error(f"Unexpected error during messages table migration: {e}")
             raise
 
+    async def migrate_repository_columns(self) -> None:
+        """
+        v0.6.1: add disk_mtime for repository-file change detection.
+        Nullable REAL, used only by rows with channel_id='repository'.
+        """
+        try:
+            await self.db.execute("""
+                ALTER TABLE attachments
+                ADD COLUMN disk_mtime REAL
+            """)
+            await self.db.commit()
+            logger.info("Added disk_mtime column to attachments table")
+
+        except aiosqlite.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                logger.debug("disk_mtime column already exists, skipping migration")
+            else:
+                logger.error(f"Error migrating attachments table: {e}")
+                raise
+
