@@ -9,7 +9,7 @@ import discord
 import asyncio
 import io
 import logging
-from anthropic import Anthropic, AsyncAnthropic
+from anthropic import Anthropic, AsyncAnthropic, NotFoundError
 from typing import Optional, TYPE_CHECKING
 from pathlib import Path
 from collections import deque
@@ -483,6 +483,46 @@ class ReactiveEngine:
         ]
         return "\n".join(lines)
 
+    async def _recover_stale_file_in_state(self, conversation_state, file_id: str) -> bool:
+        """
+        A file_id embedded in persisted conversation state 404'd at the API
+        (file expired or deleted server-side). Re-upload from local storage and
+        swap the id in place; if unrecoverable, strip the blocks so the channel
+        unbricks. Returns True if the state changed.
+        """
+        new_file_id = None
+        if self.attachment_manager:
+            try:
+                async with self.attachment_manager.attachment_db.db.execute(
+                    "SELECT attachment_id, filename, local_path FROM attachments "
+                    "WHERE file_id = ?", (file_id,)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                if row and row[2]:
+                    new_file_id = await self.attachment_manager._handle_file_expiration(
+                        attachment_id=row[0], file_id=file_id,
+                        local_path=row[2], filename=row[1],
+                    )
+            except Exception as e:
+                logger.error(f"Stale-file recovery lookup failed for {file_id}: {e}")
+
+        touched = conversation_state.swap_file_id(file_id, new_file_id)
+        if touched:
+            action = f"swapped to {new_file_id}" if new_file_id else "stripped"
+            logger.warning(
+                f"Recovered stale file {file_id} in conversation state: "
+                f"{touched} block(s) {action}"
+            )
+            await self.conversation_state_manager.save(conversation_state)
+        return touched > 0
+
+    @staticmethod
+    def _stale_file_id_from_error(error: Exception) -> Optional[str]:
+        """Extract the file id from a 'File `file_xxx` not found.' API error."""
+        import re
+        match = re.search(r"File `(file_[A-Za-z0-9]+)` not found", str(error))
+        return match.group(1) if match else None
+
     async def _container_files_for_discord(self, file_ids: list) -> list:
         """
         Download container-created files and wrap them as discord.File objects
@@ -747,6 +787,7 @@ class ReactiveEngine:
                     # Per Anthropic docs, multi-turn conversations must reuse container.id
                     container_id = None
                     container_output_file_ids = []  # files written by code exec, delivered on reply
+                    recovered_file_ids = set()  # stale file_ids already recovered this turn
 
                     api_params = {
                         "model": self.config.api.model,
@@ -851,7 +892,18 @@ class ReactiveEngine:
                         logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
                         if 'container' in api_params:
                             logger.debug(f"  Container/Skills: {api_params.get('container')}")
-                        response = await self.anthropic.beta.messages.create(**api_params)
+                        try:
+                            response = await self.anthropic.beta.messages.create(**api_params)
+                        except NotFoundError as e:
+                            # Stale file_id in persisted state 404s the whole request
+                            stale_id = self._stale_file_id_from_error(e)
+                            if (stale_id and conversation_state
+                                    and stale_id not in recovered_file_ids):
+                                recovered_file_ids.add(stale_id)
+                                if await self._recover_stale_file_in_state(conversation_state, stale_id):
+                                    api_params["messages"] = conversation_state.get_messages_for_api()
+                                    continue
+                            raise
 
                         # Bug #14 fix: Capture container.id from response for subsequent iterations
                         if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):
@@ -1834,6 +1886,7 @@ class ReactiveEngine:
             # Bug #14 fix: Track container.id across tool loop iterations (periodic path)
             container_id = None
             container_output_file_ids = []  # files written by code exec, delivered on reply
+            recovered_file_ids = set()  # stale file_ids already recovered this turn
 
             api_params = {
                 "model": self.config.api.model,
@@ -1896,7 +1949,18 @@ class ReactiveEngine:
                     logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
                     if 'container' in api_params:
                         logger.debug(f"  Container/Skills: {api_params.get('container')}")
-                    response = await self.anthropic.beta.messages.create(**api_params)
+                    try:
+                        response = await self.anthropic.beta.messages.create(**api_params)
+                    except NotFoundError as e:
+                        # Stale file_id in persisted state 404s the whole request
+                        stale_id = self._stale_file_id_from_error(e)
+                        if (stale_id and conversation_state
+                                and stale_id not in recovered_file_ids):
+                            recovered_file_ids.add(stale_id)
+                            if await self._recover_stale_file_in_state(conversation_state, stale_id):
+                                api_params["messages"] = conversation_state.get_messages_for_api()
+                                continue
+                        raise
 
                     # Bug #14 fix: Capture container.id from response for subsequent iterations (periodic path)
                     if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):

@@ -237,6 +237,48 @@ class ConversationState:
             logger.info(f"Stubbed {stubbed} old tool result block(s) in channel {self.channel_id}")
         return stubbed
 
+    def swap_file_id(self, old_file_id: str, new_file_id: Optional[str]) -> int:
+        """
+        Replace a stale Files API id embedded in persisted messages (document /
+        container_upload blocks). With new_file_id=None the offending blocks are
+        dropped instead - a dead file_id 404s the WHOLE API request, bricking
+        the channel until the block rolls out of the cap.
+
+        Returns number of blocks touched.
+        """
+        touched = 0
+        for msg in self.messages:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            kept = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("file_id") == old_file_id:
+                        if new_file_id:
+                            block["file_id"] = new_file_id
+                        else:
+                            touched += 1
+                            continue  # drop block
+                        touched += 1
+                    source = block.get("source")
+                    if isinstance(source, dict) and source.get("file_id") == old_file_id:
+                        if new_file_id:
+                            source["file_id"] = new_file_id
+                            touched += 1
+                        else:
+                            touched += 1
+                            continue  # drop block
+                kept.append(block)
+            msg["content"] = kept
+        if touched:
+            # Dropping blocks can leave empty messages, which the API rejects
+            self.messages = [
+                m for m in self.messages
+                if not (isinstance(m.get("content"), list) and not m["content"])
+            ]
+        return touched
+
     def get_messages_for_api(self) -> List[Dict[str, Any]]:
         """
         Get messages array ready for Claude API.
