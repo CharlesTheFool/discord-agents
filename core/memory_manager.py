@@ -72,7 +72,7 @@ class MemoryManager:
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             logger.debug(f"Wrote followups to {path}")
 
@@ -118,7 +118,7 @@ class MemoryManager:
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             logger.debug(f"Wrote engagement stats to {path}")
 
@@ -268,7 +268,7 @@ class MemoryManager:
             culture_file = server_path / "culture.md"
             if not culture_file.exists():
                 culture_content = f"# {server_name} Culture\n\n[WRITE ABOUT SERVER CULTURE HERE]\n"
-                culture_file.write_text(culture_content)
+                culture_file.write_text(culture_content, encoding="utf-8")
                 total_files_created += 1
                 logger.debug(f"Created culture file for {server_name}")
 
@@ -287,7 +287,7 @@ class MemoryManager:
                     display_name = user_data.display_name if user_data else "Unknown"
 
                     user_content = f"# {display_name} ({user_id})\n\n[WRITE ABOUT USER HERE]\n"
-                    user_file.write_text(user_content)
+                    user_file.write_text(user_content, encoding="utf-8")
                     total_files_created += 1
 
             logger.debug(f"Created {len(users)} user files for {server_name}")

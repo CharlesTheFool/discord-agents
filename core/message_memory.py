@@ -6,6 +6,7 @@ Handles Discord message storage, updates, and retrieval.
 """
 
 import aiosqlite
+import sqlite3
 import discord
 import json
 import logging
@@ -751,26 +752,40 @@ class MessageMemory:
             "after": after_messages
         }
 
+    @staticmethod
+    def _fts5_match_expr(query: str) -> str:
+        """
+        Build an FTS5 MATCH expression from a user/tool query.
+
+        Bare keywords become per-token quoted terms (implicit AND, any
+        position) - 'pizza party friday' must match messages containing all
+        three words anywhere, not only the literal consecutive phrase.
+        Queries using explicit FTS5 syntax (quotes or boolean operators)
+        pass through unchanged; a syntax error there falls back to a
+        literal phrase search at the call site.
+        """
+        has_operators = '"' in query or any(
+            token in ("AND", "OR", "NOT", "NEAR") for token in query.split()
+        )
+        if has_operators:
+            return query
+        terms = ['"{}"'.format(t.replace('"', '""')) for t in query.split()]
+        return " ".join(terms) or '""'
+
     async def search_messages(
         self,
         query: str,
         channel_id: Optional[str] = None,
         author_id: Optional[str] = None,
+        guild_id: Optional[str] = None,
         limit: int = 20
     ) -> List[StoredMessage]:
-        """
-        Full-text search using FTS5.
-
-        Query is sanitized to prevent FTS5 syntax errors.
-        """
+        """Full-text search using FTS5 (keyword AND semantics, see _fts5_match_expr)."""
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Sanitize query for FTS5: escape double quotes and wrap in quotes
-        # Treats query as literal phrase search, avoiding syntax errors
-        sanitized_query = f'"{query.replace('"', '""')}"'
         filters = []
-        params = [sanitized_query]
+        params = [self._fts5_match_expr(query)]
 
         if channel_id:
             filters.append("m.channel_id = ?")
@@ -780,20 +795,28 @@ class MessageMemory:
             filters.append("m.author_id = ?")
             params.append(author_id)
 
+        if guild_id:
+            filters.append("m.guild_id = ?")
+            params.append(guild_id)
+
         where_clause = " AND ".join(filters) if filters else "1=1"
         params.append(limit)
 
-        cursor = await self._db.execute(
-            f"""
+        sql = f"""
             SELECT m.*
             FROM messages_fts
             JOIN messages m ON messages_fts.rowid = m.id
             WHERE messages_fts MATCH ? AND {where_clause}
             ORDER BY rank
             LIMIT ?
-            """,
-            tuple(params),
-        )
+            """
+
+        try:
+            cursor = await self._db.execute(sql, tuple(params))
+        except sqlite3.OperationalError:
+            # Malformed explicit FTS5 syntax: retry as a literal quoted phrase
+            params[0] = '"{}"'.format(query.replace('"', '""'))
+            cursor = await self._db.execute(sql, tuple(params))
 
         rows = await cursor.fetchall()
         return [self._row_to_message(row) for row in rows]

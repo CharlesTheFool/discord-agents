@@ -31,7 +31,7 @@ class EngagementTracker:
         """Load stats from file or create new"""
         if self.stats_file.exists():
             try:
-                with open(self.stats_file, 'r') as f:
+                with open(self.stats_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Failed to load engagement stats: {e}")
@@ -50,7 +50,7 @@ class EngagementTracker:
         """Save stats to file"""
         try:
             self.stats["last_updated"] = datetime.utcnow().isoformat()
-            with open(self.stats_file, 'w') as f:
+            with open(self.stats_file, 'w', encoding='utf-8') as f:
                 json.dump(self.stats, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save engagement stats: {e}")

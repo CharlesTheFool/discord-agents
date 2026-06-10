@@ -186,7 +186,18 @@ class DiscordClient(discord.Client):
         self.conversation_logger = conversation_logger
         self.memory_manager = memory_manager
 
+        # The event loop holds only weak refs to tasks - fire-and-forget
+        # create_task calls can be garbage-collected mid-run
+        self._background_tasks = set()
+
         logger.info(f"Discord client initialized for bot '{config.bot_id}'")
+
+    def _track_task(self, coro) -> asyncio.Task:
+        """create_task with a strong reference held until completion."""
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
 
     async def on_ready(self):
         """Bot connected to Discord and ready"""
@@ -275,16 +286,17 @@ class DiscordClient(discord.Client):
         # Start periodic conversation scanning
         self.reactive_engine.start_periodic_check()
 
-        # Start agentic loop if enabled
+        # Start agentic loop if enabled (engine keeps the handle so its
+        # shutdown() can actually cancel the loop)
         if self.agentic_engine:
-            asyncio.create_task(self.agentic_engine.agentic_loop())
+            self.agentic_engine._task = self._track_task(self.agentic_engine.agentic_loop())
             logger.info("Agentic loop started")
 
         # Backfill historical messages if enabled
         if self.config.discord.backfill_enabled:
             if self.config.discord.backfill_in_background:
                 # Run in background - don't block bot startup
-                asyncio.create_task(self.backfill_message_history(
+                self._track_task(self.backfill_message_history(
                     days_back=self.config.discord.backfill_days,
                     unlimited=self.config.discord.backfill_unlimited
                 ))
@@ -306,7 +318,7 @@ class DiscordClient(discord.Client):
                 logger.error(f"Failed to initialize memory structure: {e}", exc_info=True)
 
             # Start daily re-backfill task to catch edited messages
-            asyncio.create_task(self._daily_reindex_task())
+            self._track_task(self._daily_reindex_task())
             logger.info("Daily re-backfill task started (will run at 3 AM UTC)")
 
         logger.info("Bot is ready!")
@@ -643,7 +655,7 @@ class DiscordClient(discord.Client):
 
         # Episodize the open span now that the message store is current (v0.6.0)
         if self.reactive_engine and getattr(self.reactive_engine, "episode_manager", None):
-            asyncio.create_task(self.reactive_engine.episode_manager.catch_up_all_channels())
+            self._track_task(self.reactive_engine.episode_manager.catch_up_all_channels())
 
         return total_messages
 
@@ -722,7 +734,7 @@ class DiscordClient(discord.Client):
             # Read existing profile or create new
             try:
                 if file_path.exists():
-                    with open(file_path, 'r') as f:
+                    with open(file_path, 'r', encoding='utf-8') as f:
                         profile_content = f.read()
                 else:
                     profile_content = ""
@@ -741,7 +753,7 @@ class DiscordClient(discord.Client):
                     profile_content = f"**Timezone:** {normalized_tz}\n\n" + profile_content
 
                 # Write back
-                with open(file_path, 'w') as f:
+                with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(profile_content)
 
                 logger.info(f"Set timezone for user {message.author.name} to {normalized_tz}")

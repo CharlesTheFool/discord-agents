@@ -5,6 +5,7 @@ Handles auto-discovery, uploading, and tracking of Claude Skills.
 Supports hash-based caching to prevent redundant uploads.
 """
 
+import asyncio
 import io
 import os
 import json
@@ -14,7 +15,7 @@ import zipfile
 import yaml
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Union
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,9 @@ class SkillsManager:
         self.skills_dir = skills_dir
         self.cache_file = cache_file
         self.cache: Dict[str, Dict] = {}
-        self.anthropic_client = Anthropic(api_key=anthropic_api_key) if anthropic_api_key else None
+        # Async client: skill uploads and list pagination are slow HTTP calls
+        # that ran during on_ready - a sync client stalls the gateway heartbeat
+        self.anthropic_client = AsyncAnthropic(api_key=anthropic_api_key) if anthropic_api_key else None
 
         # Ensure skills directory exists
         self.skills_dir.mkdir(parents=True, exist_ok=True)
@@ -68,6 +71,10 @@ class SkillsManager:
         """
         # Load existing cache
         await self._load_cache()
+
+        # Drop entries whose skill was deleted server-side (a dead skill_id
+        # would otherwise 400 every request that activates it, forever)
+        await self._reconcile_cache_with_server()
 
         # Scan and upload new skills
         await self.scan_and_upload_skills()
@@ -92,7 +99,7 @@ class SkillsManager:
     async def _save_cache(self) -> None:
         """Save skills cache to disk."""
         try:
-            with open(self.cache_file, "w") as f:
+            with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, indent=2)
             logger.debug("Skills cache saved")
         except Exception as e:
@@ -294,7 +301,7 @@ class SkillsManager:
     async def _process_zip_skill(self, zip_path: Path) -> Dict:
         """Process a .zip skill file: hash, check cache, upload if needed."""
         try:
-            file_hash = self._calculate_hash(zip_path)
+            file_hash = await asyncio.to_thread(self._calculate_hash, zip_path)
 
             cached = self.cache.get(file_hash)
             if cached and cached.get('status') != 'already_exists':
@@ -346,7 +353,7 @@ class SkillsManager:
         """Process a folder-based skill: hash directory, check cache, zip in memory, upload."""
         display_name = f"{folder_path.name}/"
         try:
-            dir_hash = self._calculate_directory_hash(folder_path)
+            dir_hash = await asyncio.to_thread(self._calculate_directory_hash, folder_path)
 
             cached = self.cache.get(dir_hash)
             if cached and cached.get('status') != 'already_exists':
@@ -363,7 +370,7 @@ class SkillsManager:
                 metadata = {'name': folder_path.name, 'description': ''}
 
             # Create in-memory zip for API upload
-            buf, zip_filename = self._zip_folder_to_bytes(folder_path)
+            buf, zip_filename = await asyncio.to_thread(self._zip_folder_to_bytes, folder_path)
             skill_id = await self._upload_skill((buf, zip_filename), metadata)
 
             if skill_id:
@@ -421,7 +428,7 @@ class SkillsManager:
                 # Upload from disk
                 filename = source.name
                 with open(source, 'rb') as f:
-                    skill = self.anthropic_client.beta.skills.create(
+                    skill = await self.anthropic_client.beta.skills.create(
                         display_title=metadata['name'],
                         files=[(filename, f, 'application/zip')],
                         betas=["skills-2025-10-02"]
@@ -429,7 +436,7 @@ class SkillsManager:
             else:
                 # Upload from in-memory BytesIO
                 buf, filename = source
-                skill = self.anthropic_client.beta.skills.create(
+                skill = await self.anthropic_client.beta.skills.create(
                     display_title=metadata['name'],
                     files=[(filename, buf, 'application/zip')],
                     betas=["skills-2025-10-02"]
@@ -441,7 +448,7 @@ class SkillsManager:
             error_str = str(e)
             # Display-title conflict: skill already on the server, recover its real ID
             if "reuse an existing display_title" in error_str:
-                skill_id = self._find_existing_skill_id(metadata['name'])
+                skill_id = await self._find_existing_skill_id(metadata['name'])
                 if skill_id:
                     logger.info(
                         f"Skill '{metadata['name']}' already on Anthropic servers, "
@@ -456,15 +463,46 @@ class SkillsManager:
             logger.error(f"Failed to upload skill {filename}: {e}")
             return None
 
-    def _find_existing_skill_id(self, display_title: str) -> Optional[str]:
+    async def _find_existing_skill_id(self, display_title: str) -> Optional[str]:
         """Look up a skill's ID on the server by display title (auto-paginates)."""
         try:
-            for skill in self.anthropic_client.beta.skills.list(betas=["skills-2025-10-02"]):
+            async for skill in self.anthropic_client.beta.skills.list(betas=["skills-2025-10-02"]):
                 if skill.display_title == display_title:
                     return skill.id
         except Exception as e:
             logger.error(f"Failed to list skills while recovering '{display_title}': {e}")
         return None
+
+    async def _reconcile_cache_with_server(self) -> None:
+        """
+        Drop cache entries whose skill no longer exists on the server.
+
+        Hash-based dedup only re-uploads when file content changes, so a
+        skill deleted server-side would otherwise never be re-uploaded.
+        """
+        if not self.anthropic_client or not self.cache:
+            return
+
+        try:
+            server_ids = set()
+            async for skill in self.anthropic_client.beta.skills.list(betas=["skills-2025-10-02"]):
+                server_ids.add(skill.id)
+        except Exception as e:
+            logger.warning(f"Skills cache reconciliation skipped (list failed): {e}")
+            return
+
+        stale = [
+            h for h, info in self.cache.items()
+            if info.get("skill_id") and info["skill_id"] not in server_ids
+        ]
+        for h in stale:
+            info = self.cache.pop(h)
+            logger.info(
+                f"Dropping stale skills-cache entry '{info.get('filename')}' "
+                f"(skill {info.get('skill_id')} no longer on server)"
+            )
+        if stale:
+            await self._save_cache()
 
     def get_skills_for_api(self) -> List[Dict[str, str]]:
         """

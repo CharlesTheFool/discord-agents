@@ -36,6 +36,9 @@ class MCPManager:
         self.config_path = config_path
         self.servers: Dict[str, Dict] = {}
         self.tools_cache: Dict[str, List[Dict]] = {}  # server_name -> tools
+        # prefixed tool name -> (server_name, original_name); splitting the
+        # prefix back apart breaks for server names containing underscores
+        self._tool_routes: Dict[str, tuple] = {}
         self.http_client: Optional[httpx.AsyncClient] = None
 
         logger.info(f"MCPManager initialized with config: {config_path}")
@@ -158,6 +161,7 @@ class MCPManager:
             tool["name"] = f"{server_name}_{original_name}"
             tool["_original_name"] = original_name
             tool["_server_name"] = server_name
+            self._tool_routes[tool["name"]] = (server_name, original_name)
 
         return tools
 
@@ -176,11 +180,11 @@ class MCPManager:
             ValueError: If tool or server not found
             httpx.HTTPError: If request fails
         """
-        # Extract server name from prefixed tool name
-        if "_" not in tool_name:
-            raise ValueError(f"Invalid MCP tool name (missing server prefix): {tool_name}")
-
-        server_name, original_tool_name = tool_name.split("_", 1)
+        # Route via the discovery-time mapping
+        route = self._tool_routes.get(tool_name)
+        if not route:
+            raise ValueError(f"Unknown MCP tool: {tool_name}")
+        server_name, original_tool_name = route
 
         if server_name not in self.servers:
             raise ValueError(f"MCP server not found: {server_name}")
