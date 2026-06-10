@@ -10,7 +10,7 @@ import asyncio
 import io
 import logging
 from anthropic import Anthropic, AsyncAnthropic, NotFoundError
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from pathlib import Path
 from collections import deque
 import sys
@@ -277,7 +277,8 @@ class ReactiveEngine:
         self,
         channel_id: str,
         conversation_state,
-        limit: int = None
+        limit: int = None,
+        exclude_message_ids: Optional[List[int]] = None
     ) -> None:
         """
         Initialize conversation state from database with full attachment data.
@@ -285,7 +286,9 @@ class ReactiveEngine:
         Used by both urgent and periodic paths to ensure consistent state after restart.
         Loads recent messages with attachments, building proper content blocks.
 
-        Fixes Disconnect #1: Both paths now use the same initialization logic.
+        exclude_message_ids filters messages the caller is about to append
+        itself (on_message stores to the DB before the engine runs, so without
+        the filter the triggering message would land in state twice).
         """
         if limit is None:
             limit = self.config.api.context_messages
@@ -293,7 +296,8 @@ class ReactiveEngine:
         logger.info("Conversation state empty, initializing from recent DB messages")
         recent_messages = await self.message_memory.get_recent(
             channel_id,
-            limit=limit
+            limit=limit,
+            exclude_message_ids=exclude_message_ids
         )
 
         # Add recent messages to state WITH attachments
@@ -425,6 +429,10 @@ class ReactiveEngine:
                 content,
                 attachment_ids=attachment_ids if attachment_ids else None
             )
+
+        # The oldest seeded message can be the bot's own - the API requires a
+        # leading user turn
+        conversation_state.trim_leading_non_user()
 
         logger.info(f"Initialized conversation state with {len(recent_messages)} messages from DB")
 
@@ -610,7 +618,12 @@ class ReactiveEngine:
 
                 # If state is empty, initialize with recent DB messages (Disconnect #1 fix)
                 if len(conversation_state.messages) == 0:
-                    await self._initialize_conversation_from_db(channel_id, conversation_state)
+                    # In-flight mentions (incl. this one) get appended by their
+                    # own handlers - seeding them here would duplicate them
+                    await self._initialize_conversation_from_db(
+                        channel_id, conversation_state,
+                        exclude_message_ids=list(self._responded_messages)
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to load conversation state for channel {channel_id}: {e}", exc_info=True)
@@ -868,6 +881,8 @@ class ReactiveEngine:
                         logger.warning("Conversation state not available, falling back to context builder")
 
                     api_params["messages"] = messages
+                    # Usage recorded later must match the session we measured
+                    seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
                     # Add adaptive thinking and effort if configured
                     if self.config.api.thinking.enabled:
@@ -1273,7 +1288,7 @@ class ReactiveEngine:
 
                     # Record session usage watermark and stub old tool results (v0.6.0)
                     if hasattr(response, "usage"):
-                        conversation_state.record_usage(total_input_tokens(response.usage))
+                        conversation_state.record_usage(total_input_tokens(response.usage), seed_epoch)
                     conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
 
                     # Save conversation state to database
@@ -1581,9 +1596,13 @@ class ReactiveEngine:
         try:
             conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
 
-            # If state is empty, initialize with recent DB messages
+            # If state is empty, initialize with recent DB messages (excluding
+            # the message we are about to append ourselves)
             if len(conversation_state.messages) == 0:
-                await self._initialize_conversation_from_db(channel_id, conversation_state)
+                await self._initialize_conversation_from_db(
+                    channel_id, conversation_state,
+                    exclude_message_ids=[message_id]
+                )
 
             # Process attachments if present
             processed_attachments = []
@@ -1887,6 +1906,8 @@ class ReactiveEngine:
             container_id = None
             container_output_file_ids = []  # files written by code exec, delivered on reply
             recovered_file_ids = set()  # stale file_ids already recovered this turn
+            # Usage recorded later must match the session we measured
+            seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
             api_params = {
                 "model": self.config.api.model,
@@ -2290,7 +2311,7 @@ class ReactiveEngine:
 
                             # Record session usage watermark and stub old tool results (v0.6.0)
                             if hasattr(response, "usage"):
-                                conversation_state.record_usage(total_input_tokens(response.usage))
+                                conversation_state.record_usage(total_input_tokens(response.usage), seed_epoch)
                             conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
 
                             # Save conversation state to database

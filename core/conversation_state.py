@@ -47,6 +47,7 @@ class ConversationState:
         # Session metadata (v0.6.0 episodic sessions)
         self.session_started_at = datetime.utcnow()
         self.session_input_tokens = 0  # usage watermark from response.usage
+        self.seed_epoch = 0  # bumped on reseed; guards in-flight usage recording
 
         logger.debug(f"ConversationState initialized for channel {channel_id} (max_messages={max_messages})")
 
@@ -115,6 +116,31 @@ class ConversationState:
             f"(total: {len(self.messages)} messages)"
         )
 
+    def trim_leading_non_user(self) -> int:
+        """
+        Drop leading messages until the array starts with a plain user turn.
+
+        The API requires the first message to be role 'user', and a leading
+        tool_result (also user role) would orphan its tool_use. Cap removal
+        and DB seeding can both violate this; reseed() guards it separately.
+
+        Returns:
+            Number of messages dropped
+        """
+        dropped = 0
+        while self.messages and (
+            self.messages[0]["role"] != "user"
+            or self.messages[0].get("message_type") == "tool_result"
+        ):
+            removed = self.messages.pop(0)
+            dropped += 1
+            self.messages_removed += 1
+            logger.debug(
+                f"Dropped leading {removed.get('message_type', removed['role'])} message "
+                f"(first message must be a user turn)"
+            )
+        return dropped
+
     def enforce_message_cap(self) -> int:
         """
         Remove oldest Discord messages while over the message cap.
@@ -143,6 +169,9 @@ class ConversationState:
                 f"(role={removed_message['role']}, message_type={removed_message.get('message_type', 'unknown')})"
             )
 
+        # Popping the head can leave tool messages or an assistant turn first
+        removed_count += self.trim_leading_non_user()
+
         if removed_count > 0:
             discord_count = len([
                 msg for msg in self.messages
@@ -155,8 +184,17 @@ class ConversationState:
 
         return removed_count
 
-    def record_usage(self, input_tokens: int) -> None:
-        """Record the session usage watermark from response.usage.input_tokens."""
+    def record_usage(self, input_tokens: int, seed_epoch: Optional[int] = None) -> None:
+        """
+        Record the session usage watermark from response.usage.input_tokens.
+
+        Callers that captured seed_epoch before their API call pass it back so
+        usage measured against a pre-reseed context can't re-poison a freshly
+        reseeded session (which would re-trigger episodization every turn).
+        """
+        if seed_epoch is not None and seed_epoch != self.seed_epoch:
+            logger.debug("Ignoring stale usage watermark from before a reseed")
+            return
         if input_tokens > self.session_input_tokens:
             self.session_input_tokens = input_tokens
 
@@ -179,6 +217,7 @@ class ConversationState:
         self.messages = tail
         self.session_started_at = datetime.utcnow()
         self.session_input_tokens = 0
+        self.seed_epoch += 1
         self.last_updated = datetime.utcnow()
         logger.info(
             f"Session reseeded for channel {self.channel_id}: "
@@ -308,8 +347,20 @@ class ConversationState:
 
         internal_fields = {"message_type", "attachment_ids"}
 
+        # Boundary self-heal: skip anything before the first plain user turn so
+        # legacy/edge-case states (assistant-first, orphaned tool pair) still
+        # render a valid transcript without mutating persisted state.
+        start = 0
+        while start < len(self.messages) and (
+            self.messages[start]["role"] != "user"
+            or self.messages[start].get("message_type") == "tool_result"
+        ):
+            start += 1
+        if start:
+            logger.debug(f"get_messages_for_api skipping {start} leading non-user message(s)")
+
         api_messages = []
-        for msg in self.messages:
+        for msg in self.messages[start:]:
             api_msg = {k: v for k, v in msg.items() if k not in internal_fields}
 
             if "content" in api_msg and isinstance(api_msg["content"], list):

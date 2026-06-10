@@ -6,6 +6,7 @@ One state per channel, stored in SQLite database.
 """
 
 import aiosqlite
+import asyncio
 import logging
 import json
 from pathlib import Path
@@ -45,6 +46,9 @@ class ConversationStateManager:
 
         # In-memory cache of loaded states
         self._cache: Dict[str, ConversationState] = {}
+        # Per-channel locks: two concurrent get_or_create calls for the same
+        # channel must not build two state objects (last save would win)
+        self._creation_locks: Dict[str, asyncio.Lock] = {}
 
         logger.info(
             f"ConversationStateManager initialized for bot '{bot_id}' "
@@ -88,34 +92,35 @@ class ConversationStateManager:
         Returns:
             ConversationState instance
         """
-        # Check cache first
+        # Fast path outside the lock
         if channel_id in self._cache:
             logger.debug(f"ConversationState cache hit for channel {channel_id}")
             return self._cache[channel_id]
 
-        # Try loading from database
-        state = await self.load(channel_id)
+        lock = self._creation_locks.setdefault(channel_id, asyncio.Lock())
+        async with lock:
+            # Re-check: another task may have populated the cache while we waited
+            if channel_id in self._cache:
+                return self._cache[channel_id]
 
-        if state:
-            # Add to cache
+            state = await self.load(channel_id)
+
+            if state:
+                # The configured cap always wins over whatever was persisted
+                state.max_messages = self.max_messages
+                self._cache[channel_id] = state
+                logger.debug(f"ConversationState loaded from DB for channel {channel_id}")
+                return state
+
+            state = ConversationState(
+                channel_id=channel_id,
+                max_messages=self.max_messages
+            )
+            await self.save(state)
             self._cache[channel_id] = state
-            logger.debug(f"ConversationState loaded from DB for channel {channel_id}")
+
+            logger.info(f"Created new ConversationState for channel {channel_id}")
             return state
-
-        # Create new state
-        state = ConversationState(
-            channel_id=channel_id,
-            max_messages=self.max_messages
-        )
-
-        # Save to database
-        await self.save(state)
-
-        # Add to cache
-        self._cache[channel_id] = state
-
-        logger.info(f"Created new ConversationState for channel {channel_id}")
-        return state
 
     async def load(self, channel_id: str) -> Optional[ConversationState]:
         """
