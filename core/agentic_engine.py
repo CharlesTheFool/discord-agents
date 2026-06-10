@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 from .proactive_action import ProactiveAction
 from .engagement_tracker import EngagementTracker
+from .internal_constants import AGENTIC_EFFORT
 
 logger = logging.getLogger(__name__)
 
@@ -605,7 +606,10 @@ Your personality:
                 model=self.config.api.model,
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
-                output_config={"format": {"type": "json_schema", "schema": FOLLOWUP_MESSAGE_SCHEMA}},
+                output_config={
+                    "effort": AGENTIC_EFFORT,
+                    "format": {"type": "json_schema", "schema": FOLLOWUP_MESSAGE_SCHEMA},
+                },
             )
 
             text = "".join(block.text for block in response.content if block.type == "text")
@@ -741,9 +745,10 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             )
 
             # Build API params with extended thinking and memory tool
-            output_config = {"format": {"type": "json_schema", "schema": PROACTIVE_MESSAGE_SCHEMA}}
-            if self.config.api.effort:
-                output_config["effort"] = self.config.api.effort
+            output_config = {
+                "effort": AGENTIC_EFFORT,
+                "format": {"type": "json_schema", "schema": PROACTIVE_MESSAGE_SCHEMA},
+            }
 
             api_params = {
                 "model": self.config.api.model,

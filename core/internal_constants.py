@@ -34,6 +34,10 @@ TOOL_STUB_KEEP_TURNS = 3            # Turns whose tool results stay full
 TOOL_STUB_MIN_CHARS = 500           # Results shorter than this are never stubbed
 TOOL_STUB_TEXT = "[tool result cleared at turn boundary - re-run the tool if the information is needed again]"
 
+# Per-engine effort (v0.6.0 Phase 5): background one-liners don't need the
+# chat engine's effort level; api.effort in config only steers the chat brain
+AGENTIC_EFFORT = "low"
+
 
 # =============================================================================
 # RATE LIMITING (Internal)

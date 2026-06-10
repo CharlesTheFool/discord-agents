@@ -157,13 +157,13 @@ Format (JSON):
 {{
   "pending": [
     {{
-      "id": "unique-id-{current_time.replace(' ', '-').replace(':', '')}",
+      "id": "unique-id-<YYYYMMDD-HHMM>",
       "user_id": "{current_user_id}",
       "user_name": "{current_user_name}",
       "channel_id": "{current_channel_id}",
       "event": "<brief description>",
       "context": "<relevant context>",
-      "mentioned_date": "{current_time}",
+      "mentioned_date": "<current server date/time>",
       "follow_up_after": "<ISO 8601 datetime>",
       "priority": "low|medium|high"
     }}
@@ -206,7 +206,6 @@ Skip follow-ups for:
         # Assemble system prompt with XML structure (Phase 7 - v0.5.0)
         system_prompt = f"""<identity>
 You are {bot_display_name}. Your Discord user ID is {message.guild.me.id if (message.guild and message.guild.me) else 'unknown'}.
-{date_context}
 
 NOTE: Users can set personal timezones with: !timezone [timezone]
 User timezones are stored in their memory profiles.
@@ -455,7 +454,14 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                     {"role": "user", "content": message_with_context}
                 )
 
-        return {"system_prompt": system_prompt, "messages": messages, "stats": stats}
+        # Time rides in a separate uncached system block (v0.6.0 Phase 5):
+        # a timestamp inside the cached prefix busted the prompt cache every minute
+        return {
+            "system_prompt": system_prompt,
+            "time_context": date_context,
+            "messages": messages,
+            "stats": stats,
+        }
 
     async def _resolve_mentions(self, content: str, guild: Optional[discord.Guild]) -> tuple[str, int]:
         """

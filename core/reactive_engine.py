@@ -762,7 +762,9 @@ class ReactiveEngine:
                         except Exception as e:
                             logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
 
-                    # Add system prompt with cache control (prompt caching)
+                    # Add system prompt with cache control (prompt caching).
+                    # The timestamp lives in a second uncached block so the
+                    # stable prefix keeps hitting the cache.
                     api_params["system"] = [
                         {
                             "type": "text",
@@ -770,6 +772,8 @@ class ReactiveEngine:
                             "cache_control": {"type": "ephemeral"}
                         }
                     ]
+                    if context.get("time_context"):
+                        api_params["system"].append({"type": "text", "text": context["time_context"]})
 
                     # Get messages from conversation state if available, otherwise use context (v0.5.0)
                     if conversation_state:
@@ -2268,6 +2272,9 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
                 "cache_control": {"type": "ephemeral"}
             }
         ]
+        # Timestamp in a separate uncached block (cache-buster fix, v0.6.0 Phase 5)
+        if context.get("time_context"):
+            system_prompt.append({"type": "text", "text": context["time_context"]})
 
         return system_prompt
 
