@@ -271,6 +271,11 @@ df = pd.read_excel(os.path.join(os.environ.get('INPUT_DIR', '.'), 'filename.xlsx
 print(df.describe())
 ```
 
+DELIVERING FILES: every file your code writes in the container is automatically
+attached to your Discord reply. To deliver a document (pptx, xlsx, image, etc.),
+just create it - do not claim you attached something unless you actually created
+a file. Use stdout for intermediate work to avoid attaching junk files.
+
 The attachments_index section lists this channel's recent files with their IDs;
 retrieve anything marked 'not in context' with the discord get_attachment tool.
 

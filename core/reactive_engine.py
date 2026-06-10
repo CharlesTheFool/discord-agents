@@ -7,6 +7,7 @@ Phase 1: Basic @mention handling with Claude API.
 
 import discord
 import asyncio
+import io
 import logging
 from anthropic import Anthropic, AsyncAnthropic
 from typing import Optional, TYPE_CHECKING
@@ -50,6 +51,26 @@ def total_input_tokens(usage) -> int:
         + (getattr(usage, "cache_read_input_tokens", 0) or 0)
         + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
     )
+
+
+def collect_container_output_file_ids(response) -> list:
+    """
+    File IDs of files written by code execution in this response.
+    Output blocks ride inside code_execution / bash_code_execution tool
+    results; error results have no output list (getattr returns None).
+    """
+    file_ids = []
+    for block in response.content:
+        if getattr(block, "type", None) in (
+            "code_execution_tool_result",
+            "bash_code_execution_tool_result",
+        ):
+            result_content = getattr(block, "content", None)
+            for output in (getattr(result_content, "content", None) or []):
+                file_id = getattr(output, "file_id", None)
+                if file_id:
+                    file_ids.append(file_id)
+    return file_ids
 
 
 class ReactiveEngine:
@@ -462,6 +483,26 @@ class ReactiveEngine:
         ]
         return "\n".join(lines)
 
+    async def _container_files_for_discord(self, file_ids: list) -> list:
+        """
+        Download container-created files and wrap them as discord.File objects
+        so deliverables (pptx, charts, ...) ride on the bot's reply.
+        """
+        if not file_ids or not self.attachment_manager:
+            return []
+
+        files = []
+        for file_id in dict.fromkeys(file_ids):  # dedupe, keep order
+            meta = await self.attachment_manager.files_api_client.retrieve(file_id)
+            data = await self.attachment_manager.files_api_client.content(file_id)
+            if not data:
+                logger.warning(f"Could not download container output {file_id}, skipping")
+                continue
+            filename = (meta or {}).get("filename") or f"{file_id}.bin"
+            files.append(discord.File(io.BytesIO(data), filename=filename))
+            logger.info(f"Container output ready for Discord: {filename} ({len(data)} bytes)")
+        return files[:10]  # Discord cap per message
+
     def _build_attachment_tool_result(self, result, block_id, conversation_state):
         """
         Convert a structured get_attachment result into (tool_result, file_block).
@@ -705,6 +746,7 @@ class ReactiveEngine:
                     # Bug #14 fix: Track container.id across tool loop iterations
                     # Per Anthropic docs, multi-turn conversations must reuse container.id
                     container_id = None
+                    container_output_file_ids = []  # files written by code exec, delivered on reply
 
                     api_params = {
                         "model": self.config.api.model,
@@ -816,6 +858,9 @@ class ReactiveEngine:
                             container_id = response.container.id
                             logger.debug(f"Captured container.id: {container_id}")
 
+                        # Collect files written by code execution for Discord delivery
+                        container_output_file_ids.extend(collect_container_output_file_ids(response))
+
                         # Log tool use loop iteration
                         self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
 
@@ -900,6 +945,17 @@ class ReactiveEngine:
                                             # Save updated state with new skills
                                             await self.conversation_state_manager.save(conversation_state)
                                             logger.info(f"Skill request processed: {result}")
+                                            # Rebuild container so the NEXT iteration ships the
+                                            # new skill set; skills load at container creation,
+                                            # so drop the id to force a fresh container (files
+                                            # written inside the old container are lost; message
+                                            # container_upload blocks re-mount automatically)
+                                            new_skills = self.skills_manager.select_skills(
+                                                conversation_state.get_active_skills()
+                                            )
+                                            if new_skills:
+                                                api_params["container"] = {"skills": new_skills}
+                                                container_id = None
                                         else:
                                             result = "Error: Conversation state not available"
 
@@ -1099,13 +1155,18 @@ class ReactiveEngine:
             from .discord_client import split_message
             message_chunks = split_message(response_text)
 
+            # Deliverables created in the code-exec container ride on the first chunk
+            outgoing_files = await self._container_files_for_discord(container_output_file_ids)
+
             sent_message = None
             for i, chunk in enumerate(message_chunks):
                 try:
                     # First chunk: reply to triggering message
                     # Subsequent chunks: standalone messages
                     if i == 0:
-                        sent_message = await message.channel.send(chunk, reference=message)
+                        sent_message = await message.channel.send(
+                            chunk, reference=message, files=outgoing_files or None
+                        )
                     else:
                         sent_message = await message.channel.send(chunk)
                 except discord.HTTPException as e:
@@ -1113,7 +1174,9 @@ class ReactiveEngine:
                     if i == 0:
                         try:
                             logger.warning(f"Failed to send reply, trying standalone: {e}")
-                            sent_message = await message.channel.send(chunk)
+                            # discord.File objects are single-use; rebuild for the retry
+                            outgoing_files = await self._container_files_for_discord(container_output_file_ids)
+                            sent_message = await message.channel.send(chunk, files=outgoing_files or None)
                         except discord.HTTPException as e2:
                             logger.error(f"Failed to send response to Discord: {e2}")
                             self.conversation_logger.log_error(f"Discord send failed: {str(e2)}")
@@ -1770,6 +1833,7 @@ class ReactiveEngine:
 
             # Bug #14 fix: Track container.id across tool loop iterations (periodic path)
             container_id = None
+            container_output_file_ids = []  # files written by code exec, delivered on reply
 
             api_params = {
                 "model": self.config.api.model,
@@ -1838,6 +1902,9 @@ class ReactiveEngine:
                     if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):
                         container_id = response.container.id
                         logger.debug(f"Captured container.id (periodic): {container_id}")
+
+                    # Collect files written by code execution for Discord delivery
+                    container_output_file_ids.extend(collect_container_output_file_ids(response))
 
                     # Log server tool usage (web_search, web_fetch)
                     if self.web_search_enabled:
@@ -1909,6 +1976,14 @@ class ReactiveEngine:
                                         )
                                         # Save updated state with new skills
                                         await self.conversation_state_manager.save(conversation_state)
+                                        # Rebuild container so the NEXT iteration ships the
+                                        # new skill set (see urgent-path note)
+                                        new_skills = self.skills_manager.select_skills(
+                                            conversation_state.get_active_skills()
+                                        )
+                                        if new_skills:
+                                            api_params["container"] = {"skills": new_skills}
+                                            container_id = None
                                     else:
                                         result = "Error: Conversation state not available"
 
@@ -2158,10 +2233,15 @@ class ReactiveEngine:
                     from .discord_client import split_message
                     message_chunks = split_message(response_text)
 
+                    # Deliverables created in the code-exec container ride on the first chunk
+                    outgoing_files = await self._container_files_for_discord(container_output_file_ids)
+
                     sent_message = None
                     for i, chunk in enumerate(message_chunks):
                         try:
-                            sent_message = await message.channel.send(chunk)
+                            sent_message = await message.channel.send(
+                                chunk, files=(outgoing_files or None) if i == 0 else None
+                            )
                         except discord.HTTPException as e:
                             logger.error(f"Failed to send periodic response chunk {i+1}/{len(message_chunks)}: {e}")
                             self.conversation_logger.log_error(f"Discord send failed: {str(e)}")
