@@ -87,6 +87,12 @@ class MessageMemory:
         UPDATE messages_fts SET content = new.content, author_name = new.author_name
         WHERE rowid = old.id;
     END;
+
+    CREATE TABLE IF NOT EXISTS episode_watermarks (
+        channel_id TEXT PRIMARY KEY,
+        last_episodized_message_id TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
     """
 
     def __init__(self, db_path: Path):
@@ -490,6 +496,68 @@ class MessageMemory:
 
         rows = await cursor.fetchall()
         return [self._row_to_message(row) for row in rows]
+
+    async def get_episode_watermark(self, channel_id: str) -> Optional[str]:
+        """Get last episodized message ID for a channel (None = never episodized)."""
+        cursor = await self._db.execute(
+            "SELECT last_episodized_message_id FROM episode_watermarks WHERE channel_id = ?",
+            (channel_id,),
+        )
+        row = await cursor.fetchone()
+        return row["last_episodized_message_id"] if row else None
+
+    async def set_episode_watermark(self, channel_id: str, message_id: str) -> None:
+        """Advance the episodization watermark for a channel."""
+        await self._db.execute(
+            """
+            INSERT INTO episode_watermarks (channel_id, last_episodized_message_id, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(channel_id) DO UPDATE SET
+                last_episodized_message_id = excluded.last_episodized_message_id,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (channel_id, message_id),
+        )
+        await self._db.commit()
+
+    async def get_messages_after_id(
+        self, channel_id: str, after_message_id: Optional[str]
+    ) -> List[StoredMessage]:
+        """
+        Get the open span: all messages with snowflake ID greater than the
+        watermark, chronological. after_message_id=None returns everything.
+        """
+        if after_message_id is None:
+            cursor = await self._db.execute(
+                """
+                SELECT * FROM messages WHERE channel_id = ?
+                ORDER BY CAST(message_id AS INTEGER) ASC
+                """,
+                (channel_id,),
+            )
+        else:
+            cursor = await self._db.execute(
+                """
+                SELECT * FROM messages
+                WHERE channel_id = ? AND CAST(message_id AS INTEGER) > CAST(? AS INTEGER)
+                ORDER BY CAST(message_id AS INTEGER) ASC
+                """,
+                (channel_id, after_message_id),
+            )
+        rows = await cursor.fetchall()
+        return [self._row_to_message(row) for row in rows]
+
+    async def get_latest_message(self, channel_id: str) -> Optional[StoredMessage]:
+        """Get the most recent message in a channel, or None."""
+        cursor = await self._db.execute(
+            """
+            SELECT * FROM messages WHERE channel_id = ?
+            ORDER BY CAST(message_id AS INTEGER) DESC LIMIT 1
+            """,
+            (channel_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_message(row) if row else None
 
     async def get_channel_stats(self, channel_id: str) -> Dict:
         """Get channel statistics (message count, unique users, time range)"""
