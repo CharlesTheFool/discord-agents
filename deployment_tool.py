@@ -36,6 +36,10 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
+# Windows consoles default to cp1252, which can't print the status glyphs
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+
 # Production files (in public repo)
 EXPORTABLE_ITEMS = {
     'env': '.env',
@@ -116,16 +120,23 @@ def export_deployment(output_path=None, exclude=None, dev_mode=False):
                 else:
                     # Recurse directory, skip hidden files
                     file_count = 0
+                    skipped = []
                     for file in path.rglob('*'):
                         if file.is_file() and not file.name.startswith('.'):
-                            arcname = file.relative_to('.')
-                            zipf.write(file, arcname)
-                            file_count += 1
+                            try:
+                                arcname = file.relative_to('.')
+                                zipf.write(file, arcname)
+                                file_count += 1
+                            except PermissionError:
+                                # Locked by a running bot (SQLite WAL files etc.)
+                                skipped.append(file)
 
                     if file_count > 0:
                         print(f"  ✓ {item_name}: {file_count} files")
                     else:
                         print(f"  ⚠ {item_name}: empty directory")
+                    for file in skipped:
+                        print(f"  ⚠ Skipped locked file: {file} (bot running?)")
 
         size_mb = output_path.stat().st_size / (1024 * 1024)
 
