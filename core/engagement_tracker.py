@@ -127,6 +127,25 @@ class EngagementTracker:
         self._save_stats()
         logger.debug(f"Recorded engagement for {message_id}: {engagement_type}")
 
+    def pending_settlements(self, cutoff: datetime) -> List[Dict]:
+        """
+        Recorded messages old enough (sent before cutoff) whose engagement
+        outcome hasn't been judged yet. Copies, so callers can't corrupt stats.
+        """
+        return [
+            dict(msg) for msg in self.stats["recent_messages"]
+            if not msg.get("settled")
+            and datetime.fromisoformat(msg["timestamp"]) <= cutoff
+        ]
+
+    def mark_settled(self, message_id: str):
+        """Mark a recorded message's engagement outcome as judged."""
+        for msg in self.stats["recent_messages"]:
+            if msg["message_id"] == message_id:
+                msg["settled"] = True
+                break
+        self._save_stats()
+
     def get_channel_success_rate(self, channel_id: str) -> Optional[float]:
         """Get success rate for specific channel"""
         if channel_id not in self.stats["by_channel"]:

@@ -23,10 +23,26 @@ if TYPE_CHECKING:
 
 from .proactive_action import ProactiveAction
 from .engagement_tracker import EngagementTracker
-from .internal_constants import AGENTIC_EFFORT
+from .data_isolation import DataIsolationEnforcer
+from .internal_constants import (
+    AGENTIC_EFFORT,
+    FOLLOWUP_STANDALONE_IDLE_MINUTES,
+    PROACTIVE_SETTLE_DELAY_MINUTES,
+    model_supports_effort,
+)
 from .memory_tool_executor import MemoryToolExecutor
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_aware_utc(value: str) -> datetime:
+    """
+    Claude writes follow-up timestamps via the memory tool, so naive ISO
+    strings are common - treat them as UTC instead of raising TypeError on
+    comparison (one naive timestamp bricked every agentic iteration).
+    """
+    dt = datetime.fromisoformat(value)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 # Structured outputs (v0.6.0 Phase 5): the proactive generator may decline -
@@ -91,11 +107,13 @@ class AgenticEngine:
         self.discord_client = None  # Set after Discord client initialization
 
         # Memory tool executor for the proactive tool loop (MemoryManager has
-        # no execute(); calling it crashed any memory tool use in this engine)
+        # no execute(); calling it crashed any memory tool use in this engine).
+        # Same isolation enforcement as the reactive engine - proactive memory
+        # access must not bypass a configured scope.
         self.memory_tool = MemoryToolExecutor(
             memory_base_path=Path("memories"),
             bot_id=config.bot_id,
-            data_isolation=None,
+            data_isolation=DataIsolationEnforcer(config.get_data_isolation_config()),
         )
 
         # Cache proactive config (v0.6.0 - simplified config with presets)
@@ -127,6 +145,13 @@ class AgenticEngine:
         self.discord_client = discord_client
         logger.info("Discord client reference set on AgenticEngine")
 
+    def _build_output_config(self, schema: dict) -> dict:
+        """Structured output config; effort only where the model accepts it."""
+        output_config = {"format": {"type": "json_schema", "schema": schema}}
+        if model_supports_effort(self.config.api.model):
+            output_config["effort"] = AGENTIC_EFFORT
+        return output_config
+
     async def agentic_loop(self):
         """
         Main agentic loop - runs hourly.
@@ -142,6 +167,10 @@ class AgenticEngine:
         while self._running:
             try:
                 logger.debug("Agentic loop iteration starting...")
+
+                # Settle engagement outcomes for messages sent earlier - the
+                # success side of the stats that should_engage_proactively reads
+                await self.settle_pending_engagements()
 
                 # Get all servers bot is in
                 # (We'll get this from message_memory - channels we've seen)
@@ -204,7 +233,7 @@ class AgenticEngine:
 
         for followup in followups_data.get("pending", []):
             # Check if due
-            follow_up_after = datetime.fromisoformat(followup["follow_up_after"])
+            follow_up_after = _parse_aware_utc(followup["follow_up_after"])
             if now < follow_up_after:
                 continue  # Not due yet
 
@@ -245,11 +274,11 @@ class AgenticEngine:
         """
         channel_id = followup["channel_id"]
 
-        # Get channel idle time
-        idle_time = await self.get_channel_idle_time(channel_id)
+        # Get channel idle time (hours)
+        idle_hours = await self.get_channel_idle_time(channel_id)
 
-        # If channel idle, standalone is fine
-        if idle_time > 10:  # 10 minutes idle
+        # If the channel has been quiet a few minutes, standalone is fine
+        if idle_hours * 60 > FOLLOWUP_STANDALONE_IDLE_MINUTES:
             return "standalone"
 
         # If high priority, send now even if active
@@ -420,10 +449,7 @@ class AgenticEngine:
         filtered_pending = []
 
         for followup in pending:
-            follow_up_after = datetime.fromisoformat(followup["follow_up_after"])
-            # Ensure timezone-aware
-            if follow_up_after.tzinfo is None:
-                follow_up_after = follow_up_after.replace(tzinfo=timezone.utc)
+            follow_up_after = _parse_aware_utc(followup["follow_up_after"])
 
             # Keep if it's a future follow-up
             if follow_up_after > now:
@@ -446,10 +472,7 @@ class AgenticEngine:
         completed_archive_days = 30  # Keep completed for 30 days
 
         for followup in completed:
-            completed_date = datetime.fromisoformat(followup.get("completed_date", followup["mentioned_date"]))
-            # Ensure timezone-aware
-            if completed_date.tzinfo is None:
-                completed_date = completed_date.replace(tzinfo=timezone.utc)
+            completed_date = _parse_aware_utc(followup.get("completed_date", followup["mentioned_date"]))
 
             days_since_completion = (now - completed_date).days
 
@@ -608,10 +631,7 @@ Your personality:
                 model=self.config.api.model,
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
-                output_config={
-                    "effort": AGENTIC_EFFORT,
-                    "format": {"type": "json_schema", "schema": FOLLOWUP_MESSAGE_SCHEMA},
-                },
+                output_config=self._build_output_config(FOLLOWUP_MESSAGE_SCHEMA),
             )
 
             text = "".join(block.text for block in response.content if block.type == "text")
@@ -766,18 +786,13 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             )
 
             # Build API params with extended thinking and memory tool
-            output_config = {
-                "effort": AGENTIC_EFFORT,
-                "format": {"type": "json_schema", "schema": PROACTIVE_MESSAGE_SCHEMA},
-            }
-
             api_params = {
                 "model": self.config.api.model,
-                "max_tokens": 1000,
+                "max_tokens": 2000,  # thinking counts against this; truncation aborts the send
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": "\n".join(user_parts)}],
                 "tools": [{"type": "memory_20250818", "name": "memory"}],
-                "output_config": output_config,
+                "output_config": self._build_output_config(PROACTIVE_MESSAGE_SCHEMA),
             }
 
             # Add adaptive thinking if configured
@@ -791,6 +806,7 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             response_text = ""
             thinking_text = ""
             loop_iteration = 0
+            max_loop_iterations = 5
 
             while True:
                 loop_iteration += 1
@@ -802,8 +818,7 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                     if block.type == "thinking":
                         thinking_text += block.thinking
 
-                # Check stop reason
-                if response.stop_reason == "tool_use":
+                if response.stop_reason == "tool_use" and loop_iteration < max_loop_iterations:
                     # Execute tool calls
                     tool_results = []
                     for content_block in response.content:
@@ -824,12 +839,25 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                     api_params["messages"].append({"role": "user", "content": tool_results})
                     continue
 
-                elif response.stop_reason == "end_turn":
-                    # Extract final text
-                    for block in response.content:
-                        if block.type == "text":
-                            response_text += block.text
-                    break
+                # end_turn or anything unexpected (max_tokens, refusal,
+                # pause_turn) terminates the loop - re-issuing the identical
+                # request would spin forever in a background task
+                for block in response.content:
+                    if block.type == "text":
+                        response_text += block.text
+                if response.stop_reason != "end_turn":
+                    logger.warning(
+                        f"Proactive generation stopped with stop_reason="
+                        f"{response.stop_reason} (iteration {loop_iteration})"
+                    )
+                break
+
+            if not response_text.strip():
+                logger.warning(
+                    f"Proactive generation produced no text for channel "
+                    f"{action.channel_id}; skipping send"
+                )
+                return
 
             decision = json.loads(response_text)
             if not decision["should_send"]:
@@ -868,6 +896,49 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
 
         except Exception as e:
             logger.error(f"Error sending proactive message: {e}", exc_info=True)
+
+    async def settle_pending_engagements(self):
+        """
+        Judge engagement for proactive/follow-up messages sent earlier.
+
+        A human (non-bot, non-system) message in the channel after our send
+        counts as engagement. Runs each loop iteration; without it the
+        success side of the stats was never written, so every channel
+        death-spiraled below the proactive threshold after two sends.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=PROACTIVE_SETTLE_DELAY_MINUTES)
+
+        for entry in self.engagement_tracker.pending_settlements(cutoff):
+            channel_id = entry["channel_id"]
+            sent_at = datetime.fromisoformat(entry["timestamp"])
+
+            try:
+                engaged = await self._channel_has_human_reply_after(channel_id, sent_at)
+
+                if engaged:
+                    self.engagement_tracker.record_engagement(entry["message_id"], channel_id)
+                    if entry.get("topic") == "proactive":
+                        server_id = await self._get_server_for_channel(channel_id)
+                        if server_id:
+                            stats = await self.memory.get_engagement_stats(server_id, channel_id)
+                            stats["successful_attempts"] = stats.get("successful_attempts", 0) + 1
+                            await self.memory.write_engagement_stats(server_id, channel_id, stats)
+
+                self.engagement_tracker.mark_settled(entry["message_id"])
+                logger.info(
+                    f"Settled {entry.get('topic', 'proactive')} message "
+                    f"{entry['message_id']} in {channel_id}: engaged={engaged}"
+                )
+            except Exception as e:
+                logger.error(f"Error settling engagement for {entry['message_id']}: {e}", exc_info=True)
+
+    async def _channel_has_human_reply_after(self, channel_id: str, sent_at: datetime) -> bool:
+        """True if any human message landed in the channel after sent_at (naive UTC)."""
+        recent = await self.message_memory.get_recent(channel_id, limit=20)
+        return any(
+            not msg.is_bot and not msg.is_system and msg.timestamp > sent_at
+            for msg in recent
+        )
 
     async def _record_proactive_attempt(self, server_id: str, channel_id: str):
         """

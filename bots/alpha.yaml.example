@@ -85,7 +85,7 @@ agentic:
   proactive:
     enabled: false
     intensity: "moderate"          # gentle | moderate | active
-    quiet_hours: [0, 1, 2, 3, 4, 5, 6]  # UTC hours to stay quiet
+    quiet_hours: [0, 1, 2, 3, 4, 5, 6]  # Local (host clock) hours to stay quiet
     allowed_channels: []           # Empty = all channels
 
 # ============================================================

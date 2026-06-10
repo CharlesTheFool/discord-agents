@@ -38,6 +38,20 @@ TOOL_STUB_TEXT = "[tool result cleared at turn boundary - re-run the tool if the
 # chat engine's effort level; api.effort in config only steers the chat brain
 AGENTIC_EFFORT = "low"
 
+# Minutes to wait after a proactive/follow-up send before judging whether
+# anyone engaged with it (success side of the engagement stats)
+PROACTIVE_SETTLE_DELAY_MINUTES = 15
+
+# Channel quiet this long -> a standalone follow-up won't interrupt anything
+FOLLOWUP_STANDALONE_IDLE_MINUTES = 10
+
+# Models that accept output_config.effort; passing it elsewhere is a 400
+_EFFORT_CAPABLE_MARKERS = ("fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6")
+
+
+def model_supports_effort(model: str) -> bool:
+    return any(marker in model for marker in _EFFORT_CAPABLE_MARKERS)
+
 
 # =============================================================================
 # RATE LIMITING (Internal)

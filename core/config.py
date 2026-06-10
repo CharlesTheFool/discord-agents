@@ -38,6 +38,7 @@ from core.internal_constants import (
     LOCAL_STORAGE_PRUNING_ENABLED,
     LOCAL_STORAGE_MAX_SIZE_GB,
     LOCAL_STORAGE_MIN_AGE_DAYS,
+    model_supports_effort,
 )
 
 
@@ -131,7 +132,8 @@ class ProactiveConfig:
     """Proactive engagement configuration"""
     enabled: bool = False
     intensity: str = "moderate"  # gentle | moderate | active
-    quiet_hours: List[int] = field(default_factory=lambda: [0, 6])
+    # List of LOCAL hours (0-23) during which proactive messages are suppressed
+    quiet_hours: List[int] = field(default_factory=lambda: list(range(0, 7)))
     allowed_channels: List[str] = field(default_factory=list)
 
     def get_intensity_values(self):
@@ -418,7 +420,7 @@ class BotConfig:
         proactive = ProactiveConfig(
             enabled=proactive_data.get("enabled", False),
             intensity=proactive_data.get("intensity", "moderate"),
-            quiet_hours=proactive_data.get("quiet_hours", [0, 6]),
+            quiet_hours=proactive_data.get("quiet_hours", list(range(0, 7))),
             allowed_channels=proactive_data.get("allowed_channels", []),
         )
 
@@ -581,6 +583,13 @@ class BotConfig:
         if self.api.effort is not None and self.api.effort not in ("low", "medium", "high", "max"):
             errors.append(
                 f"api.effort must be one of low/medium/high/max, got '{self.api.effort}'"
+            )
+
+        if self.api.effort is not None and not model_supports_effort(self.api.model):
+            errors.append(
+                f"api.effort is set but model '{self.api.model}' does not support the "
+                f"effort parameter (every API call would 400) - remove api.effort or "
+                f"switch to an effort-capable model"
             )
 
         if self.api.context_tokens <= 0:
