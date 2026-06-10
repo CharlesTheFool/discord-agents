@@ -24,7 +24,28 @@ class LocalStorageManager:
         """
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self._allowed_roots = [self.base_path.resolve()]
         logger.info(f"LocalStorageManager initialized with base_path: {self.base_path}")
+
+    def allow_root(self, root) -> None:
+        """Permit load() to read from an additional storage root.
+
+        The attachments table can reference files outside base_path (the bot
+        repository, v0.6.1) - whichever component introduces such a root
+        declares it here.
+        """
+        resolved = Path(root).resolve()
+        if resolved not in self._allowed_roots:
+            self._allowed_roots.append(resolved)
+            logger.info(f"LocalStorageManager: allowed additional root {resolved}")
+
+    @staticmethod
+    def _is_under(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
 
     def get_path(self, server_id: str, channel_id: str, message_id: str, filename: str) -> str:
         """Generate storage path for an attachment.
@@ -90,11 +111,10 @@ class LocalStorageManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
-        # Validate path is within base_path to prevent directory traversal
+        # Validate path is within an allowed root to prevent directory traversal
         try:
             resolved_path = Path(file_path).resolve()
-            resolved_base = self.base_path.resolve()
-            if not str(resolved_path).startswith(str(resolved_base)):
+            if not any(self._is_under(resolved_path, root) for root in self._allowed_roots):
                 raise ValueError(f"Invalid file path: {file_path}")
         except Exception as e:
             logger.error(f"Path validation failed for {file_path}: {e}")

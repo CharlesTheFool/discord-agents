@@ -33,6 +33,9 @@ class RepositoryManager:
         self.attachment_manager = attachment_manager
         self.root = Path("repository") / bot_id
         self.root.mkdir(parents=True, exist_ok=True)
+        # Retrieval loads through LocalStorageManager, whose path jail covers
+        # persistence/attachments - declare our root as a second storage root
+        self.attachment_manager.local_storage.allow_root(self.root)
         logger.info(f"RepositoryManager initialized at {self.root}")
 
     @property
