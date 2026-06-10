@@ -98,11 +98,10 @@ class MemoryManager:
         total = data.get("total_attempts", 0)
         successful = data.get("successful_attempts", 0)
 
-        # Default to 0.5 success rate if no attempts yet
-        if total == 0:
-            success_rate = 0.5
-        else:
-            success_rate = successful / total
+        # Laplace smoothing: stays near the 0.5 prior on few samples, so one
+        # ignored message can't blacklist a channel forever (proactive never
+        # firing again means the rate could never recover - a death spiral)
+        success_rate = (successful + 1) / (total + 2)
 
         return {
             "success_rate": success_rate,
