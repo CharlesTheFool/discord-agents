@@ -74,13 +74,15 @@ class ConversationState:
         if attachment_ids:
             message["attachment_ids"] = attachment_ids
 
-            # Sanity check: annotation count should match attachment blocks
+            # Sanity check: more attachment blocks than annotations means the
+            # annotation drifted (fewer is fine - assistant turns embed text
+            # placeholders instead of real blocks)
             if isinstance(content, list):
                 attachment_block_count = sum(
                     1 for block in content
                     if block.get("type") in ("document", "container_upload", "image")
                 )
-                if len(attachment_ids) != attachment_block_count:
+                if attachment_block_count > len(attachment_ids):
                     logger.warning(
                         f"Attachment count mismatch in add_message(): "
                         f"{len(attachment_ids)} attachment_ids != {attachment_block_count} attachment blocks"

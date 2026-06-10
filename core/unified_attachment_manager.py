@@ -11,7 +11,7 @@ import asyncio
 import logging
 from typing import Optional, Dict, TYPE_CHECKING
 import discord
-from anthropic import AsyncAnthropic, NotFoundError, PermissionDeniedError
+from anthropic import AsyncAnthropic
 
 from core.files_api_client import FilesAPIClient
 from core.local_storage_manager import LocalStorageManager
@@ -301,6 +301,77 @@ class UnifiedAttachmentManager:
             "use_as_document_block": False
         }
 
+    async def delete_attachments_for_message(self, message_id: str) -> int:
+        """
+        Remove all traces of a deleted Discord message's attachments: local
+        copies, Files API uploads (best effort), and the database rows.
+        Without this, deleted user content stayed retrievable forever.
+
+        Returns number of attachments removed.
+        """
+        async with self.attachment_db.db.execute(
+            "SELECT attachment_id, file_id, local_path, filename FROM attachments WHERE message_id = ?",
+            (str(message_id),)
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return 0
+
+        for attachment_id, file_id, local_path, filename in rows:
+            if local_path and self.local_storage.exists(local_path):
+                try:
+                    await self.local_storage.delete(local_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete local copy of {filename}: {e}")
+            if file_id:
+                try:
+                    await self.files_api_client.delete(file_id)
+                except Exception as e:
+                    logger.warning(f"Could not delete Files API entry {file_id}: {e}")
+
+        await self.attachment_db.db.execute(
+            "DELETE FROM attachments WHERE message_id = ?", (str(message_id),)
+        )
+        await self.attachment_db.db.commit()
+
+        logger.info(f"Purged {len(rows)} attachment(s) for deleted message {message_id}")
+        return len(rows)
+
+    @staticmethod
+    def build_content_block(for_api: Optional[Dict], filename: str, role: str = "user") -> Optional[Dict]:
+        """
+        Content block for a processed attachment, respecting API role rules:
+        image/document/container_upload blocks are only valid in user turns,
+        so assistant turns get a text placeholder instead.
+
+        Single source of truth for the for_api -> block mapping (the audit
+        found six hand-rolled, divergent copies of it).
+
+        Returns None when there is nothing to embed (failed processing).
+        """
+        if not for_api:
+            return None
+        if role != "user":
+            return {"type": "text", "text": f"\n[Attachment: {filename}]"}
+        if for_api["method"] == "base64":
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": for_api["media_type"],
+                    "data": for_api["data"],
+                },
+            }
+        if for_api["method"] == "file_id":
+            if for_api.get("use_as_document_block", True):
+                return {
+                    "type": "document",
+                    "source": {"type": "file", "file_id": for_api["data"]},
+                }
+            return {"type": "container_upload", "file_id": for_api["data"]}
+        return None
+
     async def get_attachment_for_processing(self, attachment_id: str) -> Optional[Dict]:
         """
         Retrieve attachment for retroactive processing.
@@ -520,69 +591,27 @@ class UnifiedAttachmentManager:
         filename: str
     ) -> Optional[str]:
         """
-        Handle expired container_upload file_id by re-uploading from local storage.
+        Validate a container_upload file_id before embedding it; re-upload
+        from local storage when the Files API entry is gone.
 
-        First checks if file_id is still valid. If expired, re-uploads from local storage.
-
-        Args:
-            attachment_id: Discord attachment ID
-            file_id: Files API file_id to check
-            local_path: Path to local copy
-            filename: Original filename
+        retrieve() returns None on 404/403 (it never raises), so validity is
+        judged on the return value - the old except branch was unreachable
+        and expired ids were declared "still valid".
 
         Returns:
-            Valid file_id (original if still valid, new if re-uploaded), None on failure
+            Valid file_id (original if still live, new if re-uploaded),
+            None when recovery is impossible.
         """
-        try:
-            # Check if file_id is still valid
-            await self.files_api_client.retrieve(file_id)
+        metadata = await self.files_api_client.retrieve(file_id)
+        if metadata:
             logger.debug(f"container_upload file_id {file_id} is still valid")
-            return file_id  # Still valid, return as-is
+            return file_id
 
-        except (NotFoundError, PermissionDeniedError) as e:
-            # File expired, need to re-upload
-            logger.warning(f"container_upload file_id {file_id} expired ({type(e).__name__}), re-uploading from local storage")
-
-            if not self.local_storage.exists(local_path):
-                logger.error(f"Cannot recover from expiration: local_path missing {local_path}")
-                return None
-
-            try:
-                # Load file from disk
-                file_data = await self.local_storage.load(local_path)
-
-                # Re-upload to Files API
-                mime_type = AttachmentClassifier.get_files_api_mime_type(filename)
-                upload_result = await self.files_api_client.upload(
-                    filename=filename,
-                    file_data=file_data,
-                    mime_type=mime_type
-                )
-
-                if upload_result:
-                    new_file_id = upload_result["file_id"]
-
-                    # Update database with new file_id
-                    await self.attachment_db.db.execute(
-                        "UPDATE attachments SET file_id = ?, file_api_uploaded_at = CURRENT_TIMESTAMP WHERE attachment_id = ?",
-                        (new_file_id, attachment_id)
-                    )
-                    await self.attachment_db.db.commit()
-
-                    logger.info(f"Successfully recovered container_upload from file expiration: {file_id} -> {new_file_id}")
-                    return new_file_id
-                else:
-                    logger.error(f"Failed to re-upload container_upload {filename} after expiration")
-                    return None
-
-            except Exception as re_upload_error:
-                logger.error(f"Error re-uploading container_upload for {attachment_id}: {re_upload_error}", exc_info=True)
-                return None
-
-        except Exception as e:
-            # Other error during retrieval check
-            logger.error(f"Error checking container_upload file_id validity for {attachment_id}: {e}", exc_info=True)
-            return file_id  # Return original file_id, let API fail later if actually invalid
+        logger.warning(
+            f"container_upload file_id {file_id} no longer in Files API, "
+            f"re-uploading from local storage"
+        )
+        return await self._handle_file_expiration(attachment_id, file_id, local_path, filename)
 
     async def _process_image(
         self,

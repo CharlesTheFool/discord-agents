@@ -31,6 +31,7 @@ from .context_builder import ContextBuilder
 from .mcp_manager import MCPManager
 from .skills_manager import SkillsManager
 from .unified_attachment_manager import UnifiedAttachmentManager
+from .files_api_client import FilesAPIClient
 from .data_isolation import DataIsolationEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .internal_constants import TOOL_STUB_KEEP_TURNS
@@ -210,6 +211,11 @@ class ReactiveEngine:
 
         # Unified Attachment Manager (replaces multimedia_processor)
         self.attachment_manager = None  # Initialized in async_initialize
+
+        # Files API access for container output delivery. Independent of the
+        # attachments feature: code execution is always available, and the
+        # system prompt promises $OUTPUT_DIR files ride on the reply.
+        self.files_api_client = FilesAPIClient(self.anthropic)
 
         # Conversation State Manager (v0.5.0 - dual-cap context management)
         self.conversation_state_manager = None  # Initialized in async_initialize
@@ -569,13 +575,13 @@ class ReactiveEngine:
         Download container-created files and wrap them as discord.File objects
         so deliverables (pptx, charts, ...) ride on the bot's reply.
         """
-        if not file_ids or not self.attachment_manager:
+        if not file_ids:
             return []
 
         files = []
         for file_id in dict.fromkeys(file_ids):  # dedupe, keep order
-            meta = await self.attachment_manager.files_api_client.retrieve(file_id)
-            data = await self.attachment_manager.files_api_client.content(file_id)
+            meta = await self.files_api_client.retrieve(file_id)
+            data = await self.files_api_client.content(file_id)
             if not data:
                 logger.warning(f"Could not download container output {file_id}, skipping")
                 continue
@@ -734,38 +740,12 @@ class ReactiveEngine:
                             text_content = message.content if message.content.strip() else "[Attachment]"
                             user_content = [{"type": "text", "text": text_content}]
                             for att in processed_attachments:
-                                api_data = att["for_api"]
-                                logger.info(f"Processing attachment {att.get('filename')}: api_data={api_data}")
-                                if api_data["method"] == "file_id":
-                                    file_id = api_data["data"]
-
-                                    # Add document block for reading (if eligible)
-                                    if api_data.get("use_as_document_block", True):
-                                        user_content.append({
-                                            "type": "document",
-                                            "source": {
-                                                "type": "file",
-                                                "file_id": file_id
-                                            }
-                                        })
-                                        logger.info(f"Added document block for {att['filename']} (file_id: {file_id})")
-                                    else:
-                                        # Code execution files: container_upload block
-                                        # Bug #25 fix: Use container_upload instead of text mention
-                                        user_content.append({
-                                            "type": "container_upload",
-                                            "file_id": file_id
-                                        })
-                                        logger.info(f"Added container_upload block for {att['filename']} (file_id: {file_id})")
-                                elif api_data["method"] == "base64":
-                                    user_content.append({
-                                        "type": "image",
-                                        "source": {
-                                            "type": "base64",
-                                            "media_type": api_data["media_type"],
-                                            "data": api_data["data"]
-                                        }
-                                    })
+                                block = self.attachment_manager.build_content_block(
+                                    att.get("for_api"), att["filename"]
+                                )
+                                if block:
+                                    user_content.append(block)
+                                    logger.info(f"Added {block['type']} block for {att['filename']}")
 
                         conversation_state.add_message("user", user_content, attachment_ids)
                         logger.debug(f"Added user message to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
@@ -1615,31 +1595,12 @@ class ReactiveEngine:
                 attachment_ids = []
                 for att in processed_attachments:
                     attachment_ids.append(att["attachment_id"])
-                    api_data = att["for_api"]
-                    if api_data["method"] == "file_id":
-                        file_id = api_data["data"]
-                        if api_data.get("use_as_document_block", True):
-                            user_content.append({
-                                "type": "document",
-                                "source": {"type": "file", "file_id": file_id}
-                            })
-                            logger.info(f"Added document block for {att['filename']}")
-                        else:
-                            user_content.append({
-                                "type": "container_upload",
-                                "file_id": file_id
-                            })
-                            logger.info(f"Added container_upload block for {att['filename']}")
-                    elif api_data["method"] == "base64":
-                        user_content.append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": api_data["media_type"],
-                                "data": api_data["data"]
-                            }
-                        })
-                        logger.info(f"Added image block for {att['filename']}")
+                    block = self.attachment_manager.build_content_block(
+                        att.get("for_api"), att["filename"]
+                    )
+                    if block:
+                        user_content.append(block)
+                        logger.info(f"Added {block['type']} block for {att['filename']} (periodic)")
 
             # Add message to conversation state
             conversation_state.add_message("user", user_content, attachment_ids)

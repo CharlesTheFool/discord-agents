@@ -380,40 +380,21 @@ class DiscordClient(discord.Client):
                 # Extract attachment IDs
                 attachment_ids = [att["attachment_id"] for att in processed_attachments]
 
-                # Build content blocks with document content (Bug #5 fix)
+                # Build content blocks; role='assistant' yields text
+                # placeholders only - image/document/container_upload blocks
+                # in assistant turns 400 every subsequent API call
                 content_blocks = []
 
                 # Add text content first if exists
                 if message.content:
                     content_blocks.append({"type": "text", "text": message.content})
 
-                # Add document/image blocks from processed attachments
                 for att in processed_attachments:
-                    api_data = att["for_api"]
-
-                    if api_data["method"] == "base64":
-                        # Image attachment - DON'T include image block in assistant turns (API restriction)
-                        # Just add a text mention for context
-                        content_blocks.append({
-                            "type": "text",
-                            "text": f"\n[Image: {att['filename']}]"
-                        })
-                    elif api_data["method"] == "file_id":
-                        # Document attachment
-                        if api_data.get("use_as_document_block", True):
-                            content_blocks.append({
-                                "type": "document",
-                                "source": {
-                                    "type": "file",
-                                    "file_id": api_data["data"]
-                                }
-                            })
-                        else:
-                            # Code execution file
-                            content_blocks.append({
-                                "type": "text",
-                                "text": f"\n[Attached file: {att['filename']} - available to code execution tool]"
-                            })
+                    block = self.reactive_engine.attachment_manager.build_content_block(
+                        att.get("for_api"), att["filename"], role="assistant"
+                    )
+                    if block:
+                        content_blocks.append(block)
 
                 # Use content blocks if we have attachments, otherwise just text
                 content = content_blocks if content_blocks else (message.content or "[File uploaded]")
@@ -548,6 +529,14 @@ class DiscordClient(discord.Client):
             logger.debug(f"Deleted message {message.id} from storage")
         except Exception as e:
             logger.error(f"Error deleting message from storage: {e}")
+
+        # Deleted content must not stay re-surfaceable through the
+        # attachment pipeline (local copy, Files API upload, index rows)
+        if self.reactive_engine and self.reactive_engine.attachment_manager:
+            try:
+                await self.reactive_engine.attachment_manager.delete_attachments_for_message(message.id)
+            except Exception as e:
+                logger.error(f"Error purging attachments for deleted message: {e}")
 
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         """
