@@ -67,8 +67,15 @@ def serialize_assistant_blocks(content) -> list:
     their results) are deliberately dropped: detached from the live response
     their content shapes can't be reproduced (a stringified result 400s on
     replay), and the assistant's final text already carries the conclusions.
+
+    When server blocks are dropped, thinking blocks go with them: their
+    signatures bind to the original block sequence, so a thinking block
+    re-sent without the server blocks it surrounded 400s as "modified".
+    History thinking is optional - mid-loop continuations use the live
+    response.content, never this serialized form.
     """
     serialized = []
+    dropped_server_block = False
     for block in content:
         block_type = getattr(block, "type", None)
         if block_type == "text":
@@ -89,6 +96,13 @@ def serialize_assistant_blocks(content) -> list:
                 "name": block.name,
                 "input": block.input,
             })
+        else:
+            dropped_server_block = True
+    if dropped_server_block:
+        serialized = [
+            b for b in serialized
+            if b["type"] not in ("thinking", "redacted_thinking")
+        ]
     return serialized
 
 

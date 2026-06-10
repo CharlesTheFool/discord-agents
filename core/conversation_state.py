@@ -448,15 +448,36 @@ class ConversationState:
                 ]
                 stripped += len(content) - len(kept)
                 msg["content"] = kept
-        if stripped:
-            # Stripping can leave empty messages, which the API rejects
+        # Heal thinking blocks corrupted by server-block stripping (states
+        # written before serialize_assistant_blocks dropped thinking alongside
+        # server blocks): multiple thinking blocks in one assistant message
+        # mean server blocks were spliced out between them - the signatures no
+        # longer verify and the API 400s the whole request.
+        healed = 0
+        _thinking_types = ("thinking", "redacted_thinking")
+        for msg in state.messages:
+            content = msg.get("content")
+            if msg.get("role") == "assistant" and isinstance(content, list):
+                thinking_count = sum(
+                    1 for b in content
+                    if isinstance(b, dict) and b.get("type") in _thinking_types
+                )
+                if thinking_count >= 2:
+                    msg["content"] = [
+                        b for b in content
+                        if not (isinstance(b, dict) and b.get("type") in _thinking_types)
+                    ]
+                    healed += thinking_count
+
+        if stripped or healed:
+            # Stripping/healing can leave empty messages, which the API rejects
             state.messages = [
                 m for m in state.messages
                 if not (isinstance(m.get("content"), list) and not m["content"])
             ]
             logger.info(
-                f"Stripped {stripped} legacy server tool block(s) from persisted "
-                f"state for channel {state.channel_id}"
+                f"Persisted-state heal for channel {state.channel_id}: "
+                f"{stripped} legacy server block(s), {healed} spliced thinking block(s)"
             )
 
         state.active_skills = data.get("active_skills", [])
