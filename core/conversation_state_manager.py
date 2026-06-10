@@ -7,6 +7,8 @@ One state per channel, stored in SQLite database.
 
 import aiosqlite
 import asyncio
+import copy
+import hashlib
 import logging
 import json
 from pathlib import Path
@@ -16,6 +18,29 @@ from datetime import datetime
 from .conversation_state import ConversationState
 
 logger = logging.getLogger(__name__)
+
+
+def _walk_image_blocks(messages: list, source_type: str):
+    """
+    Yield (container_list, index) for every image block whose source type
+    matches. Recurses into tool_result content - get_attachment inlines
+    images there.
+    """
+    stack = [
+        msg["content"] for msg in messages
+        if isinstance(msg.get("content"), list)
+    ]
+    while stack:
+        blocks = stack.pop()
+        for i, block in enumerate(blocks):
+            if not isinstance(block, dict):
+                continue
+            source = block.get("source")
+            if (block.get("type") == "image" and isinstance(source, dict)
+                    and source.get("type") == source_type):
+                yield blocks, i
+            elif block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+                stack.append(block["content"])
 
 
 class ConversationStateManager:
@@ -82,6 +107,20 @@ class ConversationStateManager:
                 message_count INTEGER DEFAULT 0,
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (channel_id, bot_id)
+            )
+        """)
+
+        # Content-addressed store for inline image data: states persist a
+        # sha256 ref instead of re-serializing megabytes of base64 on every
+        # save (save() runs several times per response turn)
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS image_blobs (
+                sha256 TEXT NOT NULL,
+                bot_id TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (sha256, bot_id)
             )
         """)
         await self._db.commit()
@@ -159,6 +198,7 @@ class ConversationStateManager:
             try:
                 state_data = json.loads(row[0])
                 state = ConversationState.from_dict(state_data)
+                await self._rehydrate_images(state)
                 logger.debug(f"Loaded ConversationState for channel {channel_id} ({state})")
                 return state
 
@@ -168,14 +208,73 @@ class ConversationStateManager:
 
         return None
 
+    async def _rehydrate_images(self, state: ConversationState) -> None:
+        """
+        Swap persisted base64_ref image blocks back to inline base64 from the
+        blob store. A missing blob degrades to a text placeholder rather than
+        an API-invalid block.
+        """
+        refs = list(_walk_image_blocks(state.messages, "base64_ref"))
+        if not refs:
+            return
+
+        hashes = {blocks[i]["source"]["sha256"] for blocks, i in refs}
+        placeholders = ",".join("?" * len(hashes))
+        async with self._db.execute(
+            f"""
+            SELECT sha256, media_type, data FROM image_blobs
+            WHERE bot_id = ? AND sha256 IN ({placeholders})
+            """,
+            (self.bot_id, *hashes)
+        ) as cursor:
+            found = {r[0]: (r[1], r[2]) for r in await cursor.fetchall()}
+
+        for blocks, i in refs:
+            digest = blocks[i]["source"]["sha256"]
+            if digest in found:
+                media_type, data = found[digest]
+                blocks[i] = {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": data},
+                }
+            else:
+                logger.warning(f"Image blob {digest[:12]}... missing from store; dropping to placeholder")
+                blocks[i] = {"type": "text", "text": "[image no longer available]"}
+
     async def save(self, state: ConversationState) -> None:
         """
         Save conversation state to database.
+
+        Inline base64 image data is externalized to the content-addressed
+        blob store; the state row keeps a sha256 ref. The in-memory state is
+        untouched (deepcopy shares the immutable strings, so this is cheap).
 
         Args:
             state: ConversationState to save
         """
         state_dict = state.to_dict()
+
+        if next(_walk_image_blocks(state_dict["messages"], "base64"), None):
+            messages = copy.deepcopy(state_dict["messages"])
+            blobs = {}
+            targets = list(_walk_image_blocks(messages, "base64"))
+            for blocks, i in targets:
+                source = blocks[i]["source"]
+                media_type = source.get("media_type", "image/jpeg")
+                digest = hashlib.sha256(source["data"].encode()).hexdigest()
+                blobs[digest] = (media_type, source["data"])
+                blocks[i] = {
+                    "type": "image",
+                    "source": {"type": "base64_ref", "media_type": media_type, "sha256": digest},
+                }
+            for digest, (media_type, data) in blobs.items():
+                await self._db.execute(
+                    "INSERT OR IGNORE INTO image_blobs (sha256, bot_id, media_type, data) "
+                    "VALUES (?, ?, ?, ?)",
+                    (digest, self.bot_id, media_type, data)
+                )
+            state_dict = {**state_dict, "messages": messages}
+
         state_json = json.dumps(state_dict)
 
         await self._db.execute(
@@ -271,11 +370,27 @@ class ConversationStateManager:
             """,
             (self.bot_id, days)
         )
+
+        # Sweep image blobs no remaining state references (refs roll out of
+        # the message cap or die with their state row)
+        blob_cursor = await self._db.execute(
+            """
+            DELETE FROM image_blobs
+            WHERE bot_id = ? AND NOT EXISTS (
+                SELECT 1 FROM conversation_states cs
+                WHERE cs.bot_id = image_blobs.bot_id
+                  AND instr(cs.state_json, image_blobs.sha256) > 0
+            )
+            """,
+            (self.bot_id,)
+        )
         await self._db.commit()
 
         deleted_count = cursor.rowcount
 
         if deleted_count > 0:
             logger.info(f"Cleaned up {deleted_count} old conversation states (>{days} days inactive)")
+        if blob_cursor.rowcount > 0:
+            logger.info(f"Swept {blob_cursor.rowcount} orphaned image blob(s)")
 
         return deleted_count
