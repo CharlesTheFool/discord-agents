@@ -7,7 +7,7 @@ commitments, details are not. History lives in [CHANGELOG.md](CHANGELOG.md).
 
 Slot held for a small follow-on to the 0.6.1 bot file repository.
 
-## 0.7.0 — The Unified Mind
+## 0.7.0 — Unified identity & memory reconsolidation
 
 One bot, one continuous identity across every server it inhabits — with the
 judgment to handle that gracefully.
@@ -49,7 +49,7 @@ judgment to handle that gracefully.
 **Substrate**
 - Message Batches API client: latency-tolerant distillation at 50% cost.
 
-## 0.8.0 — Day One
+## 0.8.0 — Induction & new surfaces
 
 Make a bot joining a populated server instantly tuned-in instead of amnesiac,
 and present on every conversation surface.
@@ -66,13 +66,14 @@ and present on every conversation surface.
   chat like any other channel: meeting notes relayed there become memory,
   documents, reminders.
 
-## 0.9.0 — The Switchboard
+## 0.9.0 — Coordination, voice, and the application
 
-The ensemble becomes an organism.
+The ensemble becomes an organism, the bot gains ears, and the framework
+becomes a product.
 
 - **Supervisor daemon** — the shared backbone: process management for bot
   instances, a local message bus, and a status/config/log API. Built once,
-  consumed twice (by the Master bot below, and by the dashboard).
+  consumed by the Master bot, the dashboard, and the desktop app.
 - **Master bot** — a coordinator with no channel-posting surface of its own:
   talk to it in DMs, it manages the fleet, and it relays **cross-agent
   requests** — one bot asks it to have another instance pose a question or
@@ -82,11 +83,6 @@ The ensemble becomes an organism.
   extend across the bus (relayed knowledge is labeled as relayed).
 - **DM support** — bots gain a DM surface (prerequisite for the Master,
   useful everywhere).
-- **Minimal web dashboard** — a thin human client on the supervisor API:
-  status, logs, config, spawn/stop.
-
-## 0.10.0 — The Listener
-
 - **Voice transcription** — the bot joins occupied voice channels and treats
   transcribed speech as flagged ordinary messages (full pipeline reuse — no
   multimodality), replying in the voice channel's text chat with
@@ -97,21 +93,19 @@ The ensemble becomes an organism.
 - **/record** — start/stop (or 5-minute silence) meeting capture →
   Claude-organized transcript document → posted to a chosen channel and
   saved to the repository.
+- **Desktop application** — Electron app on the supervisor API: bot
+  instantiation, configuration, monitoring, and control without touching a
+  terminal; download-site distribution for non-developer operators.
 
-## 1.0 — The Product
+## 1.0
 
-No new behavior. Two things, done properly:
-
-- **The application** — Electron-packaged desktop app on the supervisor
-  API: download-site distribution for non-developer operators
-  (instantiation, configuration, monitoring without touching a terminal).
-- **The stability campaign** — extended prod soak, a full audit pass like
-  the v0.6.0 pre-release sweep, config freeze and stability guarantees.
-  1.0 is earned by testing, not built.
+Declared by the operator once every feature above has been tested in real
+use. Stability, not features: extended prod soak, a full audit pass like the
+v0.6.0 pre-release sweep, config freeze.
 
 ## Later / unscheduled
 
-- **Bot speech** in voice channels (the Listener learns to talk back)
+- **Bot speech** in voice channels (talking back, not just listening)
 - **Richer presence** — events, polls, scheduled activities
 - **Daily web-search quota** — dormant; revisit only if per-request caps
   prove insufficient

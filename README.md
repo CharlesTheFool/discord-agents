@@ -299,8 +299,9 @@ Built with:
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) — next up: **0.7.0 "The Unified Mind"** (one
-continuous identity across servers, with vaults and discretion; memory
-reconsolidation) and **0.8.0 "Day One"** (server induction, threads).
+See [ROADMAP.md](ROADMAP.md) — next up: **0.7.0** (one continuous identity
+across servers, with vaults and discretion; memory reconsolidation), then
+induction, new surfaces, fleet coordination, voice, and a desktop app on the
+road to 0.9.
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
