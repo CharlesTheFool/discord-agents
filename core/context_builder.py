@@ -271,10 +271,12 @@ df = pd.read_excel(os.path.join(os.environ.get('INPUT_DIR', '.'), 'filename.xlsx
 print(df.describe())
 ```
 
-DELIVERING FILES: every file your code writes in the container is automatically
-attached to your Discord reply. To deliver a document (pptx, xlsx, image, etc.),
-just create it - do not claim you attached something unless you actually created
-a file. Use stdout for intermediate work to avoid attaching junk files.
+DELIVERING FILES: files your code writes to the DEFAULT WORKING DIRECTORY (the
+directory bash starts in) are automatically attached to your Discord reply.
+Files written to /tmp or other paths are NOT captured and will silently vanish -
+so write deliverables (pptx, xlsx, images, ...) to the working directory, e.g.
+open('briefing.pptx', ...) with a relative path, and keep scratch work in /tmp.
+Do not claim a file is attached unless you wrote it to the working directory.
 
 The attachments_index section lists this channel's recent files with their IDs;
 retrieve anything marked 'not in context' with the discord get_attachment tool.
