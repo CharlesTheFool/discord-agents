@@ -208,14 +208,6 @@ class AgenticEngine:
             if now < follow_up_after:
                 continue  # Not due yet
 
-            # Check priority threshold
-            priority_levels = {"low": 0, "medium": 1, "high": 2}
-            threshold_level = priority_levels.get(self.config.agentic.followups.priority_threshold, 1)
-            followup_level = priority_levels.get(followup["priority"], 1)
-
-            if followup_level < threshold_level:
-                continue  # Priority too low
-
             # Check if user active recently
             user_active = await self.is_user_active_recently(followup["user_id"], hours=24)
             if not user_active:
