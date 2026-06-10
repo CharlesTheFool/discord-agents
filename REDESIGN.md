@@ -79,6 +79,37 @@ end at natural boundaries, distill knowledge to durable memory, and the next ses
 5. **Episode hygiene**: the index grows forever; only its tail enters the seed. Periodically
    (quiet hours / monthly) roll old episodes up into a digest file. Cheap, deferrable.
 
+**Boundaries are timeline-derived, not runtime-derived (offline/crash resistance):**
+
+An episode boundary is a property of the channel's *message timeline* — an idle gap > T
+between consecutive messages, or accumulated span mass — computable from the message store
+(FTS5/SQLite, populated by the existing startup backfill) at ANY time. It is never a property
+of the bot process being up. Consequences:
+
+- **Per-channel watermark**: persist `last_episodized_message_id` (snowflake) in SQLite.
+  The "open span" = watermark → now. Episodization = "find boundaries in the open span,
+  distill each closed segment in order, advance the watermark" — one function, three modes:
+  1. **Live**: boundary observed while online → distill, advance watermark.
+  2. **Catch-up on startup**: backfill fills the message store (already exists); run the same
+     segmentation over the open span; distill each missed episode (possibly several); then
+     seed the current session. A crash or kill mid-conversation just leaves the in-flight
+     segment in the open span — it becomes an episode at next startup. Nothing is lost except
+     un-persisted in-context working state, which the trust-the-agent decision already
+     writes off.
+  3. **Retroactive on server join**: same machinery with the watermark initialized deep in
+     history. Policy knobs: depth (e.g. 30 days) and granularity — pre-join history should get
+     COARSE era digests (weekly/monthly), not fine episodes; run via Batches API (50% cost,
+     latency-irrelevant). Reasonable default: skip fine pre-join episodization entirely —
+     FTS5 search + culture.md cover "before my time"; the ledgers (settled questions, used
+     jokes) only matter for the bot's OWN participation anyway.
+- **Idempotency**: episode filename is keyed by the range-start message ID; distilling a fixed
+  ID range is safe to re-run (overwrite). Advance the watermark in the same transaction as
+  recording the episode; a partial failure re-runs and overwrites.
+- **Segmentation token estimates**: the live threshold trigger reads `response.usage`, but
+  catch-up segmentation can't — estimate span mass from stored message lengths (chars/4).
+  Rough is fine: it only picks boundaries; nothing API-facing depends on it. Idle-gap
+  boundaries dominate in practice anyway.
+
 **Asymmetric context (chat small, work big) — turn-scoped working memory:**
 Within a single turn's tool loop (code execution, big tool results, multi-step agentic work),
 context may balloon freely. At **turn end**, persist the final response and stub out heavy
@@ -173,8 +204,12 @@ Smoke-test again: bot must still converse (context just grows for now).
 **Phase 3 — Episodic sessions.**
 - Session metadata on ConversationState (started_at, last_activity, usage watermark from
   `response.usage`).
+- Per-channel `last_episodized_message_id` watermark (SQLite) + timeline segmentation
+  function (idle gaps + estimated span mass) — the single episodization code path.
 - Boundary detection: idle timer (check in the existing hourly/periodic loops) + usage
-  threshold + optional quiet-hours reset.
+  threshold + optional quiet-hours reset → all funnel into the same segmentation function.
+- Startup catch-up pass: after backfill, episodize the open span before seeding the session.
+- (Deferrable) retroactive-on-join knob: depth + granularity, Batches-backed era digests.
 - Distillation: Haiku-class call → episode file (timestamped, slug-titled, message-ID range)
   + channel state file update (ledgers + episode index). Both under memories/ (§2.3).
 - Seed builder: channel state + episode-index tail + last N messages + recontextualization
