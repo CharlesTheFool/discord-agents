@@ -10,14 +10,15 @@ def get_repository_tool() -> dict:
     return {
         "name": "repository",
         "description": (
-            "Your persistent file repository for this server - a local folder that survives "
-            "restarts and that the user can also drop files into directly. Save anything worth "
-            "keeping: notes you author (save_file), Discord attachments worth preserving "
-            "(save_attachment), or files you created via code execution (save_output with the "
-            "output's file_id). Keep it organized with delete/rename and nested folders. "
-            "To READ a repository file, use discord_tools get_attachment with the attachment_id "
-            "shown in <repository> or the list action. Current contents appear in <repository> "
-            "in your context."
+            "Your private file space for this server - a local folder that persists across "
+            "restarts. People can drop files in for you, and you can keep whatever you decide "
+            "is worth keeping, for whatever reason: something you wrote (save_file), an "
+            "attachment from the chat (save_attachment), or a file you produced via code "
+            "execution (save_output with its file_id). Arrange or prune it however you like "
+            "(rename, delete, nested folders). It's entirely yours and needs no upkeep - reach "
+            "for it when something genuinely seems worth keeping or someone asks, and otherwise "
+            "ignore it. To READ one of its files, use discord_tools get_attachment with the "
+            "attachment_id shown in <repository>."
         ),
         "input_schema": {
             "type": "object",

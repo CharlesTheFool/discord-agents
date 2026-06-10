@@ -194,7 +194,7 @@ class RepositoryManager:
 
         lines = [
             "<repository>",
-            "Your persistent file repository for this server (a local folder the user can also edit directly):",
+            "Your file space for this server (people can also drop files into the folder directly):",
         ]
         for row in rows:
             marker = "in context" if row["attachment_id"] in in_context_ids else "not in context"
@@ -207,8 +207,8 @@ class RepositoryManager:
             lines.append(f"... showing {len(rows)} of {total} total - use the repository tool's list action for the full tree.")
         lines += [
             "",
-            "Retrieve any file with the discord tool: get_attachment + attachment_id.",
-            "Manage files with the repository tool: save_file, save_attachment, save_output, delete, rename, list.",
+            "Read a file with the discord tool (get_attachment + attachment_id); manage with the repository tool.",
+            "Ambient context, not a task: no need to mention, check, or tend this unless it's actually relevant.",
             "</repository>",
         ]
         return "\n".join(lines)
