@@ -124,6 +124,12 @@ def with_message_cache_breakpoint(messages: list) -> list:
     request, and markers don't affect prefix matching - the next turn's
     breakpoint lands further down and reads the previous one's cache.
 
+    This only pays off because NOTHING upstream of the messages is volatile:
+    the cache hierarchy is tools -> system -> messages, so per-request
+    content (timestamp, momentum, attachment index) must ride AFTER this
+    breakpoint - see the volatile tail in _run_tool_loop - never in a
+    system block, or every lookup here would miss.
+
     The source messages are never mutated (their dicts are shared with
     conversation state). SDK objects (in-loop assistant content) and
     unmarkable block types are skipped by walking backwards.
@@ -730,12 +736,38 @@ class ReactiveEngine:
                 logger.info(f"Added {block['type']} block for {att['filename']}")
         return content, attachment_ids
 
-    async def _finalize_system_blocks(self, system_blocks: list, conversation_state) -> list:
+    async def _build_volatile_tail(self, base: str, conversation_state) -> str:
         """
-        Append the shared system-prompt extras to a [cached, volatile] block
-        pair: the skills catalog joins the cached prefix; the attachment index
-        (volatile - rows and in-context markers track the rolling window)
-        joins the uncached tail so the stable prefix keeps hitting the cache.
+        Per-request context (timestamp, momentum, attachment index) that must
+        stay OUT of the cached prompt prefix. It rides as a transient user
+        message appended at request time in _run_tool_loop - downstream of
+        both cache breakpoints, never persisted to conversation state.
+        """
+        parts = [base] if base else []
+
+        if conversation_state and self.attachment_manager:
+            try:
+                attachments_index = await self._generate_uploaded_files_manifest(conversation_state)
+                if attachments_index:
+                    parts.append(attachments_index)
+            except Exception as e:
+                logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
+
+        if not parts:
+            return ""
+        return (
+            "<context_update>\n"
+            "(Automated context, not a user message)\n"
+            + "\n\n".join(parts)
+            + "\n</context_update>"
+        )
+
+    def _build_api_params(self, system_blocks: list, conversation_state, context) -> dict:
+        """
+        Assemble the Messages API request shared by both response paths:
+        tool registry, beta headers, message history, skills container,
+        thinking and effort. The skills catalog joins the cached system
+        prefix (it changes only when active skills change).
         """
         if self.skills_manager and conversation_state:
             skills_prompt = self.context_builder.build_skills_prompt(
@@ -744,25 +776,6 @@ class ReactiveEngine:
             if skills_prompt:
                 system_blocks[0]["text"] += "\n\n" + skills_prompt
 
-        if conversation_state and self.attachment_manager:
-            try:
-                attachments_index = await self._generate_uploaded_files_manifest(conversation_state)
-                if attachments_index:
-                    if len(system_blocks) > 1:
-                        system_blocks[-1]["text"] += "\n\n" + attachments_index
-                    else:
-                        system_blocks.append({"type": "text", "text": attachments_index})
-            except Exception as e:
-                logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
-
-        return system_blocks
-
-    def _build_api_params(self, system_blocks: list, conversation_state, context) -> dict:
-        """
-        Assemble the Messages API request shared by both response paths:
-        tool registry, beta headers, message history, skills container,
-        thinking and effort.
-        """
         tools = [{"type": "memory_20250818", "name": "memory"}]
 
         if self.discord_tool_executor:
@@ -971,6 +984,7 @@ class ReactiveEngine:
         message: discord.Message,
         conversation_state,
         fallback_text: Optional[str] = None,
+        volatile_tail: str = "",
         log_suffix: str = "",
     ) -> ToolLoopResult:
         """
@@ -980,11 +994,20 @@ class ReactiveEngine:
         (loop overruns, blank replies, and unexpected stops degrade to it).
         When None (periodic path), the same outcomes end with empty text,
         which the caller treats as silence.
+
+        volatile_tail (timestamp, momentum, attachment index) is appended as
+        a transient final user message on every request - after the message
+        cache breakpoint, so per-request churn never invalidates the cached
+        conversation prefix. It is never persisted.
         """
         result = ToolLoopResult()
         container_id = None
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
+        tail_messages = (
+            [{"role": "user", "content": [{"type": "text", "text": volatile_tail}]}]
+            if volatile_tail else []
+        )
 
         while True:
             loop_iteration += 1
@@ -996,7 +1019,10 @@ class ReactiveEngine:
 
             try:
                 response = await self.anthropic.beta.messages.create(
-                    **{**api_params, "messages": with_message_cache_breakpoint(api_params["messages"])}
+                    **{
+                        **api_params,
+                        "messages": with_message_cache_breakpoint(api_params["messages"]) + tail_messages,
+                    }
                 )
             except NotFoundError as e:
                 # Stale file_id in persisted state 404s the whole request
@@ -1312,16 +1338,16 @@ class ReactiveEngine:
                 async with message.channel.typing():
                     await asyncio.sleep(1.5)  # small delay for a more natural feel
 
-                    # Cached prefix + uncached volatile tail (timestamp etc.)
+                    # One cached system block; per-request context rides the
+                    # volatile tail so it never breaks the cached prefix
                     system_blocks = [{
                         "type": "text",
                         "text": context["system_prompt"],
                         "cache_control": {"type": "ephemeral"}
                     }]
-                    volatile = context.get("time_context", "")
-                    if volatile:
-                        system_blocks.append({"type": "text", "text": volatile})
-                    await self._finalize_system_blocks(system_blocks, conversation_state)
+                    volatile_tail = await self._build_volatile_tail(
+                        context.get("time_context", ""), conversation_state
+                    )
 
                     api_params = self._build_api_params(system_blocks, conversation_state, context)
                     # Usage recorded later must match the session we measured
@@ -1330,6 +1356,7 @@ class ReactiveEngine:
                     result = await self._run_tool_loop(
                         api_params, message, conversation_state,
                         fallback_text="I'm not sure how to respond to that.",
+                        volatile_tail=volatile_tail,
                     )
 
             # Send response (outside semaphore to allow concurrent API calls while sending)
@@ -1794,7 +1821,12 @@ class ReactiveEngine:
         # Prevent concurrent responses
         async with self._response_semaphore:
             system_blocks = self._build_response_decision_prompt(context)
-            await self._finalize_system_blocks(system_blocks, conversation_state)
+            # Momentum is recomputed every check - volatile tail, not system
+            volatile_tail = await self._build_volatile_tail(
+                (context.get("time_context", "")
+                 + f"\nConversation momentum right now: {context['conversation_momentum'].upper()}"),
+                conversation_state,
+            )
 
             api_params = self._build_api_params(system_blocks, conversation_state, context)
             # Usage recorded later must match the session we measured
@@ -1805,7 +1837,8 @@ class ReactiveEngine:
 
             try:
                 result = await self._run_tool_loop(
-                    api_params, message, conversation_state, log_suffix=" (periodic)",
+                    api_params, message, conversation_state,
+                    volatile_tail=volatile_tail, log_suffix=" (periodic)",
                 )
 
                 # Empty text = Claude decided to stay silent
@@ -1897,7 +1930,7 @@ class ReactiveEngine:
         }
 
         # The current momentum value is volatile (recomputed every periodic
-        # check) - it rides in the uncached trailing block; the cached prefix
+        # check) - it rides in the <context_update> tail; the cached prefix
         # only describes the levels
         decision_criteria = f"""
 
@@ -1912,7 +1945,7 @@ You are monitoring an ongoing Discord conversation. Decide whether to participat
 - Someone needs help you can provide
 - Conversation about technical topics you understand
 
-**Conversation Momentum** (the CURRENT level is given in the context block below):
+**Conversation Momentum** (the CURRENT level is given in the <context_update> at the end of the conversation):
 - {momentum_descriptions["cold"]}
 - {momentum_descriptions["warm"]}
 - {momentum_descriptions["hot"]}
@@ -1933,19 +1966,15 @@ Your personality and base prompt guide whether to participate. Consider relevanc
 DO NOT explain your reasoning for responding or not responding. DO NOT output meta-commentary about the conversation. Either respond naturally or output nothing.
 """
 
-        system_prompt = [
+        # Single cached block; volatile values (timestamp, momentum) ride the
+        # request-time tail built by the caller, never a system block
+        return [
             {
                 "type": "text",
                 "text": context["system_prompt"] + decision_criteria,
                 "cache_control": {"type": "ephemeral"}
             }
         ]
-        # Volatile values (timestamp, momentum) in a separate uncached block
-        volatile = context.get("time_context", "")
-        volatile += f"\nConversation momentum right now: {context['conversation_momentum'].upper()}"
-        system_prompt.append({"type": "text", "text": volatile.strip()})
-
-        return system_prompt
 
     def add_pending_message(self, channel_id: str, message_id: int):
         """
