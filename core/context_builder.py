@@ -81,6 +81,22 @@ class ContextBuilder:
 
         return build_skills_catalog_prompt(self.skills_manager, active_skills)
 
+    @staticmethod
+    def _trim_episode_index(state_content: str, keep_last: int = None) -> str:
+        """Keep only the tail of the episode index when inlining the state file."""
+        from core.internal_constants import EPISODE_INDEX_SEED_TAIL
+        keep_last = keep_last or EPISODE_INDEX_SEED_TAIL
+        parts = state_content.split("\n## Episode Index")
+        if len(parts) < 2:
+            return state_content
+        index_lines = [l for l in parts[1].splitlines() if l.strip().startswith("- ")]
+        trimmed = index_lines[-keep_last:]
+        omitted = len(index_lines) - len(trimmed)
+        header = "\n## Episode Index"
+        if omitted > 0:
+            header += f"\n- ({omitted} older episode(s) omitted - episode files cover them)"
+        return parts[0] + header + "\n" + "\n".join(trimmed) + "\n"
+
     async def build_context(self, message: discord.Message, exclude_message_ids: List[int] = None) -> dict:
         """
         Build context dict for Claude API call.
@@ -198,30 +214,20 @@ NOTE: When users @mention you, it will appear as @{bot_display_name} in the mess
 </identity>
 
 <context_awareness>
-You are operating in a rolling context window:
-- Recent messages are in context (managed automatically)
-- Conversation state maintains the {self.config.api.context_messages} most recent messages
-- Oldest messages are automatically removed as new messages arrive (FIFO queue)
-- You can retrieve old content using tools when needed
+You are rejoining an ongoing channel. Your in-context history is a seed: the
+recent tail of the conversation plus the channel state below. Earlier
+conversation has been distilled into episode files.
 
-IMPORTANT - Proactive Memory Management:
-When you notice important context from older messages approaching removal:
-- Consider saving key facts, decisions, or ongoing threads to memory files
-- Use the memory tool to preserve information that may be valuable later
-- This is especially important for: project details, user preferences, unresolved questions, or long-term goals
-- You'll know messages are "old" if they're near the start of your conversation history
+If a reference is unclear, do NOT guess:
+- Open the relevant episode file with the memory tool (paths in the episode index)
+- Search message history with discord tools (search_messages / view_messages)
+- Re-fetch attachments with get_attachment / code_execution if an analysis was cleared
 
-CRITICAL: Avoid hallucination
-- Don't extrapolate from messages not in current context
-- Use discord_tools to search for old messages when needed
-- Use memory tool to read saved information
-- Admit when you don't have info in current context rather than guessing
+Old tool results may appear as "[tool result cleared at turn boundary ...]" -
+re-run the tool if you need that information again.
 
-Document availability:
-- Documents from recent messages are visible as content blocks
-- Documents from older messages may have been stripped to manage tokens
-- Attachment metadata is preserved even when stripped
-- You can mention attachment IDs for users to reference
+Write important findings and decisions to memory files: your in-context working
+state does not survive the session boundary, memory files do.
 </context_awareness>
 
 <instructions>
@@ -270,6 +276,19 @@ The uploaded_files manifest shows available files with their access method and p
 
 CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response.
 </instructions>"""
+
+        # Inline the channel state file (episodizer-maintained seed) - v0.6.0
+        server_id = str(message.guild.id) if message.guild else None
+        if server_id:
+            state_path = self.memory_manager.get_channel_context_path(server_id, str(message.channel.id))
+            channel_state = await self.memory_manager.read(state_path)
+            if channel_state:
+                channel_state = self._trim_episode_index(channel_state)
+                episodes_dir = self.memory_manager.get_episodes_dir_path(server_id, str(message.channel.id))
+                system_prompt += (
+                    f"\n\n<channel_state>\nEpisode files live in: {episodes_dir}/\n\n"
+                    f"{channel_state}\n</channel_state>"
+                )
 
         # Get recent messages (excluding current to avoid duplication)
         channel_id = str(message.channel.id)
