@@ -27,6 +27,34 @@ from .engagement_tracker import EngagementTracker
 logger = logging.getLogger(__name__)
 
 
+# Structured outputs (v0.6.0 Phase 5): the proactive generator may decline -
+# a forced message into a dead channel is exactly the rot the redesign targets
+PROACTIVE_MESSAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "should_send": {
+            "type": "boolean",
+            "description": "False if there is nothing genuinely worth saying right now",
+        },
+        "message": {
+            "type": "string",
+            "description": "The message to send (empty string if should_send is false)",
+        },
+    },
+    "required": ["should_send", "message"],
+    "additionalProperties": False,
+}
+
+FOLLOWUP_MESSAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "message": {"type": "string", "description": "The follow-up message to send"},
+    },
+    "required": ["message"],
+    "additionalProperties": False,
+}
+
+
 class AgenticEngine:
     """
     Autonomous behavior engine.
@@ -570,24 +598,18 @@ User: {action.user_name}
 Generate a natural, brief follow-up message to check in about this event. Be conversational and match your personality below.
 
 Your personality:
-{base_prompt}
-
-Output ONLY the follow-up message, nothing else."""
+{base_prompt}"""
 
         try:
             response = await self.anthropic.messages.create(
                 model=self.config.api.model,
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
+                output_config={"format": {"type": "json_schema", "schema": FOLLOWUP_MESSAGE_SCHEMA}},
             )
 
-            # Extract text from response
-            message = ""
-            for block in response.content:
-                if block.type == "text":
-                    message += block.text
-
-            return message.strip()
+            text = "".join(block.text for block in response.content if block.type == "text")
+            return json.loads(text)["message"].strip()
 
         except Exception as e:
             logger.error(f"Error generating follow-up message: {e}", exc_info=True)
@@ -712,22 +734,29 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 user_parts.append(memory_context)
 
             user_parts.append("")
-            user_parts.append("Start a brief, natural conversation. Be relevant and engaging, but don't overthink it.")
+            user_parts.append(
+                "Start a brief, natural conversation. Be relevant and engaging, but don't overthink it. "
+                "If nothing genuinely invites a fresh message (stale topics, nothing new to add), "
+                "set should_send to false instead of forcing one."
+            )
 
             # Build API params with extended thinking and memory tool
+            output_config = {"format": {"type": "json_schema", "schema": PROACTIVE_MESSAGE_SCHEMA}}
+            if self.config.api.effort:
+                output_config["effort"] = self.config.api.effort
+
             api_params = {
                 "model": self.config.api.model,
                 "max_tokens": 1000,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": "\n".join(user_parts)}],
                 "tools": [{"type": "memory_20250818", "name": "memory"}],
+                "output_config": output_config,
             }
 
-            # Add adaptive thinking and effort if configured
+            # Add adaptive thinking if configured
             if self.config.api.thinking.enabled:
                 api_params["thinking"] = {"type": "adaptive"}
-            if self.config.api.effort:
-                api_params["output_config"] = {"effort": self.config.api.effort}
 
             # Call Claude to generate message
             logger.info(f"Generating proactive message for channel {action.channel_id}")
@@ -772,7 +801,15 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                             response_text += block.text
                     break
 
-            generated_message = response_text.strip()
+            decision = json.loads(response_text)
+            if not decision["should_send"]:
+                logger.info(
+                    f"Proactive message declined by model for channel {action.channel_id} "
+                    f"(nothing worth saying)"
+                )
+                return
+
+            generated_message = decision["message"].strip()
 
             # Split message if it exceeds Discord's limit
             from .discord_client import split_message
