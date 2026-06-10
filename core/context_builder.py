@@ -59,6 +59,7 @@ class ContextBuilder:
         self.data_isolation = data_isolation
         self.attachment_manager = attachment_manager
         self.skills_manager = skills_manager
+        self._mention_names: Dict[int, str] = {}  # id -> display name memo
         self.image_processor = ImageProcessor()
 
         logger.info(f"ContextBuilder initialized for bot '{config.bot_id}'")
@@ -320,6 +321,10 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             history_parts.append("# Recent Conversation History")
             history_parts.append("")
 
+            # Only THIS bot's messages are "Assistant (you)" - other bots in
+            # the channel are participants, not the assistant (multi-bot)
+            own_id = str(message.guild.me.id) if message.guild else None
+
             # Check if current message is a reply
             reply_chain = await self._get_reply_chain(message)
             if reply_chain:
@@ -329,7 +334,10 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 for msg in reply_chain:
                     resolved_content, resolved_count = await self._resolve_mentions(msg.content, message.guild)
                     stats["mentions_resolved"] += resolved_count
-                    author_display = "Assistant (you)" if msg.author.bot else msg.author.display_name
+                    if str(msg.author.id) == own_id or (own_id is None and msg.author.bot):
+                        author_display = "Assistant (you)"
+                    else:
+                        author_display = msg.author.display_name
                     timestamp_str = msg.created_at.strftime('%H:%M')
                     history_parts.append(f"[{timestamp_str}] **{author_display}**: {resolved_content}")
                 history_parts.append("")
@@ -339,7 +347,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             # Add recent messages
             for msg in recent_messages:
                 # Clarify bot's own messages vs user messages
-                if msg.is_bot:
+                if str(msg.author_id) == own_id or (own_id is None and msg.is_bot):
                     author_display = "Assistant (you)"
                 else:
                     author_display = msg.author_name
@@ -490,13 +498,24 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         async def replace_mention(match):
             nonlocal resolved_count
             user_id = int(match.group(1))
-            try:
-                member = await guild.fetch_member(user_id)
+            # Memo first: context builds re-resolve the same ids constantly,
+            # and per-mention fetch_member calls were hitting 429s (the bot
+            # then silently showed raw ids to the model)
+            cached = self._mention_names.get(user_id)
+            if cached:
                 resolved_count += 1
-                return f"@{member.display_name}"
-            except (discord.NotFound, discord.HTTPException):
-                # Keep original mention if user not found
-                return match.group(0)
+                return f"@{cached}"
+            # Local member cache (members intent is enabled) - no API call
+            member = guild.get_member(user_id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(user_id)
+                except (discord.NotFound, discord.HTTPException):
+                    # Keep original mention if user not found
+                    return match.group(0)
+            self._mention_names[user_id] = member.display_name
+            resolved_count += 1
+            return f"@{member.display_name}"
 
         # Replace all mentions
         resolved = content
@@ -751,7 +770,12 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         if message.reference and message.reference.resolved:
             replied_msg = message.reference.resolved
             if isinstance(replied_msg, discord.Message):
-                replied_author = "Assistant (you)" if replied_msg.author.bot else replied_msg.author.display_name
+                own = message.guild.me if message.guild else None
+                if own is not None:
+                    is_self = replied_msg.author.id == own.id
+                else:
+                    is_self = replied_msg.author.bot
+                replied_author = "Assistant (you)" if is_self else replied_msg.author.display_name
                 # Truncate long replied content
                 truncate_length = 100
                 replied_content = replied_msg.content[:truncate_length]

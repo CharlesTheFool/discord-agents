@@ -2235,6 +2235,24 @@ class ReactiveEngine:
 
                 # If Claude decided to respond, send it
                 if response_text.strip():
+                    # Staleness guard: generation takes tens of seconds and the
+                    # conversation may have moved on - a reply aimed at an old
+                    # message lands as a non sequitur. Drop it (nothing sent,
+                    # nothing persisted); the next tick re-evaluates fresh.
+                    try:
+                        newest = None
+                        async for m in message.channel.history(limit=1):
+                            newest = m
+                        if (newest and newest.id != message.id
+                                and newest.author != self.discord_client.user):
+                            logger.info(
+                                f"Discarding stale periodic response in {channel_id}: "
+                                f"conversation moved past target {message.id}"
+                            )
+                            return
+                    except discord.HTTPException:
+                        pass  # can't verify; send anyway
+
                     # Log thinking trace (if present) and bot response to conversation log
                     if thinking_text:
                         self.conversation_logger.log_thinking(thinking_text, len(thinking_text))

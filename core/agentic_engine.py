@@ -717,8 +717,15 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             user_parts.append("")
 
             if recent_messages:
+                # Only THIS bot's messages are "Assistant (you)" (multi-bot)
+                own_id = None
+                if self.discord_client and self.discord_client.user:
+                    own_id = str(self.discord_client.user.id)
                 for msg in recent_messages[-5:]:  # Last 5 messages
-                    author = "Assistant (you)" if msg.is_bot else msg.author_name
+                    if str(msg.author_id) == own_id or (own_id is None and msg.is_bot):
+                        author = "Assistant (you)"
+                    else:
+                        author = msg.author_name
                     timestamp_str = msg.timestamp.strftime('%H:%M')
                     user_parts.append(f"[{timestamp_str}] **{author}**: {msg.content}")
             else:
