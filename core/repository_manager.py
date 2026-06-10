@@ -161,6 +161,55 @@ class RepositoryManager:
         except Exception as e:
             logger.warning(f"Could not delete stale Files API copy {file_id}: {e}")
 
+    # ========== MANIFEST ==========
+
+    MANIFEST_CAP = 30
+
+    async def render_manifest(self, server_id: str, in_context_ids: Set[str]) -> str:
+        """
+        <repository> section for the volatile tail. Scans first (disk is
+        truth), renders newest-modified first, capped at MANIFEST_CAP.
+        Empty string when the repo is empty (keeps the tail lean).
+        """
+        await self.scan(server_id)
+
+        async with self.db.execute(
+            "SELECT attachment_id, filename, size_bytes, attachment_type, local_path "
+            "FROM attachments WHERE channel_id = ? AND server_id = ? "
+            "ORDER BY disk_mtime DESC LIMIT ?",
+            (self.SENTINEL, server_id, self.MANIFEST_CAP),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        if not rows:
+            return ""
+
+        async with self.db.execute(
+            "SELECT COUNT(*) AS n FROM attachments WHERE channel_id = ? AND server_id = ?",
+            (self.SENTINEL, server_id),
+        ) as cursor:
+            total = (await cursor.fetchone())["n"]
+
+        lines = [
+            "<repository>",
+            "Your persistent file repository for this server (a local folder the user can also edit directly):",
+        ]
+        for row in rows:
+            marker = "in context" if row["attachment_id"] in in_context_ids else "not in context"
+            rel = self._relpath(server_id, row["local_path"])
+            lines.append(
+                f"- {rel} | {format_size(row['size_bytes'])} | {row['attachment_type']} "
+                f"| {row['attachment_id']} | {marker}"
+            )
+        if total > len(rows):
+            lines.append(f"... showing {len(rows)} of {total} total - use the repository tool's list action for the full tree.")
+        lines += [
+            "",
+            "Retrieve any file with the discord tool: get_attachment + attachment_id.",
+            "Manage files with the repository tool: save_file, save_attachment, save_output, delete, rename, list.",
+            "</repository>",
+        ]
+        return "\n".join(lines)
+
     # ========== TOOL ACTIONS ==========
 
     async def execute(self, tool_input: dict, current_server_id: str) -> str:
