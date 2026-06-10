@@ -56,15 +56,28 @@ end at natural boundaries, distill knowledge to durable memory, and the next ses
    - session input tokens > threshold (~60–80k) — read from `response.usage.input_tokens`
      (+ cache fields) on every reply; **no count_tokens API calls anywhere**,
    - optional scheduled reset during quiet hours.
-3. **Distillation at boundary**: one LLM call (Haiku-class; Batches-eligible) updates the
-   channel memory file with: open threads, **settled questions** (anti-re-answering ledger),
-   **running bits/jokes already used** (anti-repetition ledger), notable artifacts with
-   message/attachment IDs for retrieval, and per-user notes worth promoting.
-4. **New session seed**: system prompt + channel memory + last ~10–20 messages + an explicit
-   "you are rejoining an ongoing channel; if a reference is unclear, search history /
+3. **Distillation at boundary**: one LLM call (Haiku-class; Batches-eligible) produces TWO
+   outputs, both inside the existing memory tree (so the memory tool can read them with zero
+   new access plumbing):
+   - **An episode file** — episodes are first-class, model-visible artifacts, NOT code
+     abstractions. `memories/{bot}/servers/{server}/channels/{channel}/episodes/
+     2026-06-09_1430_<model-generated-slug>.md`, with header metadata: start/end timestamps,
+     Discord **message-ID range** (snowflakes — stable, sortable, jump-linkable, and joinable
+     against the FTS5 DB; do NOT use array indices, which were the v0.5.0 bug factory),
+     participants. Body: what happened, what was settled, what stayed open, artifacts
+     (attachment IDs).
+   - **The channel state file** (`channels/{channel}.md`) — rolling CURRENT state: standing
+     facts, **settled-questions ledger** (anti-re-answering), **used-jokes ledger**
+     (anti-repetition), open threads, plus a **chronological episode index** (one line per
+     episode: date, title, message-ID range, one-sentence hook).
+4. **New session seed**: system prompt + channel state file (including the tail of the episode
+   index, last ~10 entries) + last ~10–20 messages + an explicit "you are rejoining an ongoing
+   channel; if a reference is unclear, open the relevant episode file, search history, or
    load attachments instead of guessing" instruction. The model pulls more context on demand
-   (FTS5 search, get_attachment, memory) — recontextualization is the agent's job, not the
-   harness's.
+   (memory `view` on episode files → FTS5 search by message-ID range → get_attachment) —
+   recontextualization is the agent's job, not the harness's.
+5. **Episode hygiene**: the index grows forever; only its tail enters the seed. Periodically
+   (quiet hours / monthly) roll old episodes up into a digest file. Cheap, deferrable.
 
 **Asymmetric context (chat small, work big) — turn-scoped working memory:**
 Within a single turn's tool loop (code execution, big tool results, multi-step agentic work),
@@ -162,8 +175,10 @@ Smoke-test again: bot must still converse (context just grows for now).
   `response.usage`).
 - Boundary detection: idle timer (check in the existing hourly/periodic loops) + usage
   threshold + optional quiet-hours reset.
-- Distillation: prompt + memory write (channel file), Haiku-class call.
-- Seed builder: memory + last N messages + recontextualization instructions in system prompt.
+- Distillation: Haiku-class call → episode file (timestamped, slug-titled, message-ID range)
+  + channel state file update (ledgers + episode index). Both under memories/ (§2.3).
+- Seed builder: channel state + episode-index tail + last N messages + recontextualization
+  instructions in system prompt.
 - Turn-end tool-result stubbing (keep last K turns full).
 
 **Phase 4 — Retrieval path, end to end (the never-tested multimedia).**
