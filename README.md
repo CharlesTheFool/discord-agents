@@ -262,6 +262,8 @@ reporting via [GitHub Security Advisories](../../security/advisories/new)
 
 - **[README.md](README.md)** — this file: quick start and overview
 - **[CHANGELOG.md](CHANGELOG.md)** — version history and upgrade notes
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — running dev and production installs
+  side by side, and the release/update workflow
 - **[REDESIGN.md](REDESIGN.md)** — the v0.6.0 architecture design document
   (episodic sessions, context layout)
 - **[SECURITY.md](SECURITY.md)** — security policy
