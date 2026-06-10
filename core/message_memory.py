@@ -526,11 +526,14 @@ class MessageMemory:
         """
         Get the open span: all messages with snowflake ID greater than the
         watermark, chronological. after_message_id=None returns everything.
+
+        System messages are excluded: their synthetic IDs (system_<ts>) are not
+        snowflakes, so they cannot participate in ID ordering or watermarks.
         """
         if after_message_id is None:
             cursor = await self._db.execute(
                 """
-                SELECT * FROM messages WHERE channel_id = ?
+                SELECT * FROM messages WHERE channel_id = ? AND is_system = 0
                 ORDER BY CAST(message_id AS INTEGER) ASC
                 """,
                 (channel_id,),
@@ -539,7 +542,8 @@ class MessageMemory:
             cursor = await self._db.execute(
                 """
                 SELECT * FROM messages
-                WHERE channel_id = ? AND CAST(message_id AS INTEGER) > CAST(? AS INTEGER)
+                WHERE channel_id = ? AND is_system = 0
+                  AND CAST(message_id AS INTEGER) > CAST(? AS INTEGER)
                 ORDER BY CAST(message_id AS INTEGER) ASC
                 """,
                 (channel_id, after_message_id),
@@ -548,10 +552,10 @@ class MessageMemory:
         return [self._row_to_message(row) for row in rows]
 
     async def get_latest_message(self, channel_id: str) -> Optional[StoredMessage]:
-        """Get the most recent message in a channel, or None."""
+        """Get the most recent non-system message in a channel, or None."""
         cursor = await self._db.execute(
             """
-            SELECT * FROM messages WHERE channel_id = ?
+            SELECT * FROM messages WHERE channel_id = ? AND is_system = 0
             ORDER BY CAST(message_id AS INTEGER) DESC LIMIT 1
             """,
             (channel_id,),
