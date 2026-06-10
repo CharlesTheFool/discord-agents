@@ -1159,8 +1159,20 @@ class ReactiveEngine:
                     except Exception as e:
                         logger.error(f"Failed to persist tool results to conversation state{log_suffix}: {e}", exc_info=True)
 
+                # A container_upload fetched mid-loop only mounts into a NEW
+                # container (files mount at creation) - drop the captured id
+                # so the next iteration rebuilds with every file block in
+                # messages (same trade as request_skill: old container files
+                # are lost, message blocks re-mount)
+                if any(
+                    isinstance(b, dict) and b.get("type") == "container_upload"
+                    for b in pending_file_blocks
+                ):
+                    container_rebuilt = True
+
                 if container_rebuilt:
-                    container_id = None  # force a fresh container with the new skills
+                    container_id = None  # force a fresh container
+                    api_params.get("container", {}).pop("id", None)
                 if container_id and self.skills_manager and 'container' in api_params:
                     api_params["container"]["id"] = container_id
 
