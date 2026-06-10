@@ -235,22 +235,22 @@ class DiscordClient(discord.Client):
             except Exception as e:
                 logger.error(f"Error processing crash detection: {e}", exc_info=True)
 
-        # Insert online tag for each channel in each server
-        # TEMPORARILY DISABLED - causing startup hang (debugging)
-        logger.info("[DEBUG] Skipping online tag insertion (temporarily disabled)")
+        # Insert online tag for each channel in each server. (Re-enabled: the
+        # one-time 'startup hang' this was blamed for traced to the formerly
+        # synchronous skills upload blocking the loop, plus a UNIQUE collision
+        # on timestamp-only system message ids - both fixed.)
         online_time = datetime.utcnow()
-        # for guild in self.guilds:
-        #     logger.info(f"[DEBUG] Processing guild: {guild.name} ({len(guild.text_channels)} text channels)")
-        #     for channel in guild.text_channels:
-        #         try:
-        #             await self.message_memory.insert_system_message(
-        #                 content="[YOU CAME ONLINE]",
-        #                 channel_id=str(channel.id),
-        #                 guild_id=str(guild.id),
-        #                 timestamp=online_time
-        #             )
-        #         except Exception as e:
-        #             logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
+        for guild in self.guilds:
+            for channel in guild.text_channels:
+                try:
+                    await self.message_memory.insert_system_message(
+                        content="[YOU CAME ONLINE]",
+                        channel_id=str(channel.id),
+                        guild_id=str(guild.id),
+                        timestamp=online_time
+                    )
+                except Exception as e:
+                    logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
 
         # Write running flag with current timestamp
         flag_file.parent.mkdir(parents=True, exist_ok=True)
@@ -799,6 +799,13 @@ class DiscordClient(discord.Client):
                     unlimited=self.config.discord.backfill_unlimited
                 )
                 logger.info(f"Daily re-backfill complete: {total} messages indexed")
+
+                # Garbage-collect conversation states for long-dead channels
+                if self.reactive_engine.conversation_state_manager:
+                    try:
+                        await self.reactive_engine.conversation_state_manager.cleanup_old_states()
+                    except Exception as e:
+                        logger.error(f"Conversation-state cleanup failed: {e}")
 
             except asyncio.CancelledError:
                 logger.info("Daily reindex task cancelled")

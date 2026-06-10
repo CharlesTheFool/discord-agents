@@ -96,22 +96,23 @@ class DiscordToolExecutor:
             return "Error: query parameter required"
 
         # Apply data isolation scope constraints (v0.5.0)
+        guild_id = None
         if scope:
-            if scope.get("server_id") and not channel_id:
-                # Scope is server-limited but no specific channel requested
-                # We need to filter to this server's channels
-                # For now, just inform the user
-                logger.info(f"Search scoped to server: {scope['server_id']}")
+            if scope.get("server_id"):
+                # Enforced in SQL - not merely logged
+                guild_id = scope["server_id"]
+                logger.debug(f"Search scoped to server: {guild_id}")
             if scope.get("channel_id"):
                 # Force search to specific channel
                 channel_id = scope["channel_id"]
-                logger.info(f"Search scoped to channel: {channel_id}")
+                logger.debug(f"Search scoped to channel: {channel_id}")
 
         try:
             results = await self.message_memory.search_messages(
                 query=query,
                 channel_id=channel_id,
                 author_id=author_id,
+                guild_id=guild_id,
                 limit=limit
             )
 
@@ -172,6 +173,12 @@ class DiscordToolExecutor:
 
         if not channel_id:
             return "Error: channel_id parameter required"
+
+        # Server scope: the requested channel must belong to the current server
+        if scope and scope.get("server_id") and not scope.get("channel_id"):
+            owner = await self.message_memory.get_server_for_channel(channel_id)
+            if owner and owner != scope["server_id"]:
+                return "Error: Access denied. Cannot view messages from other servers."
 
         try:
             messages = []

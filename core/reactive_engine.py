@@ -862,18 +862,21 @@ class ReactiveEngine:
                         if skills_prompt:
                             system_prompt_text += "\n\n" + skills_prompt
 
-                    # Attachment index (v0.6.0 Phase 4)
+                    # Attachment index (v0.6.0 Phase 4) - volatile (rows and
+                    # in-context markers track the rolling window), so it
+                    # rides in the uncached trailing block, not the cached one
+                    volatile_context = context.get("time_context", "")
                     if conversation_state and self.attachment_manager:
                         try:
                             attachments_index = await self._generate_uploaded_files_manifest(conversation_state)
                             if attachments_index:
-                                system_prompt_text += "\n\n" + attachments_index
+                                volatile_context += "\n\n" + attachments_index
                         except Exception as e:
                             logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
 
                     # Add system prompt with cache control (prompt caching).
-                    # The timestamp lives in a second uncached block so the
-                    # stable prefix keeps hitting the cache.
+                    # Everything per-message/per-window lives in the second
+                    # uncached block so the stable prefix keeps hitting the cache.
                     api_params["system"] = [
                         {
                             "type": "text",
@@ -881,8 +884,8 @@ class ReactiveEngine:
                             "cache_control": {"type": "ephemeral"}
                         }
                     ]
-                    if context.get("time_context"):
-                        api_params["system"].append({"type": "text", "text": context["time_context"]})
+                    if volatile_context:
+                        api_params["system"].append({"type": "text", "text": volatile_context})
 
                     # Get messages from conversation state if available, otherwise use context (v0.5.0)
                     if conversation_state:
@@ -1457,6 +1460,12 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Error shutting down MCP manager: {e}")
 
+        if self.conversation_state_manager:
+            try:
+                await self.conversation_state_manager.close()
+            except Exception as e:
+                logger.error(f"Error closing conversation state DB: {e}")
+
         logger.info("ReactiveEngine shutdown complete")
 
     # ========== PERIODIC SCANNING (Phase 3) ==========
@@ -1805,12 +1814,16 @@ class ReactiveEngine:
                     system_prompt[0]["text"] += "\n\n" + skills_prompt
 
             # Attachment index (v0.6.0 Phase 4) - this path handles bot-posted
-            # files too, so it needs the same retrieval awareness
+            # files too, so it needs the same retrieval awareness. Volatile
+            # (rows track the rolling window): goes in the uncached last block
             if conversation_state and self.attachment_manager:
                 try:
                     attachments_index = await self._generate_uploaded_files_manifest(conversation_state)
-                    if attachments_index and isinstance(system_prompt, list) and len(system_prompt) > 0:
-                        system_prompt[0]["text"] += "\n\n" + attachments_index
+                    if attachments_index and isinstance(system_prompt, list) and system_prompt:
+                        if len(system_prompt) > 1:
+                            system_prompt[-1]["text"] += "\n\n" + attachments_index
+                        else:
+                            system_prompt.append({"type": "text", "text": attachments_index})
                 except Exception as e:
                     logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
 
@@ -2335,6 +2348,9 @@ class ReactiveEngine:
             "hot": "HOT: Conversation is active and lively - messages flowing rapidly"
         }
 
+        # The current momentum value is volatile (recomputed every periodic
+        # check) - it rides in the uncached trailing block; the cached prefix
+        # only describes the levels
         decision_criteria = f"""
 
 # Response Decision Criteria (Periodic Check)
@@ -2348,8 +2364,10 @@ You are monitoring an ongoing Discord conversation. Decide whether to participat
 - Someone needs help you can provide
 - Conversation about technical topics you understand
 
-**Conversation Momentum**:
-{momentum_descriptions[context["conversation_momentum"]]}
+**Conversation Momentum** (the CURRENT level is given in the context block below):
+- {momentum_descriptions["cold"]}
+- {momentum_descriptions["warm"]}
+- {momentum_descriptions["hot"]}
 
 Your personality and base prompt guide whether to participate. Consider relevance, value-add, and whether the activity level matches when you'd naturally engage.
 
@@ -2359,8 +2377,6 @@ Your personality and base prompt guide whether to participate. Consider relevanc
 - Would interrupt natural flow
 - Just agreeing without adding value
 - Making conversation about yourself
-
-**Current Context**: {context["conversation_momentum"].upper()}
 
 **RESPONSE FORMAT:**
 - If you decide to respond: Output ONLY your message to the channel (no meta-commentary, no explanation of your decision)
@@ -2376,9 +2392,10 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
                 "cache_control": {"type": "ephemeral"}
             }
         ]
-        # Timestamp in a separate uncached block (cache-buster fix, v0.6.0 Phase 5)
-        if context.get("time_context"):
-            system_prompt.append({"type": "text", "text": context["time_context"]})
+        # Volatile values (timestamp, momentum) in a separate uncached block
+        volatile = context.get("time_context", "")
+        volatile += f"\nConversation momentum right now: {context['conversation_momentum'].upper()}"
+        system_prompt.append({"type": "text", "text": volatile.strip()})
 
         return system_prompt
 

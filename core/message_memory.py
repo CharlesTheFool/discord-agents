@@ -382,8 +382,10 @@ class MessageMemory:
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Generate unique message ID for system message
-        message_id = f"system_{timestamp.timestamp()}"
+        # Unique per channel AND timestamp: lifecycle loops insert the same
+        # event for every channel with one shared timestamp, and message_id
+        # is UNIQUE - a timestamp-only id made all but the first insert fail
+        message_id = f"system_{channel_id}_{timestamp.timestamp()}"
 
         try:
             await self._db.execute(

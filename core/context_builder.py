@@ -119,11 +119,18 @@ class ContextBuilder:
         if message.guild and message.guild.me:
             bot_display_name = message.guild.me.display_name
 
-        # Build date/time awareness context in server timezone
+        # Build date/time awareness context in server timezone. Everything
+        # per-message (time, channel, speaker) lives in this UNCACHED block -
+        # the big system prefix must stay byte-stable for prompt caching.
         server_tz = pytz.timezone(self.config.discord.timezone)
         current_time_obj = datetime.utcnow().replace(tzinfo=pytz.UTC).astimezone(server_tz)
         current_time = current_time_obj.strftime('%Y-%m-%d %H:%M %Z')
-        date_context = f"Current server date/time: {current_time}"
+        date_context = (
+            f"Current server date/time: {current_time}\n"
+            f"Current channel ID: {message.channel.id}\n"
+            f"Triggering message from: {message.author.display_name} "
+            f"(user ID: {message.author.id})"
+        )
 
         # Get base personality prompt
         base_prompt = (
@@ -138,10 +145,11 @@ class ContextBuilder:
             server_id = str(message.guild.id) if message.guild else None
             if server_id:
                 followups_path = self.memory_manager.get_followups_path(server_id)
-                current_user_id = str(message.author.id)
-                current_user_name = message.author.display_name
-                current_channel_id = str(message.channel.id)
 
+                # Deliberately generic: per-message values (current user,
+                # channel) ride in the uncached time/context block instead -
+                # interpolating them here rewrote the cached system prefix on
+                # every speaker change
                 followup_instructions = f"""
 
 # Follow-Up System
@@ -150,29 +158,25 @@ When people mention future events, use your judgment to decide if a follow-up wo
 
 To create a follow-up, use the memory tool to write to: {followups_path}
 
-**Current Context:**
-- Current user: {current_user_name} (ID: {current_user_id})
-- Current channel ID: {current_channel_id}
-
 Format (JSON):
 {{
   "pending": [
     {{
       "id": "unique-id-<YYYYMMDD-HHMM>",
-      "user_id": "{current_user_id}",
-      "user_name": "{current_user_name}",
-      "channel_id": "{current_channel_id}",
+      "user_id": "<numeric Discord user ID>",
+      "user_name": "<display name>",
+      "channel_id": "<numeric channel ID - the current channel's ID is in the context block>",
       "event": "<brief description>",
       "context": "<relevant context>",
       "mentioned_date": "<current server date/time>",
-      "follow_up_after": "<ISO 8601 datetime>",
+      "follow_up_after": "<ISO 8601 datetime, include a timezone offset>",
       "priority": "low|medium|high"
     }}
   ],
   "completed": []
 }}
 
-NOTE: The user_id MUST be the numeric Discord user ID (like {current_user_id}), NOT the display name.
+NOTE: user_id MUST be the numeric Discord user ID, NOT the display name. Numeric IDs appear in the conversation in the @Name (<@id>) mention format and in the context block.
 
 **When to create follow-ups:**
 

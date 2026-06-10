@@ -46,6 +46,10 @@ class ConversationStateManager:
 
         # In-memory cache of loaded states
         self._cache: Dict[str, ConversationState] = {}
+        # Persistent connection (opened in initialize): save() runs several
+        # times per response turn, and a fresh connection spawns a new OS
+        # thread per call
+        self._db: Optional[aiosqlite.Connection] = None
         # Per-channel locks: two concurrent get_or_create calls for the same
         # channel must not build two state objects (last save would win)
         self._creation_locks: Dict[str, asyncio.Lock] = {}
@@ -61,24 +65,34 @@ class ConversationStateManager:
 
         Creates conversation_states table if it doesn't exist.
         """
-        async with aiosqlite.connect(self.db_path) as db:
-            # Enable WAL mode for better concurrent access (fixes database locked errors)
-            await db.execute("PRAGMA journal_mode=WAL;")
+        # daemon=True before the thread starts: an unclosed connection must
+        # not block interpreter exit (aiosqlite's worker is a real thread)
+        connection = aiosqlite.connect(self.db_path)
+        connection.daemon = True
+        self._db = await connection
+        # WAL mode for better concurrent access (fixes database locked errors)
+        await self._db.execute("PRAGMA journal_mode=WAL;")
 
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS conversation_states (
-                    channel_id TEXT NOT NULL,
-                    bot_id TEXT NOT NULL,
-                    state_json TEXT NOT NULL,
-                    token_count INTEGER DEFAULT 0,
-                    message_count INTEGER DEFAULT 0,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (channel_id, bot_id)
-                )
-            """)
-            await db.commit()
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_states (
+                channel_id TEXT NOT NULL,
+                bot_id TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                token_count INTEGER DEFAULT 0,
+                message_count INTEGER DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (channel_id, bot_id)
+            )
+        """)
+        await self._db.commit()
 
         logger.info("ConversationStateManager schema initialized")
+
+    async def close(self) -> None:
+        """Close the persistent database connection."""
+        if self._db:
+            await self._db.close()
+            self._db = None
 
     async def get_or_create(self, channel_id: str) -> ConversationState:
         """
@@ -132,28 +146,25 @@ class ConversationStateManager:
         Returns:
             ConversationState if found, None otherwise
         """
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with self._db.execute(
+            """
+            SELECT state_json FROM conversation_states
+            WHERE channel_id = ? AND bot_id = ?
+            """,
+            (channel_id, self.bot_id)
+        ) as cursor:
+            row = await cursor.fetchone()
 
-            async with db.execute(
-                """
-                SELECT state_json FROM conversation_states
-                WHERE channel_id = ? AND bot_id = ?
-                """,
-                (channel_id, self.bot_id)
-            ) as cursor:
-                row = await cursor.fetchone()
+        if row:
+            try:
+                state_data = json.loads(row[0])
+                state = ConversationState.from_dict(state_data)
+                logger.debug(f"Loaded ConversationState for channel {channel_id} ({state})")
+                return state
 
-                if row:
-                    try:
-                        state_data = json.loads(row["state_json"])
-                        state = ConversationState.from_dict(state_data)
-                        logger.debug(f"Loaded ConversationState for channel {channel_id} ({state})")
-                        return state
-
-                    except (json.JSONDecodeError, KeyError, ValueError) as e:
-                        logger.error(f"Failed to deserialize ConversationState for channel {channel_id}: {e}")
-                        return None
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                logger.error(f"Failed to deserialize ConversationState for channel {channel_id}: {e}")
+                return None
 
         return None
 
@@ -167,22 +178,21 @@ class ConversationStateManager:
         state_dict = state.to_dict()
         state_json = json.dumps(state_dict)
 
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                """
-                INSERT OR REPLACE INTO conversation_states
-                (channel_id, bot_id, state_json, message_count, last_updated)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    state.channel_id,
-                    self.bot_id,
-                    state_json,
-                    len(state.messages),
-                    datetime.utcnow()
-                )
+        await self._db.execute(
+            """
+            INSERT OR REPLACE INTO conversation_states
+            (channel_id, bot_id, state_json, message_count, last_updated)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                state.channel_id,
+                self.bot_id,
+                state_json,
+                len(state.messages),
+                datetime.utcnow()
             )
-            await db.commit()
+        )
+        await self._db.commit()
 
         logger.debug(f"Saved ConversationState for channel {state.channel_id} ({state})")
 
@@ -201,17 +211,16 @@ class ConversationStateManager:
             del self._cache[channel_id]
 
         # Remove from database
-        async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                """
-                DELETE FROM conversation_states
-                WHERE channel_id = ? AND bot_id = ?
-                """,
-                (channel_id, self.bot_id)
-            )
-            await db.commit()
+        cursor = await self._db.execute(
+            """
+            DELETE FROM conversation_states
+            WHERE channel_id = ? AND bot_id = ?
+            """,
+            (channel_id, self.bot_id)
+        )
+        await self._db.commit()
 
-            deleted = cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
 
         if deleted:
             logger.info(f"Deleted ConversationState for channel {channel_id}")
@@ -232,26 +241,23 @@ class ConversationStateManager:
         Returns:
             Dictionary with stats (total_states, cached_states, total_messages)
         """
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with self._db.execute(
+            """
+            SELECT
+                COUNT(*) as total_states,
+                SUM(message_count) as total_messages
+            FROM conversation_states
+            WHERE bot_id = ?
+            """,
+            (self.bot_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
 
-            async with db.execute(
-                """
-                SELECT
-                    COUNT(*) as total_states,
-                    SUM(message_count) as total_messages
-                FROM conversation_states
-                WHERE bot_id = ?
-                """,
-                (self.bot_id,)
-            ) as cursor:
-                row = await cursor.fetchone()
-
-                return {
-                    "total_states": row["total_states"] or 0,
-                    "cached_states": len(self._cache),
-                    "total_messages": row["total_messages"] or 0
-                }
+        return {
+            "total_states": row[0] or 0,
+            "cached_states": len(self._cache),
+            "total_messages": row[1] or 0
+        }
 
     async def cleanup_old_states(self, days: int = 30) -> int:
         """
@@ -263,17 +269,16 @@ class ConversationStateManager:
         Returns:
             Number of states deleted
         """
-        async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                """
-                DELETE FROM conversation_states
-                WHERE bot_id = ? AND last_updated < datetime('now', '-' || ? || ' days')
-                """,
-                (self.bot_id, days)
-            )
-            await db.commit()
+        cursor = await self._db.execute(
+            """
+            DELETE FROM conversation_states
+            WHERE bot_id = ? AND last_updated < datetime('now', '-' || ? || ' days')
+            """,
+            (self.bot_id, days)
+        )
+        await self._db.commit()
 
-            deleted_count = cursor.rowcount
+        deleted_count = cursor.rowcount
 
         if deleted_count > 0:
             logger.info(f"Cleaned up {deleted_count} old conversation states (>{days} days inactive)")
