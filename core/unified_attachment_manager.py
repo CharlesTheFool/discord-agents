@@ -7,6 +7,7 @@ Coordinates all attachment operations across storage modes:
 - metadata_only: Store metadata without file content
 """
 
+import asyncio
 import logging
 from typing import Optional, Dict, TYPE_CHECKING
 import discord
@@ -93,6 +94,15 @@ class UnifiedAttachmentManager:
         # Database and quota tracking
         self.attachment_db = AttachmentDatabase(message_memory._db)
         self.quota_manager = QuotaManager(self.attachment_db)
+
+        # Per-attachment locks: concurrent processing of the same attachment
+        # must not race the file_id check past each other (duplicate uploads)
+        self._upload_locks: Dict[str, asyncio.Lock] = {}
+
+    def _upload_lock_for(self, attachment_id: str) -> asyncio.Lock:
+        if attachment_id not in self._upload_locks:
+            self._upload_locks[attachment_id] = asyncio.Lock()
+        return self._upload_locks[attachment_id]
 
     async def initialize(self) -> None:
         """Create schema and run migrations."""
@@ -216,68 +226,69 @@ class UnifiedAttachmentManager:
                 }
             }
 
-        # Bug #3 fix: Check if file already uploaded to Files API (avoid triple upload)
-        async with self.attachment_db.db.execute(
-            "SELECT file_id FROM attachments WHERE attachment_id = ?",
-            (str(attachment.id),)
-        ) as cursor:
-            existing_row = await cursor.fetchone()
+        # Check-then-upload must be atomic per attachment: without the lock,
+        # concurrent calls both miss the cached file_id and upload twice
+        async with self._upload_lock_for(str(attachment.id)):
+            async with self.attachment_db.db.execute(
+                "SELECT file_id FROM attachments WHERE attachment_id = ?",
+                (str(attachment.id),)
+            ) as cursor:
+                existing_row = await cursor.fetchone()
 
-        if existing_row and existing_row[0]:
-            # File already uploaded - reuse cached file_id
-            cached_file_id = existing_row[0]
-            logger.info(f"Reusing cached file_id for {attachment.filename}: {cached_file_id} (avoiding re-upload)")
+            if existing_row and existing_row[0]:
+                # File already uploaded - reuse cached file_id
+                cached_file_id = existing_row[0]
+                logger.info(f"Reusing cached file_id for {attachment.filename}: {cached_file_id} (avoiding re-upload)")
 
-            use_as_doc_block = self.should_use_document_block(attachment.filename, attachment.size)
-            return {
-                "attachment_id": str(attachment.id),
-                "attachment_type": att_type,
-                "filename": attachment.filename,
-                "size_bytes": attachment.size,
-                "for_api": {
-                    "method": "file_id",
-                    "data": cached_file_id,
-                    "use_as_document_block": use_as_doc_block
+                use_as_doc_block = self.should_use_document_block(attachment.filename, attachment.size)
+                return {
+                    "attachment_id": str(attachment.id),
+                    "attachment_type": att_type,
+                    "filename": attachment.filename,
+                    "size_bytes": attachment.size,
+                    "for_api": {
+                        "method": "file_id",
+                        "data": cached_file_id,
+                        "use_as_document_block": use_as_doc_block
+                    }
                 }
-            }
 
-        # No cached file_id - proceed with upload
-        # For non-image files: upload to Files API with correct MIME type
-        mime_type = AttachmentClassifier.get_files_api_mime_type(attachment.filename)
-        upload_result = await self.files_api_client.upload(
-            filename=attachment.filename,
-            file_data=file_data,
-            mime_type=mime_type
-        )
-
-        if upload_result:
-            file_id = upload_result["file_id"]
-
-            # Update database with file_id
-            await self.attachment_db.db.execute(
-                "UPDATE attachments SET file_id = ?, file_api_uploaded_at = CURRENT_TIMESTAMP WHERE attachment_id = ?",
-                (file_id, str(attachment.id))
+            # No cached file_id - proceed with upload
+            # For non-image files: upload to Files API with correct MIME type
+            mime_type = AttachmentClassifier.get_files_api_mime_type(attachment.filename)
+            upload_result = await self.files_api_client.upload(
+                filename=attachment.filename,
+                file_data=file_data,
+                mime_type=mime_type
             )
-            await self.attachment_db.db.commit()
 
-            logger.info(f"Uploaded document to Files API: {attachment.filename} -> {file_id}")
+            if upload_result:
+                file_id = upload_result["file_id"]
 
-            # Check if file should be added as document block vs code execution only
-            # Large files use container_upload to avoid materializing full content
-            use_as_doc_block = self.should_use_document_block(attachment.filename, attachment.size)
+                # Update database with file_id
+                await self.attachment_db.db.execute(
+                    "UPDATE attachments SET file_id = ?, file_api_uploaded_at = CURRENT_TIMESTAMP WHERE attachment_id = ?",
+                    (file_id, str(attachment.id))
+                )
+                await self.attachment_db.db.commit()
 
-            return {
-                "attachment_id": str(attachment.id),
-                "attachment_type": att_type,
-                "filename": attachment.filename,
-                "size_bytes": attachment.size,  # Phase 5: File size disclosure
-                "for_api": {
-                    "method": "file_id",
-                    "data": file_id,
-                    "use_as_document_block": use_as_doc_block
-                    # REMOVED: use_as_container_upload (container_upload blocks don't exist in API)
+                logger.info(f"Uploaded document to Files API: {attachment.filename} -> {file_id}")
+
+                # Check if file should be added as document block vs code execution only
+                # Large files use container_upload to avoid materializing full content
+                use_as_doc_block = self.should_use_document_block(attachment.filename, attachment.size)
+
+                return {
+                    "attachment_id": str(attachment.id),
+                    "attachment_type": att_type,
+                    "filename": attachment.filename,
+                    "size_bytes": attachment.size,  # Phase 5: File size disclosure
+                    "for_api": {
+                        "method": "file_id",
+                        "data": file_id,
+                        "use_as_document_block": use_as_doc_block
+                    }
                 }
-            }
 
         # Fallback if upload fails
         logger.warning(f"Failed to upload {attachment.filename} to Files API, returning None")
@@ -305,6 +316,12 @@ class UnifiedAttachmentManager:
         Returns:
             Dict suitable for Claude API or None if unavailable
         """
+        # Same per-attachment lock as initial processing: the on-demand and
+        # expiration re-uploads below share the check-then-upload race
+        async with self._upload_lock_for(attachment_id):
+            return await self._get_attachment_for_processing_locked(attachment_id)
+
+    async def _get_attachment_for_processing_locked(self, attachment_id: str) -> Optional[Dict]:
         # Query database for attachment record
         async with self.attachment_db.db.execute(
             "SELECT * FROM attachments WHERE attachment_id = ?",
