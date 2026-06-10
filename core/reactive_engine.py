@@ -40,6 +40,18 @@ from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
 logger = logging.getLogger(__name__)
 
 
+def total_input_tokens(usage) -> int:
+    """
+    Full context size from response.usage. With prompt caching, input_tokens
+    counts only uncached tokens - cached reads/writes live in separate fields.
+    """
+    return (
+        usage.input_tokens
+        + (getattr(usage, "cache_read_input_tokens", 0) or 0)
+        + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    )
+
+
 class ReactiveEngine:
     """
     Reactive message handling engine.
@@ -811,7 +823,8 @@ class ReactiveEngine:
 
                         # Log input token usage (first iteration only) - from response.usage, no count_tokens calls
                         if loop_iteration == 1 and hasattr(response, 'usage'):
-                            logger.info(f"Input tokens: {response.usage.input_tokens:,}")
+                            logger.info(f"Input tokens: {total_input_tokens(response.usage):,} "
+                                        f"(uncached: {response.usage.input_tokens:,})")
 
                         # Extract thinking if present (store full block for persistence)
                         for block in response.content:
@@ -1165,7 +1178,7 @@ class ReactiveEngine:
 
                     # Record session usage watermark and stub old tool results (v0.6.0)
                     if hasattr(response, "usage"):
-                        conversation_state.record_usage(response.usage.input_tokens)
+                        conversation_state.record_usage(total_input_tokens(response.usage))
                     conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
 
                     # Save conversation state to database
@@ -1864,7 +1877,8 @@ class ReactiveEngine:
 
                     # Log input token usage (first iteration only) - from response.usage, no count_tokens calls
                     if loop_iteration == 1 and hasattr(response, 'usage'):
-                        logger.info(f"Input tokens: {response.usage.input_tokens:,}")
+                        logger.info(f"Input tokens: {total_input_tokens(response.usage):,} "
+                                    f"(uncached: {response.usage.input_tokens:,})")
 
                     # Extract thinking if present (store full block for persistence)
                     for block in response.content:
@@ -2115,7 +2129,7 @@ class ReactiveEngine:
 
                             # Record session usage watermark and stub old tool results (v0.6.0)
                             if hasattr(response, "usage"):
-                                conversation_state.record_usage(response.usage.input_tokens)
+                                conversation_state.record_usage(total_input_tokens(response.usage))
                             conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
 
                             # Save conversation state to database
