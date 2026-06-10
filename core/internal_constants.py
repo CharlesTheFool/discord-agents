@@ -19,6 +19,23 @@ API_MAX_CONCURRENT = 10
 
 
 # =============================================================================
+# EPISODIC SESSIONS (Internal)
+# =============================================================================
+EPISODE_IDLE_GAP_HOURS = 5          # Channel idle longer than this => episode boundary
+EPISODE_MASS_TOKEN_LIMIT = 60000    # Estimated-token span mass that forces a boundary (chars/4)
+EPISODE_MIN_MESSAGES = 3            # Segments smaller than this merge forward
+EPISODE_BOOTSTRAP_DAYS = 2          # On first run, skip history older than this
+EPISODE_SEED_TAIL_MESSAGES = 10     # Discord messages kept when a session reseeds
+EPISODE_INDEX_SEED_TAIL = 10        # Episode-index lines inlined into the seed
+EPISODE_DISTILL_MODEL = "claude-haiku-4-5"
+EPISODE_DISTILL_MAX_TOKENS = 4000
+
+TOOL_STUB_KEEP_TURNS = 3            # Turns whose tool results stay full
+TOOL_STUB_MIN_CHARS = 500           # Results shorter than this are never stubbed
+TOOL_STUB_TEXT = "[tool result cleared at turn boundary - re-run the tool if the information is needed again]"
+
+
+# =============================================================================
 # RATE LIMITING (Internal)
 # =============================================================================
 ENGAGEMENT_TRACKING_DELAY_SECONDS = 30
