@@ -641,6 +641,10 @@ class DiscordClient(discord.Client):
         if failed_channels > 0:
             logger.info(f"  ({failed_channels} channels skipped due to permissions/errors)")
 
+        # Episodize the open span now that the message store is current (v0.6.0)
+        if self.reactive_engine and getattr(self.reactive_engine, "episode_manager", None):
+            asyncio.create_task(self.reactive_engine.episode_manager.catch_up_all_channels())
+
         return total_messages
 
     async def _handle_timezone_command(self, message: discord.Message) -> bool:

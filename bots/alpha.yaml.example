@@ -97,7 +97,7 @@ api:
 
   # Context management
   context_messages: 30        # Messages to remember (rolling window)
-  context_tokens: 100000      # Token budget
+  context_tokens: 80000       # Session token threshold: episodize + reseed past this (from response.usage)
 
   # Effort - main cost/depth dial: low | medium | high | max
   # Omit for API default (high). Chat bots usually want low/medium.

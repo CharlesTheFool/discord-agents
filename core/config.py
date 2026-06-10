@@ -178,7 +178,7 @@ class APIConfig:
     model: str = "claude-sonnet-4-6"
     max_tokens: int = 4096
     context_messages: int = 30  # Messages to remember (rolling window)
-    context_tokens: int = 100000  # Total input token budget
+    context_tokens: int = 80000  # Session token threshold: episodize + reseed past this (from response.usage)
     effort: Optional[str] = None  # low | medium | high | max (None = API default, high)
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
@@ -301,7 +301,7 @@ class BotConfig:
         if not yaml_path.exists():
             raise FileNotFoundError(f"Config file not found: {yaml_path}")
 
-        with open(yaml_path) as f:
+        with open(yaml_path, encoding="utf-8-sig") as f:
             data = yaml.safe_load(f)
 
         if not data:
