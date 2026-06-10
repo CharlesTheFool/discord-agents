@@ -504,7 +504,7 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
             cached = self._mention_names.get(user_id)
             if cached:
                 resolved_count += 1
-                return f"@{cached}"
+                return f"@{cached} (<@{user_id}>)"
             # Local member cache (members intent is enabled) - no API call
             member = guild.get_member(user_id)
             if member is None:
@@ -515,7 +515,9 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                     return match.group(0)
             self._mention_names[user_id] = member.display_name
             resolved_count += 1
-            return f"@{member.display_name}"
+            # Name for understanding, raw form so the model can emit working
+            # mentions by copying it
+            return f"@{member.display_name} (<@{user_id}>)"
 
         # Replace all mentions
         resolved = content

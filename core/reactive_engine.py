@@ -1929,6 +1929,9 @@ class ReactiveEngine:
             if self.config.api.effort:
                 api_params["output_config"] = {"effort": self.config.api.effort}
 
+            # Show typing while generating (auto-refreshes until cancelled)
+            typing_task = asyncio.create_task(self._keep_typing(message.channel))
+
             # Call Claude API
             try:
                 # Initialize response tracking
@@ -2371,6 +2374,16 @@ class ReactiveEngine:
                 logger.error(f"Error calling Claude for periodic check: {e}", exc_info=True)
                 self.conversation_logger.log_error(f"Periodic check error: {str(e)}")
                 self.conversation_logger.log_separator()
+            finally:
+                typing_task.cancel()
+
+    async def _keep_typing(self, channel) -> None:
+        """Hold the typing indicator until cancelled (Discord refreshes ~10s)."""
+        try:
+            async with channel.typing():
+                await asyncio.sleep(3600)
+        except (asyncio.CancelledError, discord.HTTPException):
+            pass
 
     def _build_response_decision_prompt(self, context) -> list:
         """
