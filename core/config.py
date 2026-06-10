@@ -148,12 +148,19 @@ class LocalStorageConfig:
 
 
 @dataclass
+class RepositoryConfig:
+    """Bot file repository (v0.6.1) - per-server local drive"""
+    enabled: bool = True
+
+
+@dataclass
 class AttachmentsConfig:
     """Unified attachment system configuration"""
     enabled: bool = False
     backfill_enabled: bool = True
     backfill_days: int = 30
     local_storage: LocalStorageConfig = field(default_factory=LocalStorageConfig)
+    repository: RepositoryConfig = field(default_factory=RepositoryConfig)
 
 
 @dataclass
@@ -442,6 +449,9 @@ class BotConfig:
             enabled=attachments_data.get("enabled", False),
             backfill_enabled=attachments_data.get("backfill_enabled", True),
             backfill_days=attachments_data.get("backfill_days", 30),
+            repository=RepositoryConfig(
+                enabled=attachments_data.get("repository", {}).get("enabled", True)
+            ),
         )
 
         return cls(

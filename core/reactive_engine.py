@@ -266,6 +266,7 @@ class ReactiveEngine:
 
         # Unified Attachment Manager (replaces multimedia_processor)
         self.attachment_manager = None  # Initialized in async_initialize
+        self.repository_manager = None  # v0.6.1, initialized in async_initialize
 
         # Files API access for container output delivery. Independent of the
         # attachments feature: code execution is always available, and the
@@ -368,9 +369,19 @@ class ReactiveEngine:
                 # Pass attachment_manager to ContextBuilder
                 self.context_builder.attachment_manager = self.attachment_manager
                 logger.debug("ContextBuilder updated with attachment_manager")
+
+                # Bot file repository (v0.6.1) - rides the attachment pipeline
+                if self.config.attachments.repository.enabled:
+                    from core.repository_manager import RepositoryManager
+                    self.repository_manager = RepositoryManager(
+                        bot_id=self.config.bot_id,
+                        attachment_manager=self.attachment_manager,
+                    )
+                    logger.info("Repository feature enabled")
             except Exception as e:
                 logger.error(f"Failed to initialize UnifiedAttachmentManager: {e}", exc_info=True)
                 self.attachment_manager = None  # Disable on failure
+                self.repository_manager = None
 
     async def _initialize_conversation_from_db(
         self,
@@ -736,12 +747,13 @@ class ReactiveEngine:
                 logger.info(f"Added {block['type']} block for {att['filename']}")
         return content, attachment_ids
 
-    async def _build_volatile_tail(self, base: str, conversation_state) -> str:
+    async def _build_volatile_tail(self, base: str, conversation_state, message=None) -> str:
         """
-        Per-request context (timestamp, momentum, attachment index) that must
-        stay OUT of the cached prompt prefix. It rides as a transient user
-        message appended at request time in _run_tool_loop - downstream of
-        both cache breakpoints, never persisted to conversation state.
+        Per-request context (timestamp, momentum, attachment index, repository
+        manifest) that must stay OUT of the cached prompt prefix. It rides as
+        a transient user message appended at request time in _run_tool_loop -
+        downstream of both cache breakpoints, never persisted to conversation
+        state.
         """
         parts = [base] if base else []
 
@@ -752,6 +764,20 @@ class ReactiveEngine:
                     parts.append(attachments_index)
             except Exception as e:
                 logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
+
+        if conversation_state and self.repository_manager and message is not None:
+            try:
+                repo_server_id = str(message.guild.id) if message.guild else "DM"
+                in_context_ids = set()
+                for msg in conversation_state.messages:
+                    in_context_ids.update(msg.get("attachment_ids", []))
+                repo_manifest = await self.repository_manager.render_manifest(
+                    repo_server_id, in_context_ids
+                )
+                if repo_manifest:
+                    parts.append(repo_manifest)
+            except Exception as e:
+                logger.error(f"Failed to generate repository manifest: {e}", exc_info=True)
 
         if not parts:
             return ""
@@ -782,6 +808,10 @@ class ReactiveEngine:
             tools.extend(get_discord_tools())
         else:
             logger.warning("Discord tool executor is None - discord tools NOT added!")
+
+        if self.repository_manager:
+            from tools.repository_tool import get_repository_tool
+            tools.append(get_repository_tool())
 
         beta_headers = []
         if self.web_search_enabled:
@@ -953,6 +983,20 @@ class ReactiveEngine:
                             "tool_use_id": block.id,
                             "content": result
                         })
+
+            elif block.name == "repository":
+                if self.repository_manager:
+                    logger.debug(f"Executing repository tool: {block.input.get('action', 'unknown')}")
+                    result = await self.repository_manager.execute(
+                        block.input, current_server_id=server_id
+                    )
+                else:
+                    result = "Error: repository feature not enabled"
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result
+                })
 
             # MCP tools are prefixed with their server name (v0.5.0)
             elif "_" in block.name and self.mcp_manager:
@@ -1350,7 +1394,7 @@ class ReactiveEngine:
                         "cache_control": {"type": "ephemeral"}
                     }]
                     volatile_tail = await self._build_volatile_tail(
-                        context.get("time_context", ""), conversation_state
+                        context.get("time_context", ""), conversation_state, message
                     )
 
                     api_params = self._build_api_params(system_blocks, conversation_state, context)
@@ -1830,6 +1874,7 @@ class ReactiveEngine:
                 (context.get("time_context", "")
                  + f"\nConversation momentum right now: {context['conversation_momentum'].upper()}"),
                 conversation_state,
+                message,
             )
 
             api_params = self._build_api_params(system_blocks, conversation_state, context)
