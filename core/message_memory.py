@@ -552,6 +552,26 @@ class MessageMemory:
         rows = await cursor.fetchall()
         return [self._row_to_message(row) for row in rows]
 
+    async def get_last_message_id_before(
+        self, channel_id: str, cutoff: datetime
+    ) -> Optional[str]:
+        """
+        ID of the newest non-system message older than cutoff, or None.
+
+        Used for watermark bootstrap - one indexed lookup instead of
+        materializing the channel's entire history.
+        """
+        cursor = await self._db.execute(
+            """
+            SELECT message_id FROM messages
+            WHERE channel_id = ? AND is_system = 0 AND timestamp < ?
+            ORDER BY CAST(message_id AS INTEGER) DESC LIMIT 1
+            """,
+            (channel_id, cutoff.isoformat()),
+        )
+        row = await cursor.fetchone()
+        return row["message_id"] if row else None
+
     async def get_latest_message(self, channel_id: str) -> Optional[StoredMessage]:
         """Get the most recent non-system message in a channel, or None."""
         cursor = await self._db.execute(

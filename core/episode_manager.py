@@ -23,6 +23,7 @@ from core.internal_constants import (
     EPISODE_INDEX_SEED_TAIL,
     EPISODE_DISTILL_MODEL,
     EPISODE_DISTILL_MAX_TOKENS,
+    EPISODE_RETRY_COOLDOWN_MINUTES,
 )
 
 logger = logging.getLogger(__name__)
@@ -233,6 +234,10 @@ class EpisodeManager:
         self.conversation_state_manager = conversation_state_manager
         self.anthropic = anthropic_client
         self._locks: dict = {}
+        # Distillation-failure cooldowns: the usage trigger re-fires every
+        # turn while over threshold, which would re-attempt (and re-bill) a
+        # failing distillation once per message
+        self._retry_after: dict = {}
 
         logger.info("EpisodeManager initialized")
 
@@ -249,6 +254,13 @@ class EpisodeManager:
         the tail closes only when stale (idle trigger / catch-up).
         """
         async with self._lock_for(channel_id):
+            retry_after = self._retry_after.get(channel_id)
+            if retry_after and datetime.utcnow() < retry_after:
+                logger.debug(
+                    f"Episodization for channel {channel_id} on cooldown until {retry_after}"
+                )
+                return 0
+
             watermark = await self.message_memory.get_episode_watermark(channel_id)
             if watermark is None:
                 watermark = await self._bootstrap_watermark(channel_id)
@@ -280,11 +292,19 @@ class EpisodeManager:
                         f"(range {segment[0].message_id}-{segment[-1].message_id}): {e}",
                         exc_info=True,
                     )
-                    break  # watermark stays before this segment; retried next trigger
+                    # Watermark stays before this segment; back off so the
+                    # per-turn usage trigger doesn't re-bill a failing call
+                    self._retry_after[channel_id] = datetime.utcnow() + timedelta(
+                        minutes=EPISODE_RETRY_COOLDOWN_MINUTES
+                    )
+                    break
                 await self.message_memory.set_episode_watermark(
                     channel_id, segment[-1].message_id
                 )
                 distilled += 1
+
+            if distilled:
+                self._retry_after.pop(channel_id, None)
 
             # Reseed the live session if its tail was episodized
             if distilled and tail_closed:
@@ -306,13 +326,7 @@ class EpisodeManager:
         the last message older than EPISODE_BOOTSTRAP_DAYS.
         """
         cutoff = datetime.utcnow() - timedelta(days=EPISODE_BOOTSTRAP_DAYS)
-        span = await self.message_memory.get_messages_after_id(channel_id, None)
-        last_old = None
-        for msg in span:
-            if msg.timestamp < cutoff:
-                last_old = msg.message_id
-            else:
-                break
+        last_old = await self.message_memory.get_last_message_id_before(channel_id, cutoff)
         if last_old is not None:
             await self.message_memory.set_episode_watermark(channel_id, last_old)
             logger.info(

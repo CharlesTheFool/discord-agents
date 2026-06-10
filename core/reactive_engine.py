@@ -908,6 +908,7 @@ class ReactiveEngine:
                     thinking_block = None  # Store full thinking block for persistence
                     response_text = ""
                     loop_iteration = 0
+                    tools_were_used = False
 
                     while True:
                         loop_iteration += 1
@@ -984,6 +985,14 @@ class ReactiveEngine:
 
                         # Check stop reason
                         if response.stop_reason == "tool_use":
+                            # Safety cap (parity with the periodic path): a model
+                            # that keeps requesting tools must not loop unbounded
+                            if loop_iteration >= 10:
+                                logger.warning("Tool use loop exceeded 10 iterations in @mention path")
+                                response_text = response_text or "I got stuck in a tool loop - try asking again."
+                                break
+                            tools_were_used = True
+
                             # Execute tool calls
                             tool_results = []
                             pending_file_blocks = []  # document/container_upload from get_attachment
@@ -1165,6 +1174,15 @@ class ReactiveEngine:
                             # Append citations to response
                             if citations_list:
                                 response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
+
+                            # Tools ran but the model went quiet: reprompt once
+                            # for a brief confirmation (parity with periodic path)
+                            if not response_text.strip() and tools_were_used and loop_iteration < 10:
+                                api_params["messages"].append({
+                                    "role": "user",
+                                    "content": "Please provide a brief response confirming what you just did for the user."
+                                })
+                                continue
 
                             if not response_text:
                                 response_text = "I'm not sure how to respond to that."

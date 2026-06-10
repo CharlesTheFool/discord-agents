@@ -29,6 +29,7 @@ EPISODE_SEED_TAIL_MESSAGES = 10     # Discord messages kept when a session resee
 EPISODE_INDEX_SEED_TAIL = 10        # Episode-index lines inlined into the seed
 EPISODE_DISTILL_MODEL = "claude-haiku-4-5"
 EPISODE_DISTILL_MAX_TOKENS = 4000
+EPISODE_RETRY_COOLDOWN_MINUTES = 10  # Backoff after a failed distillation
 
 TOOL_STUB_KEEP_TURNS = 3            # Turns whose tool results stay full
 TOOL_STUB_MIN_CHARS = 500           # Results shorter than this are never stubbed
