@@ -81,7 +81,6 @@ class ReactiveEngine:
         self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
 
         # Cache internal config values (v0.6.0 - simplified config)
-        self._context_editing_config = config.get_context_editing_config()
         self._rate_limiting_config = config.get_rate_limiting_config()
 
         # Initialize data isolation enforcer first (v0.5.0)
@@ -179,14 +178,12 @@ class ReactiveEngine:
             self.conversation_state_manager = ConversationStateManager(
                 db_path=db_path,
                 bot_id=self.config.bot_id,
-                max_messages=self.config.api.context_messages,
-                max_tokens=self.config.api.context_tokens
+                max_messages=self.config.api.context_messages
             )
             await self.conversation_state_manager.initialize()
             logger.info(
                 f"ConversationStateManager initialized "
-                f"(max_messages={self.config.api.context_messages}, "
-                f"max_tokens={self.config.api.context_tokens})"
+                f"(max_messages={self.config.api.context_messages})"
             )
         except Exception as e:
             logger.error(f"Failed to initialize ConversationStateManager: {e}", exc_info=True)
@@ -366,8 +363,7 @@ class ReactiveEngine:
                 attachment_ids=attachment_ids if attachment_ids else None
             )
 
-        logger.info(f"Initialized conversation state with {len(recent_messages)} messages from DB "
-                    f"({len(conversation_state.document_references)} with documents)")
+        logger.info(f"Initialized conversation state with {len(recent_messages)} messages from DB")
 
     async def _generate_uploaded_files_manifest(self, conversation_state) -> str:
         """
@@ -382,17 +378,23 @@ class ReactiveEngine:
         Returns:
             XML formatted manifest string, or empty string if no files
         """
-        if not conversation_state.context_items:
-            return ""
-
-        # Phase 4.1: Collect both document and container_upload items
-        # Design: Both types use Files API, but accessed differently
-        #   - document blocks: Claude reads directly via document content block
-        #   - container_upload: Claude accesses via code_execution tool
-        file_items = [
-            item for item in conversation_state.context_items
-            if item.type in ("document", "container_upload")
-        ]
+        # Collect (attachment_id, block_type) for document/container_upload blocks,
+        # pairing each message's attachment_ids annotation with its blocks in order
+        # (same pairing order as ConversationState.add_message).
+        file_items = []
+        for msg in conversation_state.messages:
+            attachment_ids = msg.get("attachment_ids")
+            content = msg.get("content")
+            if not attachment_ids or not isinstance(content, list):
+                continue
+            attachment_idx = 0
+            for block in content:
+                block_type = block.get("type") if isinstance(block, dict) else None
+                if block_type in ("document", "container_upload", "image"):
+                    if attachment_idx < len(attachment_ids):
+                        if block_type in ("document", "container_upload"):
+                            file_items.append((attachment_ids[attachment_idx], block_type))
+                        attachment_idx += 1
 
         if not file_items:
             return ""
@@ -410,15 +412,16 @@ class ReactiveEngine:
             ""
         ]
 
-        for item in file_items:
-            attachment_id = item.item_id
-            estimated_tokens = item.estimated_tokens
-            metadata = item.metadata or {}
+        for attachment_id, block_type in file_items:
+            filename = f"file_{attachment_id}"
 
-            # Get filename from metadata or database
-            filename = metadata.get("filename", f"file_{attachment_id}")
+            if block_type == "document":
+                access_method = "document block (Claude reads directly)"
+            else:
+                # Bug #8 fix: Use INPUT_DIR env var, not hardcoded /tmp/uploads/
+                access_method = "container_upload (code execution - use INPUT_DIR env var)"
 
-            # Query attachment database for additional metadata
+            # Query attachment database for metadata
             if self.attachment_manager and self.attachment_manager.attachment_db:
                 try:
                     async with self.attachment_manager.attachment_db.db.execute(
@@ -427,7 +430,7 @@ class ReactiveEngine:
                     ) as cursor:
                         row = await cursor.fetchone()
                         if row:
-                            filename, size_bytes, attachment_type = row
+                            filename, size_bytes, _ = row
 
                             # Format file size
                             if size_bytes < 1024:
@@ -439,32 +442,14 @@ class ReactiveEngine:
                             else:
                                 size_str = f"{size_bytes/1024**3:.2f} GB"
 
-                            # Phase 4.2: Determine access method from block type
-                            # Design: Use actual block type to determine how Claude accesses the file
-                            if item.type == "document":
-                                access_method = "document block (Claude reads directly)"
-                            elif item.type == "container_upload":
-                                # Bug #8 fix: Use INPUT_DIR env var, not hardcoded /tmp/uploads/
-                                access_method = f"container_upload (code execution - use INPUT_DIR env var)"
-                            else:
-                                # Fallback (shouldn't happen for file items)
-                                access_method = "unknown"
-
-                            # Format line with access method
                             manifest_lines.append(
-                                f"- {filename} ({size_str}, ~{estimated_tokens:,} tokens, access: {access_method})"
+                                f"- {filename} ({size_str}, access: {access_method})"
                             )
-                        else:
-                            # Fallback if not in database
-                            manifest_lines.append(
-                                f"- {filename} (~{estimated_tokens:,} tokens)"
-                            )
+                            continue
                 except Exception as e:
                     logger.warning(f"Failed to query attachment metadata for {attachment_id}: {e}")
-                    manifest_lines.append(f"- {filename} (~{estimated_tokens:,} tokens)")
-            else:
-                # No database access
-                manifest_lines.append(f"- {filename} (~{estimated_tokens:,} tokens)")
+
+            manifest_lines.append(f"- {filename} (access: {access_method})")
 
         manifest_lines.append("</uploaded_files>")
 
@@ -607,25 +592,7 @@ class ReactiveEngine:
                                         }
                                     })
 
-                        # Phase 5: Build attachment metadata for file size disclosure
-                        attachment_metadata = {}
-                        if processed_attachments:
-                            logger.debug(f"Building metadata for {len(processed_attachments)} attachments")
-                            for att in processed_attachments:
-                                att_id = att.get("attachment_id")
-                                if att_id:
-                                    attachment_metadata[att_id] = {
-                                        "filename": att.get("filename"),
-                                        "size_bytes": att.get("size_bytes")
-                                    }
-                                    logger.debug(f"Added metadata for attachment {att_id}: filename={att.get('filename')}, size={att.get('size_bytes')}")
-                                else:
-                                    logger.warning(f"Attachment missing attachment_id: {att}")
-                        else:
-                            logger.debug("No processed_attachments to build metadata from")
-
-                        logger.debug(f"Passing attachment_metadata to add_message: {attachment_metadata}")
-                        conversation_state.add_message("user", user_content, attachment_ids, attachment_metadata)
+                        conversation_state.add_message("user", user_content, attachment_ids)
                         logger.debug(f"Added user message to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
 
                         # Enforce message cap immediately
@@ -640,8 +607,6 @@ class ReactiveEngine:
                 if context.get("stats"):
                     self.conversation_logger.log_context_building(**context["stats"])
 
-                # Log cache status
-                self.conversation_logger.log_cache_status(enabled=self._context_editing_config["enabled"])
                 # Show typing indicator
                 async with message.channel.typing():
                     # Small delay for more natural feel
@@ -658,7 +623,7 @@ class ReactiveEngine:
                         logger.warning("Discord tool executor is None - tools NOT added!")
 
                     # Add web search tools if enabled (all-or-nothing, no rate limits)
-                    beta_headers = ["context-management-2025-06-27"]
+                    beta_headers = []
                     if self.web_search_enabled:
                         web_search_config = self.config.get_web_search_config()
                         tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
@@ -729,58 +694,8 @@ class ReactiveEngine:
                             api_params["container"] = container_config
                             logger.debug(f"Container: id={container_id}, skills={active_skill_names}")
 
-                    # Document warning system (Phase 5 - v0.5.0)
-                    document_warning = None
-                    if conversation_state and conversation_state.should_warn_about_tokens():
-                        # At 95% threshold, warn bot about impending document stripping
-                        usage_percent = conversation_state.get_token_usage_percent()
-
-                        # Build list of documents that will be stripped
-                        documents_at_risk = []
-                        for msg_idx_str, att_ids in conversation_state.document_references.items():
-                            msg_idx = int(msg_idx_str)
-                            if msg_idx < len(conversation_state.messages):
-                                msg = conversation_state.messages[msg_idx]
-                                # Approximate which documents are at risk (oldest first)
-                                for att_id in att_ids:
-                                    documents_at_risk.append(att_id)
-
-                        if documents_at_risk:
-                            document_warning = f"""
-<document_warning>
-Your context is at {usage_percent:.1f}% of token capacity. The following documents may be removed soon:
-{chr(10).join(f'- {doc_id}' for doc_id in documents_at_risk[:5])}  {f'(and {len(documents_at_risk)-5} more)' if len(documents_at_risk) > 5 else ''}
-
-If these contain information pertinent to current conversation, consider:
-- Saving key insights to memory files
-- Noting attachment IDs for later retrieval with get_attachment tool
-</document_warning>
-"""
-                            logger.info(f"Document warning triggered at {usage_percent:.1f}% token usage")
-
-                    # Add context management if enabled
-                    if self._context_editing_config["enabled"]:
-                        api_params["context_management"] = {
-                            "edits": [
-                                {
-                                    "type": "clear_tool_uses_20250919",
-                                    "trigger": {
-                                        "type": "input_tokens",
-                                        "value": self._context_editing_config["trigger_tokens"]
-                                    },
-                                    "keep": {
-                                        "type": "tool_uses",
-                                        "value": self._context_editing_config["keep_tool_uses"]
-                                    },
-                                    "exclude_tools": self._context_editing_config["exclude_tools"],
-                                }
-                            ]
-                        }
-
-                    # Build system prompt (Phase 5 - inject document warning if present)
+                    # Build system prompt
                     system_prompt_text = context["system_prompt"]
-                    if document_warning:
-                        system_prompt_text += document_warning
 
                     # Add skills catalog for progressive disclosure (v0.5.0)
                     if self.skills_manager and conversation_state:
@@ -799,17 +714,14 @@ If these contain information pertinent to current conversation, consider:
                         except Exception as e:
                             logger.error(f"Failed to generate uploaded_files manifest: {e}", exc_info=True)
 
-                    # Add system prompt with cache control if context editing enabled
-                    if self._context_editing_config["enabled"]:
-                        api_params["system"] = [
-                            {
-                                "type": "text",
-                                "text": system_prompt_text,
-                                "cache_control": {"type": "ephemeral"}
-                            }
-                        ]
-                    else:
-                        api_params["system"] = system_prompt_text
+                    # Add system prompt with cache control (prompt caching)
+                    api_params["system"] = [
+                        {
+                            "type": "text",
+                            "text": system_prompt_text,
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ]
 
                     # Get messages from conversation state if available, otherwise use context (v0.5.0)
                     if conversation_state:
@@ -828,119 +740,6 @@ If these contain information pertinent to current conversation, consider:
                     if self.config.api.effort:
                         api_params["output_config"] = {"effort": self.config.api.effort}
 
-                    # Token cap enforcement (Phase 4 - v0.5.0)
-                    if conversation_state:
-                        try:
-                            # Get system prompt for counting
-                            system_prompt_for_counting = context["system_prompt"]
-                            if isinstance(api_params.get("system"), list):
-                                # Extract text from structured system prompt
-                                system_prompt_for_counting = api_params["system"][0]["text"]
-
-                            # Count static tokens (system + tools) for logging only
-                            static_tokens = await conversation_state.count_static_tokens(
-                                self.anthropic,
-                                system_prompt_for_counting,
-                                tools
-                            )
-
-                            # Count total input tokens (system + tools + messages)
-                            total_tokens = await conversation_state.count_tokens(
-                                self.anthropic,
-                                system_prompt_for_counting,
-                                tools,
-                                attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                            )
-
-                            # Log token breakdown
-                            messages_only_tokens = total_tokens - static_tokens
-                            logger.debug(
-                                f"Token breakdown: {total_tokens} total "
-                                f"({static_tokens} static + {messages_only_tokens} messages)"
-                            )
-
-                            # Check if over budget and enforce token cap
-                            max_tokens = conversation_state.max_tokens
-
-                            if total_tokens > max_tokens:
-                                logger.warning(
-                                    f"Over token budget: {total_tokens}/{max_tokens} "
-                                    f"({(total_tokens/max_tokens)*100:.1f}%)"
-                                )
-
-                                # Strip documents first (Phase 4)
-                                while total_tokens > max_tokens and conversation_state.document_references:
-                                    # Strip oldest document
-                                    stripped = conversation_state.strip_documents_from_oldest(count=1)
-                                    if stripped:
-                                        logger.info(f"Stripped {len(stripped)} documents to reduce tokens")
-                                        # Invalidate token cache and recount
-                                        conversation_state.invalidate_token_cache()
-                                        total_tokens = await conversation_state.count_tokens(
-                                            self.anthropic,
-                                            system_prompt_for_counting,
-                                            tools,
-                                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                        )
-                                        logger.debug(f"After document stripping: {total_tokens}/{max_tokens}")
-                                    else:
-                                        # No more documents to strip
-                                        break
-
-                                # Remove oldest messages if still over budget (Phase 4)
-                                removal_iterations = 0
-                                max_removal_iterations = 100  # Safety guard against infinite loops
-                                while total_tokens > max_tokens and len(conversation_state.messages) > 2:
-                                    removal_iterations += 1
-                                    if removal_iterations > max_removal_iterations:
-                                        logger.error(f"Token overflow removal exceeded {max_removal_iterations} iterations - breaking")
-                                        break
-
-                                    # Keep at least 2 messages (current conversation turn)
-                                    if conversation_state.remove_oldest_message():
-                                        logger.warning(f"Removed oldest message due to token overflow")
-                                        # Invalidate token cache and recount
-                                        conversation_state.invalidate_token_cache()
-                                        total_tokens = await conversation_state.count_tokens(
-                                            self.anthropic,
-                                            system_prompt_for_counting,
-                                            tools,
-                                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                        )
-                                        logger.debug(f"After message removal: {total_tokens}/{max_tokens}")
-                                    else:
-                                        # No messages to remove
-                                        break
-
-                                # FIX: If still over budget after removing old messages, the current message is too large
-                                # Strip documents from current message to prevent infinite loop / corrupted state
-                                if total_tokens > max_tokens:
-                                    logger.error(
-                                        f"Current message exceeds token budget after removing all older messages: "
-                                        f"{total_tokens}/{max_tokens} ({(total_tokens/max_tokens)*100:.1f}%)"
-                                    )
-                                    stripped = conversation_state.strip_documents_from_current()
-                                    if stripped:
-                                        logger.warning(f"Stripped documents from current message to fit budget")
-                                        conversation_state.invalidate_token_cache()
-                                        total_tokens = await conversation_state.count_tokens(
-                                            self.anthropic,
-                                            system_prompt_for_counting,
-                                            tools,
-                                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                        )
-                                        logger.info(f"After stripping current message: {total_tokens}/{max_tokens}")
-
-                                # Save state after token cap enforcement
-                                await self.conversation_state_manager.save(conversation_state)
-
-                        except Exception as e:
-                            logger.error(f"Token cap enforcement failed: {e}", exc_info=True)
-
                     # Tool use loop - continue until end_turn
                     thinking_text = ""
                     thinking_block = None  # Store full thinking block for persistence
@@ -953,16 +752,12 @@ If these contain information pertinent to current conversation, consider:
                         # Orphan detection removed - was causing false positives
                         # API will reject actual orphaned tool_results with clear error message
 
-                        # Call Claude API (use beta endpoint if context management enabled)
-                        # Debug log API params before call
+                        # Call Claude API (beta endpoint carries files/skills betas)
                         logger.debug(f"API params: model={api_params.get('model')}, betas={api_params.get('betas')}")
                         logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
                         if 'container' in api_params:
                             logger.debug(f"  Container/Skills: {api_params.get('container')}")
-                        if self._context_editing_config["enabled"]:
-                            response = await self.anthropic.beta.messages.create(**api_params)
-                        else:
-                            response = await self.anthropic.messages.create(**api_params)
+                        response = await self.anthropic.beta.messages.create(**api_params)
 
                         # Bug #14 fix: Capture container.id from response for subsequent iterations
                         if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):
@@ -999,49 +794,9 @@ If these contain information pertinent to current conversation, consider:
                                         logger.info(f"Server tool used: {block.name}")
                                         logger.debug(f"  Server tool {block.name} input: {block.input}")
 
-                        # Log current input token count (first iteration only)
+                        # Log input token usage (first iteration only) - from response.usage, no count_tokens calls
                         if loop_iteration == 1 and hasattr(response, 'usage'):
-                            input_tokens = response.usage.input_tokens
-                            trigger_threshold = self._context_editing_config["trigger_tokens"]
-                            logger.info(f"Input tokens: {input_tokens:,} / {trigger_threshold:,} ({input_tokens/trigger_threshold*100:.1f}%)")
-
-                        # Log context management stats if present (first iteration only)
-                        if loop_iteration == 1 and hasattr(response, 'context_management') and response.context_management:
-                            cm = response.context_management
-                            # Sum up all cleared tool uses and tokens from applied_edits
-                            total_cleared_tool_uses = 0
-                            total_cleared_tokens = 0
-                            if cm.applied_edits:
-                                for edit in cm.applied_edits:
-                                    total_cleared_tool_uses += getattr(edit, 'cleared_tool_uses', 0) or 0
-                                    total_cleared_tokens += getattr(edit, 'cleared_input_tokens', 0) or 0
-
-                            # Calculate original tokens (current + cleared)
-                            current_tokens = response.usage.input_tokens if hasattr(response, 'usage') else 0
-                            original_tokens = current_tokens + total_cleared_tokens
-
-                            if total_cleared_tool_uses > 0:  # Only log if something was actually cleared
-                                self.conversation_logger.log_context_management(
-                                    tool_uses_cleared=total_cleared_tool_uses,
-                                    tokens_cleared=total_cleared_tokens,
-                                    original_tokens=original_tokens
-                                )
-
-                                # Sync conversation state with server-side clearing (v0.5.0 Phase 2)
-                                if conversation_state:
-                                    try:
-                                        conversation_state.sync_with_server_clearing(
-                                            tool_uses_cleared=total_cleared_tool_uses,
-                                            excluded_tools=self._context_editing_config["exclude_tools"]
-                                        )
-                                        # Save state after syncing
-                                        await self.conversation_state_manager.save(conversation_state)
-                                        logger.info(
-                                            f"Synced conversation state with server-side context editing: "
-                                            f"removed tracking for {total_cleared_tool_uses} cleared tool uses"
-                                        )
-                                    except Exception as e:
-                                        logger.error(f"Failed to sync conversation state with server clearing: {e}", exc_info=True)
+                            logger.info(f"Input tokens: {response.usage.input_tokens:,}")
 
                         # Extract thinking if present (store full block for persistence)
                         for block in response.content:
@@ -1155,19 +910,12 @@ If these contain information pertinent to current conversation, consider:
                                                             "file_id": file_data["data"]
                                                         })
 
-                                                    # Add to conversation state for persistence (Phase 5: include metadata)
+                                                    # Add to conversation state for persistence
                                                     att_id = result["metadata"]["attachment_id"]
-                                                    attachment_metadata = {
-                                                        att_id: {
-                                                            "filename": result["metadata"].get("filename"),
-                                                            "size_bytes": result["metadata"].get("size_bytes")
-                                                        }
-                                                    }
                                                     conversation_state.add_message(
                                                         "user",
                                                         content_blocks,
-                                                        [att_id],
-                                                        attachment_metadata
+                                                        [att_id]
                                                     )
                                                     logger.info(f"Added fetched attachment to conversation state: {result['metadata']['filename']}")
 
@@ -1279,8 +1027,7 @@ If these contain information pertinent to current conversation, consider:
 
                                     conversation_state.add_tool_use_and_results(
                                         assistant_content=assistant_content_dicts,
-                                        tool_results=tool_results,
-                                        excluded_tools=self._context_editing_config["exclude_tools"]
+                                        tool_results=tool_results
                                     )
                                     # Save state after adding tool results
                                     await self.conversation_state_manager.save(conversation_state)
@@ -1400,20 +1147,6 @@ If these contain information pertinent to current conversation, consider:
                     removed_count = conversation_state.enforce_message_cap()
                     if removed_count > 0:
                         logger.info(f"Message cap enforced after response: removed {removed_count} oldest messages")
-
-                    # Recount tokens after adding response (v0.5.0 token counting fix)
-                    try:
-                        system_prompt_for_counting = context["system_prompt"]
-                        token_count = await conversation_state.count_tokens(
-                            self.anthropic,
-                            system_prompt_for_counting,
-                            tools,
-                            attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                            local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                        )
-                        logger.info(f"Token count after response: {token_count} tokens ({len(conversation_state.messages)} messages)")
-                    except Exception as token_error:
-                        logger.warning(f"Failed to count tokens after response: {token_error}")
 
                     # Save conversation state to database
                     await self.conversation_state_manager.save(conversation_state)
@@ -1759,19 +1492,8 @@ If these contain information pertinent to current conversation, consider:
                         })
                         logger.info(f"Added image block for {att['filename']}")
 
-            # Build attachment metadata
-            attachment_metadata = {}
-            if processed_attachments:
-                for att in processed_attachments:
-                    att_id = att.get("attachment_id")
-                    if att_id:
-                        attachment_metadata[att_id] = {
-                            "filename": att.get("filename"),
-                            "size_bytes": att.get("size_bytes")
-                        }
-
             # Add message to conversation state
-            conversation_state.add_message("user", user_content, attachment_ids, attachment_metadata)
+            conversation_state.add_message("user", user_content, attachment_ids)
             logger.info(f"Added message {message_id} to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
 
             # Save state immediately (Bug #7 fix for persistence)
@@ -1965,7 +1687,7 @@ If these contain information pertinent to current conversation, consider:
                 logger.warning("Discord tool executor is None - tools NOT added to periodic check!")
 
             # Add web search tools if enabled (all-or-nothing, no rate limits)
-            beta_headers = ["context-management-2025-06-27"]
+            beta_headers = []
             if self.web_search_enabled:
                 web_search_config = self.config.get_web_search_config()
                 tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
@@ -2046,138 +1768,6 @@ If these contain information pertinent to current conversation, consider:
             if self.config.api.effort:
                 api_params["output_config"] = {"effort": self.config.api.effort}
 
-            # Add context management if enabled
-            if self._context_editing_config["enabled"]:
-                api_params["context_management"] = {
-                    "edits": [
-                        {
-                            "type": "clear_tool_uses_20250919",
-                            "trigger": {
-                                "type": "input_tokens",
-                                "value": self._context_editing_config["trigger_tokens"]
-                            },
-                            "keep": {
-                                "type": "tool_uses",
-                                "value": self._context_editing_config["keep_tool_uses"]
-                            },
-                            "exclude_tools": self._context_editing_config["exclude_tools"],
-                        }
-                    ]
-                }
-
-            # Token cap enforcement (Phase 4 - v0.5.0) - PERIODIC PATH
-            if conversation_state:
-                try:
-                    # Get system prompt for counting
-                    system_prompt_for_counting = system_prompt
-                    if isinstance(api_params.get("system"), list):
-                        # Extract text from structured system prompt
-                        system_prompt_for_counting = api_params["system"][0]["text"]
-
-                    # Count static tokens (system + tools) for logging only
-                    static_tokens = await conversation_state.count_static_tokens(
-                        self.anthropic,
-                        system_prompt_for_counting,
-                        tools
-                    )
-
-                    # Count total input tokens (system + tools + messages)
-                    total_tokens = await conversation_state.count_tokens(
-                        self.anthropic,
-                        system_prompt_for_counting,
-                        tools,
-                        attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                        local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                    )
-
-                    # Log token breakdown
-                    messages_only_tokens = total_tokens - static_tokens
-                    logger.debug(
-                        f"Token breakdown (periodic): {total_tokens} total "
-                        f"({static_tokens} static + {messages_only_tokens} messages)"
-                    )
-
-                    # Check if over budget and enforce token cap
-                    max_tokens = conversation_state.max_tokens
-
-                    if total_tokens > max_tokens:
-                        logger.warning(
-                            f"Over token budget (periodic): {total_tokens}/{max_tokens} "
-                            f"({(total_tokens/max_tokens)*100:.1f}%)"
-                        )
-
-                        # Strip documents first (Phase 4)
-                        while total_tokens > max_tokens and conversation_state.document_references:
-                            # Strip oldest document
-                            stripped = conversation_state.strip_documents_from_oldest(count=1)
-                            if stripped:
-                                logger.info(f"Stripped {len(stripped)} documents to reduce tokens (periodic)")
-                                # Invalidate token cache and recount
-                                conversation_state.invalidate_token_cache()
-                                total_tokens = await conversation_state.count_tokens(
-                                    self.anthropic,
-                                    system_prompt_for_counting,
-                                    tools,
-                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                )
-                                logger.debug(f"After document stripping (periodic): {total_tokens}/{max_tokens}")
-                            else:
-                                # No more documents to strip
-                                break
-
-                        # Remove oldest messages if still over budget (Phase 4)
-                        removal_iterations = 0
-                        max_removal_iterations = 100  # Safety guard against infinite loops
-                        while total_tokens > max_tokens and len(conversation_state.messages) > 2:
-                            removal_iterations += 1
-                            if removal_iterations > max_removal_iterations:
-                                logger.error(f"Token overflow removal exceeded {max_removal_iterations} iterations (periodic) - breaking")
-                                break
-
-                            # Keep at least 2 messages (current conversation turn)
-                            if conversation_state.remove_oldest_message():
-                                logger.warning(f"Removed oldest message due to token overflow (periodic)")
-                                # Invalidate token cache and recount
-                                conversation_state.invalidate_token_cache()
-                                total_tokens = await conversation_state.count_tokens(
-                                    self.anthropic,
-                                    system_prompt_for_counting,
-                                    tools,
-                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                )
-                                logger.debug(f"After message removal (periodic): {total_tokens}/{max_tokens}")
-                            else:
-                                # No messages to remove
-                                break
-
-                        # FIX: If still over budget after removing old messages, the current message is too large
-                        # Strip documents from current message to prevent infinite loop / corrupted state
-                        if total_tokens > max_tokens:
-                            logger.error(
-                                f"Current message exceeds token budget after removing all older messages (periodic): "
-                                f"{total_tokens}/{max_tokens} ({(total_tokens/max_tokens)*100:.1f}%)"
-                            )
-                            stripped = conversation_state.strip_documents_from_current()
-                            if stripped:
-                                logger.warning(f"Stripped documents from current message to fit budget (periodic)")
-                                conversation_state.invalidate_token_cache()
-                                total_tokens = await conversation_state.count_tokens(
-                                    self.anthropic,
-                                    system_prompt_for_counting,
-                                    tools,
-                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                )
-                                logger.info(f"After stripping current message (periodic): {total_tokens}/{max_tokens}")
-
-                        # Save state after token cap enforcement
-                        await self.conversation_state_manager.save(conversation_state)
-
-                except Exception as e:
-                    logger.error(f"Token cap enforcement failed (periodic): {e}", exc_info=True)
-
             # Call Claude API
             try:
                 # Initialize response tracking
@@ -2193,16 +1783,12 @@ If these contain information pertinent to current conversation, consider:
                     # Orphan detection removed - was causing false positives
                     # API will reject actual orphaned tool_results with clear error message
 
-                    # Call API
-                    # Debug log API params before call
+                    # Call API (beta endpoint carries files/skills betas)
                     logger.debug(f"API params (periodic): model={api_params.get('model')}, betas={api_params.get('betas')}")
                     logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
                     if 'container' in api_params:
                         logger.debug(f"  Container/Skills: {api_params.get('container')}")
-                    if self._context_editing_config["enabled"]:
-                        response = await self.anthropic.beta.messages.create(**api_params)
-                    else:
-                        response = await self.anthropic.messages.create(**api_params)
+                    response = await self.anthropic.beta.messages.create(**api_params)
 
                     # Bug #14 fix: Capture container.id from response for subsequent iterations (periodic path)
                     if hasattr(response, 'container') and response.container and hasattr(response.container, 'id'):
@@ -2235,11 +1821,9 @@ If these contain information pertinent to current conversation, consider:
                                     logger.info(f"Server tool used (periodic): {block.name}")
                                     logger.debug(f"  Server tool {block.name} input: {block.input}")
 
-                    # Log current input token count (first iteration only)
+                    # Log input token usage (first iteration only) - from response.usage, no count_tokens calls
                     if loop_iteration == 1 and hasattr(response, 'usage'):
-                        input_tokens = response.usage.input_tokens
-                        trigger_threshold = self._context_editing_config["trigger_tokens"]
-                        logger.info(f"Input tokens: {input_tokens:,} / {trigger_threshold:,} ({input_tokens/trigger_threshold*100:.1f}%)")
+                        logger.info(f"Input tokens: {response.usage.input_tokens:,}")
 
                     # Extract thinking if present (store full block for persistence)
                     for block in response.content:
@@ -2386,8 +1970,7 @@ If these contain information pertinent to current conversation, consider:
 
                             conversation_state.add_tool_use_and_results(
                                 assistant_content=assistant_content_dicts,
-                                tool_results=tool_results,
-                                excluded_tools=self._context_editing_config["exclude_tools"]
+                                tool_results=tool_results
                             )
                             # Save state after adding tool results
                             await self.conversation_state_manager.save(conversation_state)
@@ -2488,19 +2071,6 @@ If these contain information pertinent to current conversation, consider:
                             removed_count = conversation_state.enforce_message_cap()
                             if removed_count > 0:
                                 logger.info(f"Message cap enforced in periodic response: removed {removed_count} oldest messages")
-
-                            # Recount tokens after adding response (v0.5.0 token counting fix)
-                            try:
-                                token_count = await conversation_state.count_tokens(
-                                    self.anthropic,
-                                    system_prompt,
-                                    tools,
-                                    attachment_db=self.attachment_manager.attachment_db if self.attachment_manager else None,
-                                    local_storage=self.attachment_manager.local_storage if self.attachment_manager else None
-                                )
-                                logger.info(f"Token count after periodic response: {token_count} tokens ({len(conversation_state.messages)} messages)")
-                            except Exception as token_error:
-                                logger.warning(f"Failed to count tokens after periodic response: {token_error}")
 
                             # Save conversation state to database
                             await self.conversation_state_manager.save(conversation_state)
@@ -2625,13 +2195,9 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
             {
                 "type": "text",
                 "text": context["system_prompt"] + decision_criteria,
-                "cache_control": {"type": "ephemeral"} if self._context_editing_config["enabled"] else None
+                "cache_control": {"type": "ephemeral"}
             }
         ]
-
-        # Remove None cache_control if not using context editing
-        if not self._context_editing_config["enabled"]:
-            system_prompt[0].pop("cache_control", None)
 
         return system_prompt
 

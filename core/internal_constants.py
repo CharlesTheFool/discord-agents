@@ -19,14 +19,6 @@ API_MAX_CONCURRENT = 10
 
 
 # =============================================================================
-# CONTEXT EDITING (Internal)
-# =============================================================================
-CONTEXT_EDITING_KEEP_TOOL_USES = 10  # Increased from 3 for agentic workflow support
-CONTEXT_EDITING_EXCLUDE_TOOLS = ["memory"]  # Memory tool excluded from clearing
-DOCUMENT_WARNING_THRESHOLD = 0.95
-
-
-# =============================================================================
 # RATE LIMITING (Internal)
 # =============================================================================
 ENGAGEMENT_TRACKING_DELAY_SECONDS = 30

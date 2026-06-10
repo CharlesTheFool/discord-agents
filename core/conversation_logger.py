@@ -149,28 +149,6 @@ class ConversationLogger:
             entry += f"  - Processed {attachments_processed} attachment(s)\n"
         self._write(entry)
 
-    def log_cache_status(self, enabled: bool, cache_hit: bool = False):
-        """Log prompt caching status"""
-        if enabled:
-            status = "HIT" if cache_hit else "ENABLED"
-            entry = f"\n[CACHE] Prompt caching: {status}\n"
-        else:
-            entry = "\n[CACHE] Prompt caching: DISABLED\n"
-        self._write(entry)
-
-    def log_context_management(
-        self,
-        tool_uses_cleared: int,
-        tokens_cleared: int,
-        original_tokens: int
-    ):
-        """Log context management (context editing) statistics"""
-        if tool_uses_cleared > 0:
-            cleared_pct = (tokens_cleared / original_tokens * 100) if original_tokens > 0 else 0
-            entry = f"\n[CONTEXT_MGMT] Cleared {tool_uses_cleared} tool use(s), "
-            entry += f"{tokens_cleared:,} tokens ({cleared_pct:.1f}% of {original_tokens:,})\n"
-            self._write(entry)
-
     def log_separator(self):
         """Log conversation separator"""
         entry = f"{'='*60}\n"

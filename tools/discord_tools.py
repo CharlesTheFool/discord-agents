@@ -465,13 +465,12 @@ class DiscordToolExecutor:
             # Design: If in_context_only is True, only show files that are currently in conversation state
             if in_context_only and self.conversation_state_manager and channel_id:
                 # Get conversation state for this channel
-                state = await self.conversation_state_manager.load_or_create(channel_id)
+                state = await self.conversation_state_manager.get_or_create(channel_id)
 
-                # Get set of attachment_ids currently in context
-                in_context_ids = {
-                    item.item_id for item in state.context_items
-                    if item.type in ("document", "container_upload")
-                }
+                # Get set of attachment_ids currently in context (from message annotations)
+                in_context_ids = set()
+                for msg in state.messages:
+                    in_context_ids.update(msg.get("attachment_ids", []))
 
                 # Filter rows to only those in context
                 rows = [row for row in rows if row["attachment_id"] in in_context_ids]

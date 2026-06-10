@@ -29,8 +29,7 @@ class ConversationStateManager:
         self,
         db_path: Path,
         bot_id: str,
-        max_messages: int,
-        max_tokens: int
+        max_messages: int
     ):
         """
         Initialize conversation state manager.
@@ -39,19 +38,17 @@ class ConversationStateManager:
             db_path: Path to SQLite database
             bot_id: Bot identifier
             max_messages: Default max messages for new states
-            max_tokens: Default max tokens for new states
         """
         self.db_path = db_path
         self.bot_id = bot_id
         self.max_messages = max_messages
-        self.max_tokens = max_tokens
 
         # In-memory cache of loaded states
         self._cache: Dict[str, ConversationState] = {}
 
         logger.info(
             f"ConversationStateManager initialized for bot '{bot_id}' "
-            f"(db={db_path}, max_messages={max_messages}, max_tokens={max_tokens})"
+            f"(db={db_path}, max_messages={max_messages})"
         )
 
     async def initialize(self) -> None:
@@ -108,8 +105,7 @@ class ConversationStateManager:
         # Create new state
         state = ConversationState(
             channel_id=channel_id,
-            max_messages=self.max_messages,
-            max_tokens=self.max_tokens
+            max_messages=self.max_messages
         )
 
         # Save to database
@@ -170,14 +166,13 @@ class ConversationStateManager:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO conversation_states
-                (channel_id, bot_id, state_json, token_count, message_count, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (channel_id, bot_id, state_json, message_count, last_updated)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     state.channel_id,
                     self.bot_id,
                     state_json,
-                    state.conversation_tokens,
                     len(state.messages),
                     datetime.utcnow()
                 )
@@ -230,7 +225,7 @@ class ConversationStateManager:
         Get statistics about conversation states.
 
         Returns:
-            Dictionary with stats (total_states, cached_states, total_messages, total_tokens)
+            Dictionary with stats (total_states, cached_states, total_messages)
         """
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -239,8 +234,7 @@ class ConversationStateManager:
                 """
                 SELECT
                     COUNT(*) as total_states,
-                    SUM(message_count) as total_messages,
-                    SUM(token_count) as total_tokens
+                    SUM(message_count) as total_messages
                 FROM conversation_states
                 WHERE bot_id = ?
                 """,
@@ -251,8 +245,7 @@ class ConversationStateManager:
                 return {
                     "total_states": row["total_states"] or 0,
                     "cached_states": len(self._cache),
-                    "total_messages": row["total_messages"] or 0,
-                    "total_tokens": row["total_tokens"] or 0
+                    "total_messages": row["total_messages"] or 0
                 }
 
     async def cleanup_old_states(self, days: int = 30) -> int:

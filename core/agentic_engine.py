@@ -729,11 +729,6 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             if self.config.api.effort:
                 api_params["output_config"] = {"effort": self.config.api.effort}
 
-            # Add beta header for memory tool
-            api_params["extra_headers"] = {
-                "anthropic-beta": "context-management-2025-06-27"
-            }
-
             # Call Claude to generate message
             logger.info(f"Generating proactive message for channel {action.channel_id}")
 

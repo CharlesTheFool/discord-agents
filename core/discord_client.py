@@ -406,24 +406,11 @@ class DiscordClient(discord.Client):
                 # Use content blocks if we have attachments, otherwise just text
                 content = content_blocks if content_blocks else (message.content or "[File uploaded]")
 
-                # Phase 5: Build attachment metadata for file size disclosure
-                attachment_metadata = {}
-                if processed_attachments:
-                    for att in processed_attachments:
-                        att_id = att.get("attachment_id")
-                        if att_id:
-                            attachment_metadata[att_id] = {
-                                "filename": att.get("filename"),
-                                "size_bytes": att.get("size_bytes")
-                            }
-
                 # Add bot message with attachments to conversation state
-                # This ensures document stripping logic has access to bot-posted files
                 conversation_state.add_message(
                     role="assistant",  # Bot messages are assistant role
                     content=content,
-                    attachment_ids=attachment_ids,
-                    attachment_metadata=attachment_metadata
+                    attachment_ids=attachment_ids
                 )
 
                 # Save updated state

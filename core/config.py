@@ -21,9 +21,6 @@ from core.internal_constants import (
     PROACTIVE_INTENSITY_PRESETS,
     API_MIN_DELAY_SECONDS,
     API_MAX_CONCURRENT,
-    CONTEXT_EDITING_KEEP_TOOL_USES,
-    CONTEXT_EDITING_EXCLUDE_TOOLS,
-    DOCUMENT_WARNING_THRESHOLD,
     ENGAGEMENT_TRACKING_DELAY_SECONDS,
     IGNORE_THRESHOLD,
     LOG_MAX_SIZE_MB,
@@ -646,15 +643,6 @@ class BotConfig:
         return {
             "min_delay_seconds": API_MIN_DELAY_SECONDS,
             "max_concurrent": API_MAX_CONCURRENT,
-        }
-
-    def get_context_editing_config(self):
-        """Get internal context editing configuration"""
-        return {
-            "enabled": True,  # Always enabled
-            "trigger_tokens": int(self.api.context_tokens * 0.8),  # 80% of budget
-            "keep_tool_uses": CONTEXT_EDITING_KEEP_TOOL_USES,
-            "exclude_tools": CONTEXT_EDITING_EXCLUDE_TOOLS,
         }
 
     def get_rate_limiting_config(self):
