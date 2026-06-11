@@ -12,7 +12,12 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 from pathlib import Path
+
+# Embeddable Python (the bundled installer) skips the implicit script-dir
+# sys.path entry; make framework imports location-independent everywhere.
+sys.path.insert(0, str(Path(__file__).parent))
 
 from aiohttp import web
 from dotenv import load_dotenv
