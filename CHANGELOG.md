@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - Unreleased
+
+**Status:** In development.
+
+### Added
+
+**Unified Identity**
+- People are global: user profiles move to one per-human file
+  (`memories/{bot_id}/global/users/{user_id}.md`, keyed by Discord user ID)
+  with `Known from:` headers and per-claim origin tags; existing per-server
+  profiles merge automatically on the consolidator's first run
+- Vaults: a single `vaults: []` config key marks channels/servers whose
+  content never leaves them - excluded from outside search and attachment
+  access, memory files sealed, repository saves blocked from vaulted
+  channels; inside a vault the bot is fully itself
+- Tool scopes: message search defaults to the current server and widens to
+  `global` on request; cross-server results carry `[from {server}]` origin
+  labels; attachment and repository listings scope the same way
+- Discretion norms: a mandatory prompt section turns provenance into
+  decorum - cross-server familiarity is acknowledged, other people's
+  business stays where it was learned
+
+**Memory Reconsolidation**
+- Weekly per-server background pass (Batches API, 50% token cost, separate
+  rate limits): episode compaction into era digests, profile rewrites
+  re-derived from evidence, provenance repair, monthly channel/culture
+  refresh
+- Every rewritten file's prior version is archived to a `.history/` sibling
+  (last 3 kept) - one bad pass is always recoverable
+- `api.consolidation_model` config (Sonnet default)
+- `python bot_manager.py consolidate <bot_id> --server <id> [--force]` for
+  manual/debug runs
+
+### Changed
+- `data_isolation` config removed (deprecation warning; key ignored) -
+  vaults replace the scope modes
+- `!timezone` now writes to the global profile (keyed by user ID) and works
+  in DMs
+
+### Removed
+- `core/data_isolation.py` and the scope-mode machinery
+
 ## [0.6.1] - 2026-06-10
 
 **Status:** Pre-release (beta).

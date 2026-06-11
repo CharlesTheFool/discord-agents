@@ -103,6 +103,10 @@ api:
   # Omit for API default (high). Chat bots usually want low/medium.
   effort: "medium"
 
+  # Weekly memory reconsolidation model (Batches API, 50% token cost).
+  # Sonnet default; Haiku = cheap, Opus/Fable = premium.
+  consolidation_model: "claude-sonnet-4-6"
+
   # Adaptive thinking - model decides when and how much to think
   thinking:
     enabled: true
@@ -136,10 +140,12 @@ attachments:
     enabled: true
 
 # ============================================================
-# DATA ISOLATION (Multi-tenant)
+# VAULTS
 # ============================================================
-# Simple mode selection replaces 6 granular settings
-data_isolation: "off"  # off | server | channel
+# Channel or server IDs whose content never leaves them: excluded from
+# outside search and attachments, memory files sealed, repository saves
+# blocked from vaulted channels. Inside a vault the bot is fully itself.
+vaults: []
 
 # ============================================================
 # LOGGING
