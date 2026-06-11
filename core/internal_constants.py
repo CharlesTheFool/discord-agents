@@ -80,6 +80,10 @@ PROACTIVE_LEARNING_WINDOW_DAYS = 7
 PROACTIVE_ENGAGEMENT_THRESHOLD = 0.3
 PROACTIVE_MIN_PROVOCATION_GAP_HOURS = 1.0
 
+# Proactive engagement stays out of threads in 0.8 (reactive only - blast
+# radius control; revisit if thread-heavy servers want it)
+PROACTIVE_INCLUDES_THREADS = False
+
 
 def format_size(size_bytes: int) -> str:
     """Human-readable byte size ('1.3 MB') - the one shared implementation."""

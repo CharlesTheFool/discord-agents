@@ -1465,7 +1465,7 @@ class ReactiveEngine:
             )
 
     async def _track_engagement(
-        self, message_id: int, channel: discord.TextChannel, original_author_id: int, delay: int
+        self, message_id: int, channel: "discord.abc.Messageable", original_author_id: int, delay: int
     ):
         """
         Track engagement on bot message.
@@ -1532,7 +1532,7 @@ class ReactiveEngine:
             logger.debug(f"Message {message_id}: IGNORED (no reactions or replies)")
 
     async def _check_for_replies(
-        self, message: discord.Message, channel: discord.TextChannel, original_author_id: int
+        self, message: discord.Message, channel: "discord.abc.Messageable", original_author_id: int
     ) -> bool:
         """
         Check if user engaged after bot's message.

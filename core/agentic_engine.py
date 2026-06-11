@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, TYPE_CHECKING
 
+import discord
+
 if TYPE_CHECKING:
     from .config import BotConfig
     from .message_memory import MessageMemory
@@ -27,12 +29,21 @@ from .vaults import VaultEnforcer
 from .internal_constants import (
     AGENTIC_EFFORT,
     FOLLOWUP_STANDALONE_IDLE_MINUTES,
+    PROACTIVE_INCLUDES_THREADS,
     PROACTIVE_SETTLE_DELAY_MINUTES,
     model_supports_effort,
 )
 from .memory_tool_executor import MemoryToolExecutor
 
 logger = logging.getLogger(__name__)
+
+
+def is_proactive_surface(channel) -> bool:
+    """Threads are reactive-only in 0.8; unresolved channels (None) keep
+    legacy behavior - the send path logs its own miss."""
+    if channel is None or PROACTIVE_INCLUDES_THREADS:
+        return True
+    return not isinstance(channel, discord.Thread)
 
 
 def _parse_aware_utc(value: str) -> datetime:
@@ -332,6 +343,12 @@ class AgenticEngine:
             server_id = await self._get_server_for_channel(channel_id)
             if not server_id:
                 logger.debug(f"Could not find server for channel {channel_id}")
+                continue
+
+            channel_obj = self.discord_client.get_channel(int(channel_id)) \
+                if self.discord_client and channel_id.isdigit() else None
+            if not is_proactive_surface(channel_obj):
+                logger.debug(f"Channel {channel_id} is a thread - proactive skips it")
                 continue
 
             # Check if should engage

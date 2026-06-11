@@ -35,6 +35,21 @@ from .internal_constants import MANDATORY_RESPONSE_JUDGMENT_PROMPT, MANDATORY_DI
 logger = logging.getLogger(__name__)
 
 
+def describe_channel(channel) -> str:
+    """Channel line for the volatile tail, marking non-text surfaces so the
+    bot knows the room (people in a VC text chat may be mid-call)."""
+    name = getattr(channel, "name", None)
+    if name is None:
+        return f"(ID: {channel.id})"
+    if isinstance(channel, discord.Thread):
+        parent_name = getattr(channel.parent, "name", None) if channel.parent else None
+        suffix = f" (thread of #{parent_name})" if parent_name else " (thread)"
+        return f"#{name}{suffix} (ID: {channel.id})"
+    if isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+        return f"#{name} (voice channel text chat) (ID: {channel.id})"
+    return f"#{name} (ID: {channel.id})"
+
+
 class ContextBuilder:
     """
     Assembles rich context for Claude API calls.
@@ -122,10 +137,9 @@ class ContextBuilder:
         server_tz = pytz.timezone(self.config.discord.timezone)
         current_time_obj = datetime.utcnow().replace(tzinfo=pytz.UTC).astimezone(server_tz)
         current_time = current_time_obj.strftime('%Y-%m-%d %H:%M %Z')
-        channel_name = getattr(message.channel, "name", None)  # DMs have no name
         date_context = (
             f"Current server date/time: {current_time}\n"
-            f"Current channel: {f'#{channel_name} ' if channel_name else ''}(ID: {message.channel.id})\n"
+            f"Current channel: {describe_channel(message.channel)}\n"
             f"Triggering message from: {message.author.display_name} "
             f"(user ID: {message.author.id})"
         )
