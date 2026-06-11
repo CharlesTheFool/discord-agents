@@ -125,7 +125,9 @@ class DiscordToolExecutor:
 
             for msg in results:
                 timestamp = msg.timestamp.strftime('%Y-%m-%d %H:%M')
-                message_line = f"[{timestamp}] {msg.author_name} (msg_id: {msg.message_id}, channel: {msg.channel_id}): {msg.content}"
+                parent = self.message_memory.thread_parent(str(msg.channel_id))
+                chan = f"{msg.channel_id} (thread of {parent})" if parent else msg.channel_id
+                message_line = f"[{timestamp}] {msg.author_name} (msg_id: {msg.message_id}, channel: {chan}): {msg.content}"
 
                 # Query attachments for this message
                 if self.attachment_manager:
