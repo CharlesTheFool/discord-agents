@@ -927,6 +927,52 @@ class ReactiveEngine:
                 logger.info(f"Server tool used{log_suffix}: {block.name}")
                 logger.debug(f"  Server tool {block.name} input: {block.input}")
 
+    # ------------------------------------------------------------------
+    # Turn events (v0.9): structured rows in messages.db, one per bot
+    # turn-event. The supervisor's channel monitor reads these.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _trigger_from(message, addressed: bool = False) -> dict:
+        return {
+            "user": message.author.display_name,
+            "text": (message.content or "")[:500],
+            "addressed": addressed,
+        }
+
+    @staticmethod
+    def _event_payload(result: "ToolLoopResult", triggers: list, **extra) -> dict:
+        usage = result.usage
+        return {
+            "triggers": triggers,
+            "thinking": result.thinking_text or "",
+            "tool_calls": result.tool_calls,
+            "response": result.response_text or None,
+            "tokens": {
+                "uncached_in": getattr(usage, "input_tokens", 0) or 0,
+                "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
+                "out": getattr(usage, "output_tokens", 0) or 0,
+            } if usage else {},
+            **extra,
+        }
+
+    async def _emit_turn_event(self, kind: str, message, result: "ToolLoopResult",
+                               triggers: list, **extra) -> None:
+        """Record one turn event; never breaks the pipeline (event loss is
+        acceptable, broken turns are not)."""
+        if self.message_memory is None:
+            return
+        try:
+            payload = self._event_payload(result, triggers[-5:], **extra)
+            await self.message_memory.add_event(
+                kind,
+                str(message.guild.id) if message.guild else None,
+                str(message.channel.id),
+                payload,
+            )
+        except Exception:
+            logger.exception(f"Turn-event emit failed ({kind})")
+
     async def _execute_tool_blocks(self, response, message: discord.Message,
                                    conversation_state, api_params: dict,
                                    container_file_ids: list = None,
@@ -1498,6 +1544,11 @@ class ReactiveEngine:
 
             await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
 
+            await self._emit_turn_event(
+                "dm" if message.guild is None else "mention",
+                message, result, [self._trigger_from(message, addressed=True)],
+            )
+
             self._start_engagement_tracking(sent_message, message.channel, message.author.id)
 
             logger.info(
@@ -1695,21 +1746,23 @@ class ReactiveEngine:
                 logger.debug(f"Processing {len(messages_to_check)} pending messages")
 
                 # PHASE 1: Process all messages (add to conversation state)
-                # Track which channels received updates
-                channels_with_updates = set()
+                # Collect the weighed messages per channel - they become the
+                # scan/silent turn-event triggers (v0.9)
+                channel_triggers: dict = {}
                 for channel_id, message_id in messages_to_check:
                     try:
-                        if await self._process_message_to_state(channel_id, message_id):
-                            channels_with_updates.add(channel_id)
+                        trigger = await self._process_message_to_state(channel_id, message_id)
+                        if trigger:
+                            channel_triggers.setdefault(channel_id, []).append(trigger)
                     except Exception as e:
                         logger.error(f"Error processing message {message_id} in channel {channel_id}: {e}", exc_info=True)
 
-                logger.debug(f"Phase 1 complete: {len(channels_with_updates)} channels with updates")
+                logger.debug(f"Phase 1 complete: {len(channel_triggers)} channels with updates")
 
                 # PHASE 2: Make one response decision per channel
-                for channel_id in channels_with_updates:
+                for channel_id, triggers in channel_triggers.items():
                     try:
-                        await self._decide_channel_response(channel_id)
+                        await self._decide_channel_response(channel_id, triggers)
                     except Exception as e:
                         logger.error(f"Error deciding response for channel {channel_id}: {e}", exc_info=True)
 
@@ -1729,40 +1782,40 @@ class ReactiveEngine:
             message_id: Specific Discord message ID to process
 
         Returns:
-            True if message was successfully processed, False otherwise
+            Trigger dict ({user, text, addressed}) if processed, None otherwise.
         """
         if not self.discord_client:
             logger.warning("Discord client not set, cannot process message")
-            return False
+            return None
 
         # Get Discord channel object
         channel = self.discord_client.get_channel(int(channel_id))
         if not channel:
             logger.warning(f"Channel {channel_id} not found")
-            return False
+            return None
 
         # Fetch the specific message by ID
         try:
             message = await channel.fetch_message(message_id)
         except discord.NotFound:
             logger.warning(f"Message {message_id} not found (may have been deleted)")
-            return False
+            return None
         except discord.Forbidden:
             logger.warning(f"No permission to fetch message {message_id}")
-            return False
+            return None
         except Exception as e:
             logger.error(f"Error fetching message {message_id}: {e}", exc_info=True)
-            return False
+            return None
 
         # Skip if message is from the bot
         if message.author == self.discord_client.user:
             logger.debug(f"Message {message_id} is from bot, skipping processing")
-            return False
+            return None
 
         # Load or create conversation state for this channel
         if not self.conversation_state_manager:
             logger.warning("No conversation state manager, cannot process message")
-            return False
+            return None
 
         try:
             conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
@@ -1786,13 +1839,13 @@ class ReactiveEngine:
             await self.conversation_state_manager.save(conversation_state)
             logger.debug(f"Saved conversation state after processing message {message_id}")
 
-            return True
+            return self._trigger_from(message)
 
         except Exception as e:
             logger.error(f"Failed to process message {message_id} to state: {e}", exc_info=True)
-            return False
+            return None
 
-    async def _decide_channel_response(self, channel_id: str):
+    async def _decide_channel_response(self, channel_id: str, triggers: list = None):
         """
         Make response decision for a channel (Phase 2 of periodic check).
 
@@ -1800,6 +1853,7 @@ class ReactiveEngine:
 
         Args:
             channel_id: Discord channel ID
+            triggers: the weighed messages from Phase 1 (turn-event payload)
         """
         if not self.discord_client:
             logger.warning("Discord client not set, cannot decide response")
@@ -1860,7 +1914,7 @@ class ReactiveEngine:
 
         # Call Claude API with response decision focus
         # Note: Message already in conversation state from Phase 1 processing
-        await self._call_claude_for_response_decision(latest_message, context)
+        await self._call_claude_for_response_decision(latest_message, context, triggers)
 
     async def _calculate_conversation_momentum(self, channel_id: str) -> str:
         """
@@ -1908,15 +1962,18 @@ class ReactiveEngine:
             logger.error(f"Error calculating momentum for {channel_id}: {e}", exc_info=True)
             return "cold"
 
-    async def _call_claude_for_response_decision(self, message: discord.Message, context):
+    async def _call_claude_for_response_decision(self, message: discord.Message, context,
+                                                 triggers: list = None):
         """
         Call Claude API to decide if bot should respond and generate response if yes.
 
         Args:
             message: Discord message object (latest in channel)
             context: Built context from ContextBuilder
+            triggers: weighed messages from this scan (turn-event payload)
         """
         channel_id = str(message.channel.id)
+        triggers = triggers or [self._trigger_from(message)]
 
         # Load or create conversation state for this channel (v0.5.0)
         conversation_state = None
@@ -1975,6 +2032,8 @@ class ReactiveEngine:
                         self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
                     self.conversation_logger.log_bot_response("[No response - staying silent]", 0)
                     self.conversation_logger.log_separator()
+                    await self._emit_turn_event(
+                        "silent", message, result, triggers, scan_count=len(triggers))
                     return
 
                 # Staleness guard: generation takes tens of seconds and the
@@ -2009,6 +2068,9 @@ class ReactiveEngine:
 
                 # Persist only what was actually delivered
                 await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
+
+                await self._emit_turn_event(
+                    "scan", message, result, triggers, scan_count=len(triggers))
 
                 self._start_engagement_tracking(sent_message, message.channel, message.author.id)
 
