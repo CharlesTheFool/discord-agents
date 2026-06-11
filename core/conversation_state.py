@@ -330,6 +330,15 @@ class ConversationState:
         """
         internal_fields = {"message_type", "attachment_ids"}
 
+        # Contentless Discord turns (sticker-only, pin/system messages) persist
+        # as empty strings in legacy states - the API rejects empty text blocks
+        def _empty_discord_turn(msg) -> bool:
+            return (
+                msg.get("message_type", "discord_user").startswith("discord_")
+                and isinstance(msg.get("content"), str)
+                and not msg["content"].strip()
+            )
+
         # Boundary self-heal: skip anything before the first plain user turn so
         # legacy/edge-case states (assistant-first, orphaned tool pair) still
         # render a valid transcript without mutating persisted state.
@@ -337,6 +346,7 @@ class ConversationState:
         while start < len(self.messages) and (
             self.messages[start]["role"] != "user"
             or self.messages[start].get("message_type") == "tool_result"
+            or _empty_discord_turn(self.messages[start])
         ):
             start += 1
         if start:
@@ -344,6 +354,8 @@ class ConversationState:
 
         result = []
         for msg in self.messages[start:]:
+            if _empty_discord_turn(msg):
+                continue
             out = {k: v for k, v in msg.items() if k not in internal_fields}
             if isinstance(out.get("content"), str):
                 out["content"] = [{"type": "text", "text": out["content"]}]

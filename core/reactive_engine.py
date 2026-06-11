@@ -585,6 +585,8 @@ class ReactiveEngine:
                     content_blocks.insert(0, {"type": "text", "text": db_msg.content})
                 content = content_blocks
             else:
+                if not (db_msg.content or "").strip():
+                    continue  # system/sticker messages index with no text - nothing to seed
                 content = db_msg.content
 
             # Add to conversation state with attachment tracking
@@ -2002,6 +2004,12 @@ class ReactiveEngine:
 
             processed_attachments = await self._process_message_attachments(message)
             user_content, attachment_ids = self._build_user_content(message, processed_attachments)
+
+            # Sticker-only and pin/system messages carry no usable content -
+            # an empty text block would 400 every later request on this channel
+            if isinstance(user_content, str) and not user_content.strip():
+                logger.debug(f"Skipping contentless message {message_id} (system/sticker-only)")
+                return None
 
             # Add message to conversation state
             conversation_state.add_message("user", user_content, attachment_ids)
