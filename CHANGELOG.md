@@ -42,6 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Voice channels' text chats are watched, backfilled, and remembered like
   any text channel; context marks them "voice channel text chat"
 
+**DM privacy**
+- DMs are mechanically private: DM messages and attachments are visible
+  only from inside their own DM - excluded from search, viewing, and
+  attachment access everywhere else
+- DMs answer on the urgent path (a DM is inherently addressed to the bot)
+- The bot knows the room: DM context is marked "private, one-on-one", a
+  standing prompt section explains the privacy walls in both directions,
+  and DM conversations carry the partner's global profile
+
 ### Changed
 - Proactive engagement skips threads (reactive-only there; internal
   constant, revisit on demand)
