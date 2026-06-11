@@ -256,6 +256,15 @@ class DiscordClient(discord.Client):
                                   kind: str, text: str) -> None:
         """Ack within Discord's 3s window, then run the real pipeline; the
         bot's actual reply arrives as a normal DM message."""
+        if interaction.channel is None:
+            logger.warning("/memory command arrived with no channel context")
+            try:
+                await interaction.response.send_message(
+                    "something's off with this channel - try DMing me a normal "
+                    "message first, then run that again.", ephemeral=True)
+            except discord.HTTPException:
+                pass
+            return
         try:
             await interaction.response.send_message(
                 "let me think about that..." if kind != "show" else "pulling it up...",

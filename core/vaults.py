@@ -94,8 +94,12 @@ class VaultEnforcer:
             return True, None
 
         if in_dm and command in _WRITE_COMMANDS:
-            # One-shot consent (/memory): the caller's own global profile only
-            if write_grant and path.rstrip("/").endswith(f"global/users/{write_grant}.md"):
+            # One-shot consent (/memory): exactly the caller's own global
+            # profile - structural match, not a suffix (a crafted path like
+            # servers/x/global/users/{uid}.md must NOT pass)
+            if (write_grant and len(parts) == 6
+                    and parts[3:5] == ["global", "users"]
+                    and parts[5] == f"{write_grant}.md"):
                 return True, None
             return False, (
                 "from a DM, what you write down stays in this conversation's "

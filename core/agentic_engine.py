@@ -996,6 +996,10 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 )
                 human = [m for m in messages if not m.is_bot]
                 if not human:
+                    if messages:
+                        # advance past bot-only spans or they re-fetch forever
+                        self.watch_manager.mark_checked(
+                            watch["id"], messages[-1].message_id)
                     continue
                 newest_id = messages[-1].message_id
 
