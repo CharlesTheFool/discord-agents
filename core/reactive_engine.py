@@ -1372,7 +1372,7 @@ class ReactiveEngine:
         # Log incoming message
         self.conversation_logger.log_user_message(
             author=message.author.display_name,
-            channel=message.channel.name,
+            channel=getattr(message.channel, "name", "DM"),
             content=message.content,
             is_mention=True
         )
@@ -1886,7 +1886,7 @@ class ReactiveEngine:
         # Log periodic check decision attempt
         self.conversation_logger.log_user_message(
             author="[PERIODIC CHECK]",
-            channel=message.channel.name,
+            channel=getattr(message.channel, "name", "DM"),
             content=f"Scanning conversation (momentum: {context['conversation_momentum'].upper()})",
             is_mention=False
         )
