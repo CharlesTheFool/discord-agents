@@ -11,7 +11,7 @@ import discord
 import json
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
 from dataclasses import dataclass
 
@@ -102,6 +102,18 @@ class MessageMemory:
         archived BOOLEAN NOT NULL DEFAULT 0,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS events (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts         TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        server_id  TEXT,
+        channel_id TEXT NOT NULL,
+        payload    TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_events_channel_ts ON events(channel_id, ts);
+    CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
     """
 
     def __init__(self, db_path: Path):
@@ -166,6 +178,58 @@ class MessageMemory:
         if self._db:
             await self._db.close()
             logger.info("Message memory closed")
+
+    # ------------------------------------------------------------------
+    # Turn events (v0.9): one structured row per bot turn-event, the
+    # substrate the supervisor's channel monitor reads.
+    # ------------------------------------------------------------------
+
+    async def add_event(self, kind: str, server_id: Optional[str],
+                        channel_id: str, payload: dict) -> int:
+        """Insert one turn-event row. Never raises into the caller's
+        pipeline - event loss is acceptable, broken turns are not."""
+        try:
+            cursor = await self._db.execute(
+                "INSERT INTO events (ts, kind, server_id, channel_id, payload)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    kind,
+                    str(server_id) if server_id not in (None, "DM") else None,
+                    str(channel_id),
+                    json.dumps(payload, ensure_ascii=False, default=str),
+                ),
+            )
+            await self._db.commit()
+            return cursor.lastrowid
+        except Exception:
+            logger.exception(f"Event write failed ({kind}/{channel_id})")
+            return -1
+
+    async def get_channel_events(self, channel_id: str, limit: int = 50,
+                                 before_id: Optional[int] = None) -> List[dict]:
+        """Newest-first events for one channel; before_id pages upward."""
+        query = "SELECT * FROM events WHERE channel_id = ?"
+        params: list = [str(channel_id)]
+        if before_id is not None:
+            query += " AND id < ?"
+            params.append(before_id)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        cursor = await self._db.execute(query, params)
+        return [self._event_row(r) for r in await cursor.fetchall()]
+
+    async def get_recent_events(self, limit: int = 100) -> List[dict]:
+        """Newest-first global tail across all channels."""
+        cursor = await self._db.execute(
+            "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))
+        return [self._event_row(r) for r in await cursor.fetchall()]
+
+    @staticmethod
+    def _event_row(row) -> dict:
+        d = dict(row)
+        d["payload"] = json.loads(d["payload"])
+        return d
 
     async def add_message(self, message: discord.Message):
         """
