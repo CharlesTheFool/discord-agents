@@ -28,8 +28,15 @@ class MemoryManager:
 
         logger.info(f"MemoryManager initialized for bot '{bot_id}' at {self.base_path}")
 
+    def get_global_user_profile_path(self, user_id: str) -> str:
+        """One file per human, keyed by Discord user ID (v0.7.0)."""
+        return f"/memories/{self.bot_id}/global/users/{user_id}.md"
+
+    def get_global_users_dir(self) -> Path:
+        return self.base_path / "global" / "users"
+
     def get_user_profile_path(self, server_id: str, user_id: str) -> str:
-        """Standard path for user profile memory file"""
+        """Legacy per-server profile path (pre-0.7) - migration + fallback shim only."""
         return f"/memories/{self.bot_id}/servers/{server_id}/users/{user_id}.md"
 
     def get_channel_context_path(self, server_id: str, channel_id: str) -> str:
@@ -195,10 +202,18 @@ class MemoryManager:
         context_parts.append(f"- Channel context: {channel_path}")
 
         if user_ids:
-            context_parts.append("- User profiles:")
-            for user_id in user_ids[:5]:  # Limit to 5 most recent
-                user_path = self.get_user_profile_path(server_id, user_id)
-                context_parts.append(f"  - {user_path}")
+            context_parts.append("- User profiles (global, one per human):")
+            for user_id in user_ids[:5]:
+                global_path = self.get_global_user_profile_path(user_id)
+                if self.resolve_path(global_path).exists():
+                    context_parts.append(f"  - {global_path}")
+                    continue
+                legacy_path = self.get_user_profile_path(server_id, user_id)
+                if self.resolve_path(legacy_path).exists():
+                    # pre-0.7 file not yet migrated by the consolidator (shim, removed in 0.8)
+                    context_parts.append(f"  - {legacy_path}")
+                else:
+                    context_parts.append(f"  - {global_path}")
 
         context_parts.append("")
         context_parts.append(
@@ -275,20 +290,30 @@ class MemoryManager:
             # Get all users who have messaged in this server
             users = await message_memory.get_users_in_server(server_id)
 
-            # Create user profile directory
-            users_path = server_path / "users"
+            # Create global user profile skeletons
+            users_path = self.get_global_users_dir()
             users_path.mkdir(parents=True, exist_ok=True)
 
             for user_id in users:
                 user_file = users_path / f"{user_id}.md"
-                if not user_file.exists():
-                    # Get display name from user cache
-                    user_data = await user_cache.get_user(user_id)
-                    display_name = user_data.display_name if user_data else "Unknown"
-
-                    user_content = f"# {display_name} ({user_id})\n\n[WRITE ABOUT USER HERE]\n"
-                    user_file.write_text(user_content, encoding="utf-8")
-                    total_files_created += 1
+                known_entry = f"{server_name} ({server_id})"
+                if user_file.exists():
+                    content = user_file.read_text(encoding="utf-8")
+                    lines = content.splitlines()
+                    if len(lines) > 1 and lines[1].startswith("Known from:") and f"({server_id})" not in lines[1]:
+                        lines[1] = lines[1] + f", {known_entry}"
+                        user_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    continue
+                user_data = await user_cache.get_user(user_id)
+                display_name = user_data.display_name if user_data else "Unknown"
+                username = user_data.username if user_data else user_id
+                user_file.write_text(
+                    f"# {display_name} ({username})\n"
+                    f"Known from: {known_entry}\n\n"
+                    f"## Profile\n",
+                    encoding="utf-8",
+                )
+                total_files_created += 1
 
             logger.debug(f"Created {len(users)} user files for {server_name}")
 

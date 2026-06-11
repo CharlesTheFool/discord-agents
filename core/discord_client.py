@@ -714,9 +714,8 @@ class DiscordClient(discord.Client):
 
         # Write to user's memory profile
         if message.guild:
-            server_id = str(message.guild.id)
-            user_id = message.author.name  # Use username for readable filenames
-            memory_path = self.reactive_engine.memory_manager.get_user_profile_path(server_id, user_id)
+            user_id = str(message.author.id)
+            memory_path = self.reactive_engine.memory_manager.get_global_user_profile_path(user_id)
 
             file_path = self.reactive_engine.memory_manager.resolve_path(memory_path)
 

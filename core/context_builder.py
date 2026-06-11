@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 from tools.image_processor import ImageProcessor
 from tools.skills_tool import build_skills_catalog_prompt
-from .internal_constants import MANDATORY_RESPONSE_JUDGMENT_PROMPT, WEB_SEARCH_DISABLED_PROMPT
+from .internal_constants import MANDATORY_RESPONSE_JUDGMENT_PROMPT, MANDATORY_DISCRETION_PROMPT, WEB_SEARCH_DISABLED_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +235,7 @@ state does not survive the session boundary, memory files do.
 
 <instructions>
 {MANDATORY_RESPONSE_JUDGMENT_PROMPT}
+{MANDATORY_DISCRETION_PROMPT}
 {base_prompt}{followup_instructions}
 {web_search_notice}
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
@@ -254,11 +255,10 @@ SEARCH METHODOLOGY:
 
 Pattern: keyword → context → refine → adjacent → related → done
 
-MEMORY USAGE: You have access to memory files for persistent information. Use them proactively to:
-- Remember important facts about users and their preferences
-- Track ongoing projects or topics of interest
-- Save context that would be valuable in future conversations
-- Build understanding of channel culture and dynamics
+MEMORY USAGE: You have memory files for persistent information. Use them proactively:
+- People: one global profile per person at /memories/{self.config.bot_id}/global/users/{{user_id}}.md - the same human across every server. Keep claims tagged with where you learned them: "- Loves chess [origin: {{server_id}}]". New claim, new tag.
+- Places: channel notes, episodes, and culture stay under their server's directory.
+- Track ongoing projects, save context worth keeping, build understanding of channel culture.
 
 TOOL USAGE GUIDELINES (CRITICAL):
 When you have access to the code_execution tool:
