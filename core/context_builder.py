@@ -30,7 +30,12 @@ if TYPE_CHECKING:
 
 from tools.image_processor import ImageProcessor
 from tools.skills_tool import build_skills_catalog_prompt
-from .internal_constants import MANDATORY_RESPONSE_JUDGMENT_PROMPT, MANDATORY_DISCRETION_PROMPT, WEB_SEARCH_DISABLED_PROMPT
+from .internal_constants import (
+    MANDATORY_RESPONSE_JUDGMENT_PROMPT,
+    MANDATORY_DISCRETION_PROMPT,
+    MANDATORY_DM_PRIVACY_PROMPT,
+    WEB_SEARCH_DISABLED_PROMPT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +259,7 @@ state does not survive the session boundary, memory files do.
 <instructions>
 {MANDATORY_RESPONSE_JUDGMENT_PROMPT}
 {MANDATORY_DISCRETION_PROMPT}
+{MANDATORY_DM_PRIVACY_PROMPT}
 {base_prompt}{followup_instructions}
 {web_search_notice}
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
@@ -425,6 +431,16 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 )
                 history_parts.append("")
                 history_parts.append(memory_context)
+            else:
+                # DM: no server tree, but the person is known globally
+                profile_path = self.memory_manager.get_global_user_profile_path(
+                    str(message.author.id))
+                history_parts.append("")
+                history_parts.append(
+                    "MEMORY (DM)\n"
+                    f"- Your notes on this person: {profile_path}\n"
+                    "Use the memory tool to read them if needed."
+                )
 
             # Process current message attachments
             attachments = await self.process_attachments(message)

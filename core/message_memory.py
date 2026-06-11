@@ -897,13 +897,18 @@ class MessageMemory:
         guild_id: Optional[str] = None,
         limit: int = 20,
         exclude_ids: Optional[List[str]] = None,
+        dm_channel_id: Optional[str] = None,
     ) -> List[StoredMessage]:
-        """Full-text search using FTS5 (keyword AND semantics, see _fts5_match_expr)."""
+        """Full-text search using FTS5 (keyword AND semantics, see _fts5_match_expr).
+
+        DM rows (guild_id sentinel 'DM') surface only when the search runs
+        from inside that DM (dm_channel_id) - private rooms stay private.
+        """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        filters = []
-        params = [self._fts5_match_expr(query)]
+        filters = ["((m.guild_id IS NOT NULL AND m.guild_id != 'DM') OR m.channel_id = ?)"]
+        params = [self._fts5_match_expr(query), dm_channel_id or ""]
 
         if channel_id:
             filters.append("m.channel_id = ?")

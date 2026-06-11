@@ -116,6 +116,7 @@ class DiscordToolExecutor:
                 guild_id=guild_id,
                 limit=limit,
                 exclude_ids=exclude_ids or None,
+                dm_channel_id=current_channel_id,
             )
 
             if not results:
@@ -175,8 +176,10 @@ class DiscordToolExecutor:
         if not channel_id:
             return "Error: channel_id parameter required"
 
+        owner = await self.message_memory.get_server_for_channel(channel_id)
+        if owner == "DM" and str(channel_id) != str(current_channel_id or ""):
+            return "Error: Access denied - that's a private DM; its messages stay there."
         if self.vaults and self.vaults.active:
-            owner = await self.message_memory.get_server_for_channel(channel_id)
             if self.vaults.blocks_content(owner, channel_id,
                                           current_server_id, current_channel_id):
                 return "Error: Access denied - that channel is vaulted; its messages stay inside it."
@@ -372,6 +375,10 @@ class DiscordToolExecutor:
             if not row:
                 return f"Error: Attachment {attachment_id} not found in database"
 
+            if (row["server_id"] in (None, "DM")
+                    and str(row["channel_id"]) != str(current_channel_id or "")):
+                return "Error: That attachment was shared in a private DM - it can only be opened there."
+
             if self.vaults and self.vaults.blocks_content(
                     row["server_id"], row["channel_id"],
                     current_server_id, current_channel_id):
@@ -451,9 +458,12 @@ class DiscordToolExecutor:
         channel_id = params.get("channel_id")
 
         try:
-            # Build SQL query with filters
-            query = "SELECT attachment_id, filename, attachment_type, size_bytes, message_id, channel_id, server_id FROM attachments WHERE 1=1"
-            query_params = []
+            # Build SQL query with filters. DM attachments (server_id sentinel
+            # 'DM') are visible only from inside their own DM, regardless of scope.
+            query = ("SELECT attachment_id, filename, attachment_type, size_bytes, "
+                     "message_id, channel_id, server_id FROM attachments "
+                     "WHERE 1=1 AND ((server_id IS NOT NULL AND server_id != 'DM') OR channel_id = ?)")
+            query_params = [current_channel_id or ""]
 
             # Scope: server (default) constrains to current server; global removes constraint
             if scope == "server" and current_server_id:
