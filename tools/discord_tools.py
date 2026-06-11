@@ -34,14 +34,15 @@ class DiscordToolExecutor:
         user_cache: "UserCache",
         vaults: Optional["VaultEnforcer"] = None,
         attachment_manager: Optional["UnifiedAttachmentManager"] = None,
-        conversation_state_manager: Optional["ConversationStateManager"] = None
+        conversation_state_manager: Optional["ConversationStateManager"] = None,
+        discord_client=None,
     ):
         self.message_memory = message_memory
         self.user_cache = user_cache
         self.vaults = vaults
         self.attachment_manager = attachment_manager
-        # Phase 6.4: Store conversation_state_manager for in_context_only filtering
         self.conversation_state_manager = conversation_state_manager
+        self.discord_client = discord_client
         logger.info("DiscordToolExecutor initialized")
 
     async def execute(
@@ -75,6 +76,14 @@ class DiscordToolExecutor:
         else:
             return f"Unknown Discord tool command: {command}"
 
+    def _server_label(self, guild_id: str) -> str:
+        client = self.discord_client
+        if client:
+            guild = client.get_guild(int(guild_id)) if str(guild_id).isdigit() else None
+            if guild:
+                return guild.name
+        return f"server {guild_id}"
+
     async def _search_messages(self, params: dict, current_server_id, current_channel_id) -> str:
         """
         Search message history using FTS5 full-text search.
@@ -86,19 +95,25 @@ class DiscordToolExecutor:
         channel_id = params.get("channel_id")
         author_id = params.get("author_id")
         limit = params.get("limit", 20)
-        # scope handling: any value is treated as global (no constraint) until Task 6
-        _scope = params.get("scope")  # noqa: F841 — Task 6 will use this
 
         if not query:
             return "Error: query parameter required"
 
         try:
+            scope = params.get("scope") or "server"
+            guild_id = None
+            if scope == "channel":
+                channel_id = current_channel_id or channel_id
+            elif scope == "server" and current_server_id:
+                guild_id = current_server_id
+            # scope == "global" (or DM context with no server): no constraint beyond vaults
+
             exclude_ids = self.vaults.excluded_ids(current_server_id, current_channel_id) if self.vaults else []
             results = await self.message_memory.search_messages(
                 query=query,
                 channel_id=channel_id,
                 author_id=author_id,
-                guild_id=None,
+                guild_id=guild_id,
                 limit=limit,
                 exclude_ids=exclude_ids or None,
             )
@@ -126,6 +141,9 @@ class DiscordToolExecutor:
                             message_line += f" [Attachments: {', '.join(attachment_strs)}]"
                     except Exception as e:
                         logger.debug(f"Failed to query attachments for message {msg.message_id}: {e}")
+
+                if current_server_id and msg.guild_id and msg.guild_id != current_server_id:
+                    message_line = f"[from {self._server_label(msg.guild_id)}] " + message_line
 
                 lines.append(message_line)
 
@@ -424,6 +442,7 @@ class DiscordToolExecutor:
             return "Error: Attachment processing not available (attachment_manager not initialized)"
 
         # Extract filter parameters
+        scope = params.get("scope") or "server"
         keyword = params.get("keyword", "").lower()
         file_type = params.get("file_type", "").lower()
         in_context_only = params.get("in_context_only", False)
@@ -431,8 +450,13 @@ class DiscordToolExecutor:
 
         try:
             # Build SQL query with filters
-            query = "SELECT attachment_id, filename, attachment_type, size_bytes, message_id, channel_id FROM attachments WHERE 1=1"
+            query = "SELECT attachment_id, filename, attachment_type, size_bytes, message_id, channel_id, server_id FROM attachments WHERE 1=1"
             query_params = []
+
+            # Scope: server (default) constrains to current server; global removes constraint
+            if scope == "server" and current_server_id:
+                query += " AND (server_id = ? OR channel_id = ?)"
+                query_params.extend([current_server_id, current_channel_id or ""])
 
             if channel_id:
                 query += " AND channel_id = ?"
@@ -453,7 +477,11 @@ class DiscordToolExecutor:
                 query_params.extend(exclude_ids)
                 query_params.extend(exclude_ids)
 
-            query += " ORDER BY uploaded_at DESC"
+            # Global scope: group by server_id for labeled output
+            if scope == "global":
+                query += " ORDER BY server_id, uploaded_at DESC"
+            else:
+                query += " ORDER BY uploaded_at DESC"
 
             # Execute query
             async with self.attachment_manager.attachment_db.db.execute(query, query_params) as cursor:
@@ -482,14 +510,21 @@ class DiscordToolExecutor:
             # Format results
             lines = [f"Found {len(rows)} attachment(s):\n"]
 
+            current_group_server = None
             for row in rows:
                 attachment_id = row["attachment_id"]
                 filename = row["filename"]
                 attachment_type = row["attachment_type"]
                 size_bytes = row["size_bytes"]
                 message_id = row["message_id"]
+                row_server = row["server_id"]
 
                 size_str = format_size(size_bytes)
+
+                # Global scope: emit server group header on server_id change
+                if scope == "global" and row_server != current_group_server:
+                    current_group_server = row_server
+                    lines.append(f"\n[server {self._server_label(row_server) if row_server else 'unknown'}]")
 
                 # Format line with provenance for context lookup
                 if row["channel_id"] == "repository":
@@ -518,7 +553,7 @@ def get_discord_tools() -> list:
     return [
         {
             "name": "discord_tools",
-            "description": "Agentic Discord exploration: search_messages for keyword discovery (returns message IDs), view_messages for flexible browsing (recent/around/first/range modes), list_attachments for file discovery (shows all uploaded files with filters), get_attachment to retrieve specific files, get_user_info for user details, get_channel_info for stats. WORKFLOW: Use search to find keywords → use view with mode='around' and message_id to explore context. Use list_attachments to discover files → use get_attachment to retrieve them.",
+            "description": "Agentic Discord exploration: search_messages for keyword discovery (returns message IDs), view_messages for flexible browsing (recent/around/first/range modes), list_attachments for file discovery (shows all uploaded files with filters), get_attachment to retrieve specific files, get_user_info for user details, get_channel_info for stats. WORKFLOW: Use search to find keywords → use view with mode='around' and message_id to explore context. Use list_attachments to discover files → use get_attachment to retrieve them. search_messages and list_attachments accept scope; search defaults to this server - pass scope='global' to reach everything you're in.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -587,6 +622,11 @@ def get_discord_tools() -> list:
                     "in_context_only": {
                         "type": "boolean",
                         "description": "[list_attachments] Show only attachments currently in conversation state (not rolled out). Default: false (show all attachments)"
+                    },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["channel", "server", "global"],
+                        "description": "[search_messages] reach: channel | server (default) | global. [list_attachments] server (default) | global."
                     }
                 },
                 "required": ["command"]

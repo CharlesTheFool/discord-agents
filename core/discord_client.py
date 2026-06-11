@@ -278,9 +278,14 @@ class DiscordClient(discord.Client):
             user_cache=self.user_cache,
             vaults=self.reactive_engine.vaults,
             attachment_manager=self.reactive_engine.attachment_manager,
-            # Phase 6.4: Pass conversation_state_manager for in_context_only filtering
-            conversation_state_manager=self.reactive_engine.conversation_state_manager
+            conversation_state_manager=self.reactive_engine.conversation_state_manager,
+            discord_client=self,
         )
+
+        if self.reactive_engine.repository_manager:
+            self.reactive_engine.repository_manager.guild_name_resolver = (
+                lambda gid: self.get_guild(int(gid)).name
+                if gid.isdigit() and self.get_guild(int(gid)) else None)
         logger.info("Discord tools enabled")
 
         # Start periodic conversation scanning

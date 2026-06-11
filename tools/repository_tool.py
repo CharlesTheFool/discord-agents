@@ -52,6 +52,11 @@ def get_repository_tool() -> dict:
                     "type": "string",
                     "description": "[rename] New relative path (must not exist)",
                 },
+                "scope": {
+                    "type": "string",
+                    "enum": ["server", "global"],
+                    "description": "[list] server (default) lists this server's drive; global lists every server's, grouped by server.",
+                },
             },
             "required": ["action"],
         },

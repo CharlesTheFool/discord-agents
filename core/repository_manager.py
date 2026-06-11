@@ -236,7 +236,9 @@ class RepositoryManager:
             await self.scan(current_server_id)
 
             if action == "list":
-                return await self._list(current_server_id)
+                return await self._list(current_server_id,
+                                        scope=tool_input.get("scope") or "server",
+                                        current_channel_id=current_channel_id)
             elif action == "save_file":
                 return await self._save_file(current_server_id, tool_input)
             elif action == "save_attachment":
@@ -263,7 +265,11 @@ class RepositoryManager:
         ) as cursor:
             return await cursor.fetchone()
 
-    async def _list(self, server_id: str) -> str:
+    async def _list(self, server_id: str, scope: str = "server",
+                    current_channel_id: str = None) -> str:
+        if scope == "global":
+            return await self._list_global(server_id, current_channel_id)
+
         async with self.db.execute(
             "SELECT attachment_id, filename, size_bytes, attachment_type, local_path "
             "FROM attachments WHERE channel_id = ? AND server_id = ? ORDER BY local_path",
@@ -284,6 +290,58 @@ class RepositoryManager:
             )
         lines.append("\nRetrieve any file with the discord tool: get_attachment + attachment_id.")
         return "\n".join(lines)
+
+    def _guild_label(self, sid: str) -> str:
+        """Best-effort server name for display."""
+        if self.guild_name_resolver:
+            try:
+                name = self.guild_name_resolver(sid)
+                if name:
+                    return name
+            except Exception:
+                pass
+        return sid
+
+    async def _list_global(self, current_server_id: str, current_channel_id: str = None) -> str:
+        """List repository files across all servers, grouped by server."""
+        if not self.root.exists():
+            return "No repositories exist yet."
+
+        server_dirs = sorted(p.name for p in self.root.iterdir() if p.is_dir())
+        if not server_dirs:
+            return "No repositories exist yet."
+
+        all_lines = []
+        total_files = 0
+        for sid in server_dirs:
+            if (self.vaults and
+                    self.vaults.blocks_content(sid, None, current_server_id, current_channel_id)):
+                continue
+            await self.scan(sid)
+            async with self.db.execute(
+                "SELECT attachment_id, filename, size_bytes, attachment_type, local_path "
+                "FROM attachments WHERE channel_id = ? AND server_id = ? ORDER BY local_path",
+                (self.SENTINEL, sid),
+            ) as cursor:
+                rows = await cursor.fetchall()
+            if not rows:
+                continue
+            label = self._guild_label(sid)
+            all_lines.append(f"\n== {label} ({sid}) ==")
+            for row in rows:
+                rel = self._relpath(sid, row["local_path"])
+                all_lines.append(
+                    f"- {rel} | {format_size(row['size_bytes'])} | "
+                    f"{row['attachment_type']} | {row['attachment_id']}"
+                )
+            total_files += len(rows)
+
+        if not all_lines:
+            return "No accessible repositories."
+
+        header = f"Repository contents across all servers ({total_files} file(s)):"
+        all_lines.append("\nRetrieve any file with the discord tool: get_attachment + attachment_id.")
+        return header + "\n".join(all_lines)
 
     async def _save_file(self, server_id: str, tool_input: dict) -> str:
         rel_path = tool_input.get("path", "")
