@@ -224,6 +224,17 @@ class UserCache:
             for row in rows
         ]
 
+    async def resolve_username(self, username: str) -> Optional[str]:
+        """Exact username/display-name -> user_id; None if unknown or ambiguous."""
+        if not self._db:
+            raise RuntimeError("UserCache not initialized. Call initialize() first.")
+        cursor = await self._db.execute(
+            "SELECT user_id FROM users WHERE username = ? OR display_name = ?",
+            (username, username),
+        )
+        rows = await cursor.fetchall()
+        return rows[0]["user_id"] if len(rows) == 1 else None
+
     async def get_stats(self) -> Dict:
         """Get cache statistics"""
         if not self._db:
