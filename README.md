@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.6.1 (Pre-release Beta)
+**Version:** 0.8.0 (Pre-release Beta)
 
 Build intelligent Discord bots that think, remember, and act autonomously. Powered by Claude.
 
@@ -38,13 +38,26 @@ engagement rates so it backs off where it isn't wanted.
   episode file and reseeds its live context. The archive stays searchable
   through the bot's memory tool, so "what did we decide last Tuesday?" works
   weeks later.
-- **Long-term memory** — per-server Markdown files (user profiles, channel
-  notes, server culture) the bot reads and writes itself.
+- **One person, one profile** — user profiles are global (one file per
+  human, keyed by Discord ID) with per-claim origin tags, so the bot knows
+  the same person across every server while keeping what it learned where
+  it learned it.
+- **Long-term memory** — Markdown files (profiles, channel notes, server
+  culture) the bot reads and writes itself; a weekly reconsolidation pass
+  (Batches API, half-price tokens) compacts old episodes into era digests
+  and rewrites profiles from evidence.
+- **Server induction** — point the bot at a server with history and
+  `python bot_manager.py induct` distills the stored backlog into starting
+  memory, explicitly framed as observations rather than lived experience
+  (`--dry-run` prints a cost table first).
 - **Message history** — SQLite with FTS5 full-text search; the bot can search
   and quote its own channel history on demand.
 - **Attachments** — images, documents, spreadsheets, and code files are
   indexed and retrievable: the bot can pull any past attachment back into
   context with its `get_attachment` tool.
+- **File repository** — a per-server local drive you can edit by hand and
+  the bot manages with its `repository` tool; files survive Discord's CDN
+  expiry.
 
 ### Capabilities
 
@@ -56,14 +69,20 @@ engagement rates so it backs off where it isn't wanted.
 - **MCP integration** — connect remote MCP servers; their tools are
   auto-discovered and available to the bot.
 - **Vision** — image attachments are processed and understood in context.
+- **Every surface** — text channels, threads (active and archived, with
+  memory nested under the parent channel), voice-channel text chats, and
+  private DMs; the bot always knows what kind of room it's in.
 
 ### Production posture
 
 - Per-channel rate-limit presets with engagement-aware backoff
-- Prompt-cache-aware request layout (measured ~330 uncached tokens per turn in
-  steady state — the conversation prefix stays cached)
+- Prompt-cache-aware request layout (a few hundred uncached tokens per turn
+  in steady state — the conversation prefix stays cached)
 - Persistent conversation state across restarts; crash detection and catch-up
-- Optional data isolation (`server` or `channel` scope) for multi-tenant use
+- **Vaults** — mark any channel or server and its content never leaves it:
+  excluded from outside search and attachments, memory files sealed
+- **DM privacy is mechanical** — what's said in a DM is visible only inside
+  that DM, enforced at the search, viewing, and attachment layers
 - Multiple isolated bots from one codebase (separate configs, databases,
   memory trees, and logs)
 
@@ -248,9 +267,11 @@ reporting via [GitHub Security Advisories](../../security/advisories/new)
   itself after consecutive ignored messages.
 - **Web search** is capped per request; code execution runs in Anthropic's
   sandbox, not on your host.
-- **Data isolation** (optional) scopes memory, search, and Discord tools to
-  the current server or channel — validated in both directions by live
-  testing.
+- **Vaults** mechanically seal a channel's or server's content (search,
+  memory, attachments, repository) — validated in both directions by live
+  testing; a mandatory discretion prompt handles everything finer.
+- **DM privacy** is enforced in the storage layer, not just the prompt: DM
+  messages and files never surface outside their own DM.
 - **Deletion handling** — deleting a Discord message purges it from the bot's
   storage and attachment pipeline, including messages older than the current
   process.
@@ -274,10 +295,11 @@ reporting via [GitHub Security Advisories](../../security/advisories/new)
 
 ## Project Stats
 
-- ~25 core modules, 216 unit tests
-- Validated by live scenario campaigns on a real Discord server: six narrative
-  scenarios, a full pre-release code audit, and a release stress test — 54
-  bugs and findings fixed across three hardening passes (see CHANGELOG)
+- ~27 core modules, 437 unit tests
+- Validated by live scenario campaigns on a real Discord server: narrative
+  scenarios, pre-release code audits, and release stress tests every cycle —
+  including wire-level bugs that mocked tests structurally can't catch (see
+  CHANGELOG)
 
 ---
 
@@ -299,9 +321,7 @@ Built with:
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) — next up: **0.7.0** (one continuous identity
-across servers, with vaults and discretion; memory reconsolidation), then
-induction, new surfaces, the Prime, DM support, and a desktop app on the
-road to 0.9.
+See [ROADMAP.md](ROADMAP.md) — next up: **0.9** (the Prime: a graphical
+operator surface over the systems that now exist).
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.

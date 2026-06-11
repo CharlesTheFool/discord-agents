@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-06-10
 
-**Status:** In development.
+**Status:** Pre-release (beta). Ships together with 0.7.0 below (one tag —
+0.7.0 was never released standalone).
 
 ### Added
 
@@ -57,9 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The 0.7 per-server profile read shim is removed - memory context always
   lists the global profile path
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-06-10
 
-**Status:** In development.
+**Status:** Pre-release (beta), bundled in the v0.8.0 tag.
 
 ### Added
 
