@@ -119,6 +119,7 @@ class APIConfig:
     context_messages: int = 30  # Messages to remember (rolling window)
     context_tokens: int = 80000  # Session token threshold: episodize + reseed past this (from response.usage)
     effort: Optional[str] = None  # low | medium | high | max (None = API default, high)
+    consolidation_model: str = "claude-sonnet-4-6"  # weekly memory reconsolidation (Batches API)
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     code_execution: CodeExecutionConfig = field(default_factory=CodeExecutionConfig)
@@ -171,16 +172,6 @@ class LoggingConfig:
 
 
 @dataclass
-class DataIsolationConfig:
-    """Data isolation configuration for privacy enforcement"""
-    enabled: bool = False
-    default_mode: str = "permissive"
-    memory_scope: str = "global"
-    search_scope: str = "global"
-    discord_tools_scope: str = "global"
-
-
-@dataclass
 class DiscordConfig:
     """Discord-specific configuration"""
     token_env_var: str = "DISCORD_BOT_TOKEN"  # Environment variable containing bot token
@@ -214,7 +205,7 @@ class BotConfig:
     # v0.5.0+ features
     mcp: MCPConfig = field(default_factory=MCPConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
-    data_isolation: str = "off"  # off | server | channel
+    vaults: List[str] = field(default_factory=list)  # channel/server IDs whose content never leaves them
     attachments: AttachmentsConfig = field(default_factory=AttachmentsConfig)
 
     @classmethod
@@ -293,6 +284,7 @@ class BotConfig:
             "discord.default_timezone": "Renamed to discord.timezone",
             "skills.enabled": "Removed - skills are always enabled (Bug #14 fix)",
             "api.code_execution.enabled": "Removed - code_execution is automatically enabled with skills (Bug #14 fix)",
+            "data_isolation": "Replaced by vaults: [channel/server IDs] - content of a vaulted place never leaves it; the old scope modes are gone",
         }
 
         def check_nested(d: dict, prefix: str = ""):
@@ -398,6 +390,7 @@ class BotConfig:
             context_messages=context_messages,
             context_tokens=context_tokens,
             effort=api_data.get("effort"),
+            consolidation_model=api_data.get("consolidation_model", "claude-sonnet-4-6"),
             thinking=thinking,
             web_search=web_search,
             code_execution=code_execution,
@@ -424,25 +417,6 @@ class BotConfig:
             default_skills=skills_data.get("default_skills", ["pdf"]),
         )
 
-        # Data isolation - handle both old object format and new string format
-        data_isolation_raw = data.get("data_isolation", "off")
-        if isinstance(data_isolation_raw, dict):
-            # Legacy format - convert to string
-            if not data_isolation_raw.get("enabled", False):
-                data_isolation = "off"
-            else:
-                # Use most restrictive scope from old config
-                memory_scope = data_isolation_raw.get("memory_scope", "global")
-                search_scope = data_isolation_raw.get("search_scope", "global")
-                if memory_scope == "channel" or search_scope == "channel":
-                    data_isolation = "channel"
-                elif memory_scope == "server" or search_scope == "server":
-                    data_isolation = "server"
-                else:
-                    data_isolation = "off"
-        else:
-            data_isolation = data_isolation_raw
-
         # Parse attachments config
         attachments_data = data.get("attachments", {})
         attachments = AttachmentsConfig(
@@ -466,7 +440,7 @@ class BotConfig:
             logging=logging_config,
             mcp=mcp,
             skills=skills,
-            data_isolation=data_isolation,
+            vaults=[str(v) for v in (data.get("vaults") or [])],
             attachments=attachments,
         )
 
@@ -540,13 +514,11 @@ class BotConfig:
                 f"got '{self.agentic.proactive.intensity}'"
             )
 
-        # Validate data isolation mode
-        valid_isolation_modes = ["off", "server", "channel"]
-        if self.data_isolation.lower() not in valid_isolation_modes:
-            errors.append(
-                f"data_isolation must be one of {valid_isolation_modes}, "
-                f"got '{self.data_isolation}'"
-            )
+        if not isinstance(self.vaults, list) or any(not str(v).strip() for v in self.vaults):
+            errors.append("vaults must be a list of channel/server IDs")
+
+        if not self.api.consolidation_model or not self.api.consolidation_model.strip():
+            errors.append("api.consolidation_model cannot be empty")
 
         # Validate logging level
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -623,30 +595,3 @@ class BotConfig:
             "allowed_channels": self.agentic.proactive.allowed_channels,
         }
 
-    def get_data_isolation_config(self) -> DataIsolationConfig:
-        """Get data isolation configuration expanded from mode"""
-        mode = self.data_isolation.lower()
-        if mode == "off":
-            return DataIsolationConfig(
-                enabled=False,
-                default_mode="permissive",
-                memory_scope="global",
-                search_scope="global",
-                discord_tools_scope="global",
-            )
-        elif mode == "server":
-            return DataIsolationConfig(
-                enabled=True,
-                default_mode="server",
-                memory_scope="server",
-                search_scope="server",
-                discord_tools_scope="server",
-            )
-        else:  # channel
-            return DataIsolationConfig(
-                enabled=True,
-                default_mode="channel",
-                memory_scope="channel",
-                search_scope="channel",
-                discord_tools_scope="channel",
-            )
