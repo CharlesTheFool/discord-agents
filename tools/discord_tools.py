@@ -87,17 +87,21 @@ class DiscordToolExecutor:
         channel_id = params.get("channel_id")
         author_id = params.get("author_id")
         limit = params.get("limit", 20)
+        # scope handling: any value is treated as global (no constraint) until Task 6
+        _scope = params.get("scope")  # noqa: F841 — Task 6 will use this
 
         if not query:
             return "Error: query parameter required"
 
         try:
+            exclude_ids = self.vaults.excluded_ids(current_server_id, current_channel_id) if self.vaults else []
             results = await self.message_memory.search_messages(
                 query=query,
                 channel_id=channel_id,
                 author_id=author_id,
                 guild_id=None,
-                limit=limit
+                limit=limit,
+                exclude_ids=exclude_ids or None,
             )
 
             if not results:
@@ -151,6 +155,12 @@ class DiscordToolExecutor:
 
         if not channel_id:
             return "Error: channel_id parameter required"
+
+        if self.vaults and self.vaults.active:
+            owner = await self.message_memory.get_server_for_channel(channel_id)
+            if self.vaults.blocks_content(owner, channel_id,
+                                          current_server_id, current_channel_id):
+                return "Error: Access denied - that channel is vaulted; its messages stay inside it."
 
         try:
             messages = []

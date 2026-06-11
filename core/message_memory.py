@@ -800,7 +800,8 @@ class MessageMemory:
         channel_id: Optional[str] = None,
         author_id: Optional[str] = None,
         guild_id: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
+        exclude_ids: Optional[List[str]] = None,
     ) -> List[StoredMessage]:
         """Full-text search using FTS5 (keyword AND semantics, see _fts5_match_expr)."""
         if not self._db:
@@ -820,6 +821,13 @@ class MessageMemory:
         if guild_id:
             filters.append("m.guild_id = ?")
             params.append(guild_id)
+
+        if exclude_ids:
+            ph = ",".join("?" for _ in exclude_ids)
+            filters.append(f"m.channel_id NOT IN ({ph})")
+            params.extend(exclude_ids)
+            filters.append(f"m.guild_id NOT IN ({ph})")
+            params.extend(exclude_ids)
 
         where_clause = " AND ".join(filters) if filters else "1=1"
         params.append(limit)
