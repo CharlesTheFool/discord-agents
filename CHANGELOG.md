@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.2] - 2026-06-11
+
+**Status:** Pre-release (beta). Dashboard polish — the first release delivered
+to existing installs automatically by the v0.9.1 auto-update.
+
+### Fixed
+
+- Fleet card: a bot-detail rule (`.activity`) was unscoped and bled onto the
+  fleet row, drawing a stray divider and shoving "N msgs today" down against
+  it. Scoped to `.tabpanel .activity`.
+- Fleet card height bumped (56px → 64px) so the row no longer reads as
+  cramped — the stray margin from the bug above had been masking how tight it
+  was.
+- Bot detail: the stat figures (messages stored / episodes / …) are now
+  vertically centered against the 7-day sparkline instead of bottom-pinned
+  below it.
+
+---
+
 ## [0.9.1] - 2026-06-11
 
 **Status:** Pre-release (beta). Point release: automatic updates for the

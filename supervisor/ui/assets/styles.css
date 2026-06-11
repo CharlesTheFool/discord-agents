@@ -95,7 +95,7 @@ header.page { padding: 34px 0 0; }
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--rule-strong);
-  min-height: 56px;
+  min-height: 64px;
 }
 .row > * { min-width: 0; }   /* cells shrink instead of overflowing into neighbours */
 
@@ -340,7 +340,7 @@ footer.page {
 
 .statband {
   display: grid; grid-template-columns: 1fr 240px; gap: 32px;
-  margin-top: 18px; align-items: end;
+  margin-top: 18px; align-items: center;
 }
 .statline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; }
 .statline .s { border-left: 1px solid var(--rule); padding-left: 14px; }
@@ -383,7 +383,7 @@ footer.page {
 
 /* ---------- activity section (trace + raw log, full width) ---------- */
 
-.activity { margin-top: 34px; border-top: 2px solid var(--ink); padding-top: 16px; }
+.tabpanel .activity { margin-top: 34px; border-top: 2px solid var(--ink); padding-top: 16px; }
 .activity-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; }
 .activity-head h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .subtoggle { display: flex; border: 1px solid var(--rule-strong); }
