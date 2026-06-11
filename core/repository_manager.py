@@ -28,9 +28,11 @@ class RepositoryManager:
 
     SENTINEL = "repository"  # channel_id/message_id marker for repo rows
 
-    def __init__(self, bot_id: str, attachment_manager):
+    def __init__(self, bot_id: str, attachment_manager, vaults=None):
         self.bot_id = bot_id
         self.attachment_manager = attachment_manager
+        self.vaults = vaults
+        self.guild_name_resolver = None
         self.root = Path("repository") / bot_id
         self.root.mkdir(parents=True, exist_ok=True)
         # Retrieval loads through LocalStorageManager, whose path jail covers
@@ -216,6 +218,7 @@ class RepositoryManager:
     # ========== TOOL ACTIONS ==========
 
     async def execute(self, tool_input: dict, current_server_id: str,
+                      current_channel_id: str = None,
                       container_file_ids: Optional[list] = None) -> str:
         """
         Execute a repository tool action. Always returns a string for the
@@ -225,6 +228,11 @@ class RepositoryManager:
         """
         action = tool_input.get("action", "")
         try:
+            if (self.vaults and action in ("save_file", "save_attachment", "save_output")
+                    and self.vaults.blocks_repository_save(current_server_id, current_channel_id)):
+                return ("Error: This channel is vaulted - what happens here stays here, "
+                        "and the repository is visible to the whole server.")
+
             await self.scan(current_server_id)
 
             if action == "list":
@@ -232,7 +240,7 @@ class RepositoryManager:
             elif action == "save_file":
                 return await self._save_file(current_server_id, tool_input)
             elif action == "save_attachment":
-                return await self._save_attachment(current_server_id, tool_input)
+                return await self._save_attachment(current_server_id, tool_input, current_channel_id)
             elif action == "save_output":
                 return await self._save_output(current_server_id, tool_input, container_file_ids)
             elif action == "delete":
@@ -294,18 +302,23 @@ class RepositoryManager:
         return (f"Saved {rel} ({format_size(len(content.encode('utf-8')))}) "
                 f"to your repository. Attachment ID: {row['attachment_id']}")
 
-    async def _save_attachment(self, server_id: str, tool_input: dict) -> str:
+    async def _save_attachment(self, server_id: str, tool_input: dict,
+                               current_channel_id: str = None) -> str:
         source_id = tool_input.get("attachment_id", "")
         if not source_id:
             return "Error: save_attachment requires 'attachment_id'"
 
         async with self.db.execute(
-            "SELECT filename, local_path FROM attachments WHERE attachment_id = ?",
+            "SELECT filename, local_path, server_id, channel_id FROM attachments WHERE attachment_id = ?",
             (source_id,),
         ) as cursor:
             row = await cursor.fetchone()
         if not row:
             return f"Error: Attachment {source_id} not found"
+
+        if self.vaults and self.vaults.blocks_content(
+                row["server_id"], row["channel_id"], server_id, current_channel_id):
+            return "Error: That attachment is from a vaulted space - it can't be copied out."
         if not row["local_path"] or not Path(row["local_path"]).exists():
             return (f"Error: Attachment {source_id} has no local copy to import "
                     f"(try get_attachment first, or the file is metadata-only)")

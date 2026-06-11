@@ -69,10 +69,9 @@ class DiscordToolExecutor:
         elif command == "get_channel_info":
             return await self._get_channel_info(tool_input)
         elif command == "get_attachment":
-            return await self._get_attachment(tool_input)
+            return await self._get_attachment(tool_input, current_server_id, current_channel_id)
         elif command == "list_attachments":
-            # Phase 6.3: Route list_attachments command to executor
-            return await self._list_attachments(tool_input)
+            return await self._list_attachments(tool_input, current_server_id, current_channel_id)
         else:
             return f"Unknown Discord tool command: {command}"
 
@@ -321,7 +320,7 @@ class DiscordToolExecutor:
             logger.error(f"Error getting channel info: {e}", exc_info=True)
             return f"Error getting channel info: {str(e)}"
 
-    async def _get_attachment(self, params: dict):
+    async def _get_attachment(self, params: dict, current_server_id=None, current_channel_id=None):
         """
         Retrieve and process a specific attachment by ID.
 
@@ -352,6 +351,11 @@ class DiscordToolExecutor:
 
             if not row:
                 return f"Error: Attachment {attachment_id} not found in database"
+
+            if self.vaults and self.vaults.blocks_content(
+                    row["server_id"], row["channel_id"],
+                    current_server_id, current_channel_id):
+                return "Error: That attachment lives in a vaulted space - it can only be opened from inside it."
 
             filename = row["filename"]
             attachment_type = row["attachment_type"]
@@ -406,7 +410,7 @@ class DiscordToolExecutor:
             logger.error(f"Error retrieving attachment: {e}", exc_info=True)
             return f"Error retrieving attachment: {str(e)}"
 
-    async def _list_attachments(self, params: dict) -> str:
+    async def _list_attachments(self, params: dict, current_server_id=None, current_channel_id=None) -> str:
         """
         Phase 6.2: List all attachments with optional filtering.
 
@@ -441,6 +445,13 @@ class DiscordToolExecutor:
             if file_type:
                 query += " AND LOWER(filename) LIKE ?"
                 query_params.append(f"%.{file_type}")
+
+            exclude_ids = self.vaults.excluded_ids(current_server_id, current_channel_id) if self.vaults else []
+            if exclude_ids:
+                ph = ",".join("?" for _ in exclude_ids)
+                query += f" AND channel_id NOT IN ({ph}) AND (server_id IS NULL OR server_id NOT IN ({ph}))"
+                query_params.extend(exclude_ids)
+                query_params.extend(exclude_ids)
 
             query += " ORDER BY uploaded_at DESC"
 

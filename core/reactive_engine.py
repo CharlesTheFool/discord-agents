@@ -384,6 +384,7 @@ class ReactiveEngine:
                     self.repository_manager = RepositoryManager(
                         bot_id=self.config.bot_id,
                         attachment_manager=self.attachment_manager,
+                        vaults=self.vaults,
                     )
                     logger.info("Repository feature enabled")
             except Exception as e:
@@ -998,6 +999,7 @@ class ReactiveEngine:
                     logger.debug(f"Executing repository tool: {block.input.get('action', 'unknown')}")
                     result = await self.repository_manager.execute(
                         block.input, current_server_id=server_id,
+                        current_channel_id=channel_id,
                         container_file_ids=container_file_ids,
                     )
                 else:
