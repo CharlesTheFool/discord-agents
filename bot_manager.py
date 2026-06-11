@@ -338,6 +338,63 @@ async def _run_consolidation(bot_id: str, server_id: str, force: bool):
         await memory.close()
 
 
+async def _run_induction(bot_id: str, server_id: str, dry_run: bool,
+                         channels, force_full: bool):
+    """Standalone induction run: distill a backfilled server's backlog."""
+    from anthropic import AsyncAnthropic
+    from core.inductor import ServerInductor
+    from core.user_cache import UserCache
+    from core.vaults import VaultEnforcer
+
+    load_dotenv()
+    config_path = Path(f"bots/{bot_id}.yaml")
+    if not config_path.exists():
+        print(f"Error: no config at {config_path}")
+        sys.exit(1)
+    config = BotConfig.load(config_path)
+    memory = MessageMemory(Path("persistence") / f"{bot_id}_messages.db")
+    await memory.initialize()
+    user_cache = UserCache(Path("persistence") / f"{bot_id}_users.db")
+    await user_cache.initialize()
+    try:
+        memory_manager = MemoryManager(bot_id, Path("memories"))
+        memory_manager.thread_parent_resolver = memory.thread_parent
+        vaults = VaultEnforcer(config.vaults)
+        vaults.thread_parent_resolver = memory.thread_parent
+        vaults.threads_of = memory.threads_of
+        inductor = ServerInductor(
+            bot_id=bot_id, config=config, message_memory=memory,
+            memory_manager=memory_manager, user_cache=user_cache,
+            anthropic_client=AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY")),
+            vaults=vaults,
+        )
+        report = await inductor.induct(server_id, dry_run=dry_run,
+                                       channels=channels, force_full=force_full)
+        _print_induction_report(report, config.api.consolidation_model)
+    finally:
+        await user_cache.close()
+        await memory.close()
+
+
+def _print_induction_report(report, model):
+    print(f"\nInduction report - server {report['server']}"
+          + (" (DRY RUN - nothing written)" if report.get("dry_run") else ""))
+    print(f"{'channel':<24} {'messages':>9} {'tokens':>10} {'status':<8}")
+    for cid, info in report["channels"].items():
+        print(f"{cid:<24} {info.get('messages', 0):>9} "
+              f"{info.get('est_input_tokens', '-'):>10} {info.get('status', '-'):<8}")
+    if report.get("dry_run"):
+        cost = report.get("est_cost_usd")
+        print(f"\nTotal est. input tokens: {report['est_total_tokens']:,}")
+        print(f"Estimated cost at {model} batch rates: "
+              + (f"${cost:.2f}" if cost is not None else "n/a (unpriced model)"))
+        print("If the server has no stored messages: start the bot once with "
+              "backfill_days: 0, let backfill finish, then re-run.")
+    else:
+        print(f"\nProfiles written: {report.get('profiles', 0)}; "
+              f"culture: {'yes' if report.get('culture') else 'no'}")
+
+
 def print_usage():
     """Print CLI usage"""
     print("Discord Agents - Bot Manager")
@@ -346,12 +403,14 @@ def print_usage():
     print("  python bot_manager.py spawn <bot_id>             - Start a bot")
     print("  python bot_manager.py spawn <bot_id> --crash-test - Start and crash after 6s (tests crash detection)")
     print("  python bot_manager.py consolidate <bot_id> --server <server_id> [--force] - Run memory consolidation")
+    print("  python bot_manager.py induct <bot_id> --server <server_id> [--dry-run] [--channels id,id,...] [--force-full] - Distill stored backlog into starting memory")
     print("  python bot_manager.py --help                     - Show this help")
     print()
     print("Examples:")
     print("  python bot_manager.py spawn alpha                - Start the alpha bot")
     print("  python bot_manager.py spawn slh-01 --crash-test  - Test crash detection")
     print("  python bot_manager.py consolidate alpha --server 123456789 --force")
+    print("  python bot_manager.py induct alpha --server 123456789 --dry-run")
     print()
     print("Configuration:")
     print("  1. Copy .env.example to .env")
@@ -404,6 +463,37 @@ def main():
                   f"Stop it first - consolidation and the live bot write the same files.")
             sys.exit(1)
         asyncio.run(_run_consolidation(bot_id, server_id, force="--force" in sys.argv))
+
+    elif command == "induct":
+        if len(sys.argv) < 3:
+            print("Usage: python bot_manager.py induct <bot_id> --server <server_id> "
+                  "[--dry-run] [--channels id,id,...] [--force-full]")
+            sys.exit(1)
+        bot_id = sys.argv[2]
+        try:
+            server_id = sys.argv[sys.argv.index("--server") + 1]
+        except (ValueError, IndexError):
+            print("Error: --server <server_id> is required")
+            sys.exit(1)
+        if Path(f"persistence/{bot_id}_running.flag").exists():
+            print(f"Error: {bot_id} appears to be running (persistence/{bot_id}_running.flag). "
+                  f"Stop it first - induction sets the same episode watermarks "
+                  f"the live system advances.")
+            sys.exit(1)
+        channels = None
+        try:
+            if "--channels" in sys.argv:
+                channels = [c.strip() for c in
+                            sys.argv[sys.argv.index("--channels") + 1].split(",") if c.strip()]
+        except IndexError:
+            print("Error: --channels needs a comma-separated id list")
+            sys.exit(1)
+        asyncio.run(_run_induction(
+            bot_id, server_id,
+            dry_run="--dry-run" in sys.argv,
+            channels=channels,
+            force_full="--force-full" in sys.argv,
+        ))
 
     else:
         print(f"Error: Unknown command '{command}'")
