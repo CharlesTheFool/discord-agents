@@ -81,10 +81,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `channel_names` cache table lets the dashboard label channels while
   bots are asleep
 
+**Dashboard + desktop application**
+- The supervisor serves the operator dashboard at `/`: fleet board
+  (status chips, model tags, 7-day volume, context/follow-up/DM signals,
+  start/stop/restart, commission/retire), and per-bot pages - Monitor
+  (engine gauges, live-context fill, statline, commitments band, the
+  channel monitor with the bot's x-ray stream and a Direct Messages
+  rail), Configure (the YAML as a generated form; saves surface the
+  daemon's validation verdict), Integrations (skill toggles, add-skill,
+  MCP management with live health), Memories (browse AND edit), and
+  Repository (browse)
+- Electron shell (`app/`): attaches to a running daemon or spawns one,
+  opens the dashboard in a window; packaged as a Windows NSIS installer
+
 ### Notes
 - No new config keys: DMs and /memory ship enabled (core surface, not a
   feature flag); Prime caps are internal constants
-- Dashboard UI and the desktop app land next on this substrate
 
 ---
 
