@@ -258,7 +258,9 @@ class MemoryConsolidator:
                 except (StopIteration, json.JSONDecodeError) as e:
                     logger.warning(f"Batch item {cid} unparseable ({e}) - skipped")
                     continue
-                kind, *rest = cid.split("::")
+                # custom_id charset is API-constrained to [a-zA-Z0-9_-]; "_" is
+                # the separator and no segment (kind/cid/month/uid) contains it
+                kind, *rest = cid.split("_")
                 if kind == "era":
                     await self._apply_era_result(server_id, rest[0], rest[1], data)
                     report["compacted"] += 1
@@ -390,7 +392,7 @@ class MemoryConsolidator:
                 corpus = "\n\n---\n\n".join(
                     f.read_text(encoding="utf-8") for f in files)
                 requests.append({
-                    "custom_id": f"era::{ch_dir.name}::{month}",
+                    "custom_id": f"era_{ch_dir.name}_{month}",
                     "params": {
                         "model": self.config.api.consolidation_model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
@@ -488,7 +490,7 @@ class MemoryConsolidator:
             existing = self.memory.resolve_path(gpath)
             current = existing.read_text(encoding="utf-8") if existing.exists() else "(no profile yet)"
             requests.append({
-                "custom_id": f"profile::{uid}",
+                "custom_id": f"profile_{uid}",
                 "params": {
                     "model": self.config.api.consolidation_model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
@@ -580,7 +582,7 @@ class MemoryConsolidator:
                 episodes_text = "\n\n---\n\n".join(
                     f.read_text(encoding="utf-8") for f in ep_files) or "(none)"
                 requests.append({
-                    "custom_id": f"channel::{cid}",
+                    "custom_id": f"channel_{cid}",
                     "params": {
                         "model": self.config.api.consolidation_model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,

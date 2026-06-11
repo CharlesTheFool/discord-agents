@@ -150,7 +150,7 @@ class ServerInductor:
                     f"{' (bot)' if m.is_bot else ''}: {m.content or '[no text]'}"
                     for m in chunk)
                 requests.append({
-                    "custom_id": f"chunk::{cid}::{idx}",
+                    "custom_id": f"chunk_{cid}_{idx}",
                     "params": {
                         "model": model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
@@ -174,7 +174,7 @@ class ServerInductor:
         for cid, chunks in chunk_map.items():
             payloads = []
             for idx in range(len(chunks)):
-                result = results.get(f"chunk::{cid}::{idx}")
+                result = results.get(f"chunk_{cid}_{idx}")
                 if result is None or result.type != "succeeded":
                     break
                 try:
@@ -222,7 +222,8 @@ class ServerInductor:
                 except (StopIteration, json.JSONDecodeError) as e:
                     logger.warning(f"Induction batch item {key} unparseable ({e}) - skipped")
                     continue
-                kind, *rest = key.split("::")
+                # "_" separator: the API constrains custom_id to [a-zA-Z0-9_-]
+                kind, *rest = key.split("_")
                 if kind == "profile":
                     self._apply_profile(rest[0], data)
                     profiles_written += 1
@@ -321,7 +322,7 @@ class ServerInductor:
                        if existing_fs.exists() else "(no profile yet)")
             obs_text = "\n".join(f"- {o}" for o in obs)
             requests.append({
-                "custom_id": f"profile::{uid}",
+                "custom_id": f"profile_{uid}",
                 "params": {
                     "model": model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
@@ -340,7 +341,7 @@ class ServerInductor:
                 f"<channel id=\"{cid}\">\n{body}\n</channel>"
                 for cid, body in state_bodies.items())
             requests.append({
-                "custom_id": f"culture::{server_id}",
+                "custom_id": f"culture_{server_id}",
                 "params": {
                     "model": model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
