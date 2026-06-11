@@ -16,6 +16,7 @@ leaves the stamp untouched and retries next night.
 
 import json
 import logging
+import re
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,6 +34,111 @@ from core.internal_constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Task 12: Era digest compaction (Pass 1)
+# =============================================================================
+
+ERA_DIGEST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "Era title, <= 8 words"},
+        "slug": {"type": "string", "description": "kebab-case, <= 4 words"},
+        "summary_markdown": {"type": "string",
+                             "description": "The era in <= 250 words: what mattered, how it ended up."},
+        "standing_facts": {"type": "array", "items": {"type": "string"}},
+        "memorable_moments": {"type": "array", "items": {"type": "string"},
+                              "description": "who-said-what worth keeping, attributed"},
+        "running_jokes": {"type": "array", "items": {"type": "string"}},
+        "decisions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["title", "slug", "summary_markdown", "standing_facts",
+                 "memorable_moments", "running_jokes", "decisions"],
+    "additionalProperties": False,
+}
+
+ERA_SYSTEM_PROMPT = (
+    "You are condensing a Discord channel's old episode files into one era "
+    "digest - what's still worth knowing months later. Keep standing facts, "
+    "decisions, attributed lines worth remembering, and the jokes that stuck. "
+    "Drop the play-by-play and one-off logistics. Plain, tight markdown."
+)
+
+# =============================================================================
+# Task 13: Profile rewrites (Pass 2) + provenance repair (Pass 3)
+# =============================================================================
+
+PROFILE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "header_line": {"type": "string",
+                        "description": "Display name (username), e.g. 'Charles (charlesthefool)'"},
+        "known_from": {"type": "array", "items": {"type": "string"},
+                       "description": "Contexts as currently listed, preserved verbatim"},
+        "claims": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"text": {"type": "string"},
+                           "origin": {"type": "string",
+                                      "description": "server id, 'DMs', or 'private' - where this was learned"}},
+            "required": ["text", "origin"], "additionalProperties": False}},
+    },
+    "required": ["header_line", "known_from", "claims"],
+    "additionalProperties": False,
+}
+
+PROFILE_SYSTEM_PROMPT = (
+    "You maintain one profile file per person - the same human across every "
+    "server. Rewrite this profile from the evidence: recent messages outrank "
+    "old claims when they conflict; date or drop anything stale; keep it lean, "
+    "third person, and matter-of-fact. No commentary about your relationship "
+    "with them. Every claim keeps the origin it was learned in - if an old "
+    "claim's origin tag exists, preserve it; new claims from this evidence "
+    "are origin-tagged with this server."
+)
+
+
+def render_profile(data: dict) -> str:
+    lines = [f"# {data['header_line']}",
+             f"Known from: {', '.join(data['known_from'])}",
+             "", "## Profile"]
+    lines += [f"- {c['text']} [origin: {c['origin']}]" for c in data["claims"]]
+    return "\n".join(lines) + "\n"
+
+
+# =============================================================================
+# Task 14: Monthly channel/culture refresh (Pass 4)
+# =============================================================================
+
+CULTURE_SCHEMA = {
+    "type": "object",
+    "properties": {"culture_markdown": {"type": "string",
+        "description": "The server culture file: what this place is like, anchored in evidence. <= 400 words."}},
+    "required": ["culture_markdown"], "additionalProperties": False,
+}
+
+CHANNEL_BODY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "standing_facts": {"type": "array", "items": {"type": "string"}},
+        "settled_questions": {"type": "array", "items": {"type": "string"}},
+        "used_jokes": {"type": "array", "items": {"type": "string"}},
+        "open_threads": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["standing_facts", "settled_questions", "used_jokes", "open_threads"],
+    "additionalProperties": False,
+}
+
+REFRESH_SYSTEM_PROMPT = (
+    "You are refreshing a Discord channel's standing notes from its recent "
+    "episode record. Keep what the evidence still supports, drop what went "
+    "stale, merge duplicates. Lean and concrete."
+)
+
+CULTURE_SYSTEM_PROMPT = (
+    "You are refreshing a server's culture file from its channels' standing "
+    "notes - what kind of place this is, its rhythms, its people, anchored in "
+    "what actually happens there. Lean markdown, no fluff."
+)
 
 
 def archive_to_history(fs_path: Path, keep: int = CONSOLIDATION_HISTORY_KEEP) -> None:
@@ -132,7 +238,34 @@ class MemoryConsolidator:
         if first_run:
             report["migration"] = await self.migrate_profiles(server_id)
 
-        # Passes 1-4 land in the next tasks; the stamp seals a completed run
+        # Pass 1: era compaction; Passes 2+3: profile rewrites + provenance repair;
+        # Pass 4 (monthly): channel/culture refresh
+        era_requests = self._build_era_requests(server_id)
+        all_requests = era_requests + await self._build_profile_requests(server_id)
+        all_requests += self._build_refresh_requests(server_id)
+
+        if all_requests:
+            results = await self.batch.run(all_requests)
+            report["compacted"] = 0
+            for cid, result in results.items():
+                if result.type != "succeeded":
+                    logger.warning(f"Batch item {cid} {result.type} - skipped")
+                    continue
+                text = next(b.text for b in result.message.content if b.type == "text")
+                data = json.loads(text)
+                kind, *rest = cid.split("::")
+                if kind == "era":
+                    await self._apply_era_result(server_id, rest[0], rest[1], data)
+                    report["compacted"] += 1
+                elif kind == "profile":
+                    self._apply_profile_result(rest[0], data)
+                    report["profiles"] = report.get("profiles", 0) + 1
+                elif kind == "culture":
+                    self._apply_culture(server_id, data)
+                elif kind == "channel":
+                    self._apply_channel_refresh(server_id, rest[0], data)
+
+        report["provenance_fixed"] = self.repair_provenance()
         self._write_stamp(server_id, runs=(stamp or {}).get("runs", 0) + 1)
         logger.info(f"Consolidation report for {server_id}: {report}")
         return report
@@ -217,3 +350,263 @@ class MemoryConsolidator:
             l for l in tagged_content.splitlines() if not l.startswith("# "))
         merged = "\n".join(lines) + f"\n{body_new}\n"
         target.write_text(merged, encoding="utf-8")
+
+    # ---------- Pass 1: era compaction ----------
+
+    def _eligible_episodes(self, server_id: str, channel_id: str) -> dict:
+        """Episode files older than the era age, grouped by YYYY-MM."""
+        episodes_dir = (self._servers_root() / server_id / "channels"
+                        / channel_id / "episodes")
+        if not episodes_dir.exists():
+            return {}
+        cutoff = datetime.utcnow() - timedelta(days=CONSOLIDATION_ERA_AGE_DAYS)
+        groups: dict = {}
+        for f in sorted(episodes_dir.glob("*.md")):
+            if f.name.startswith("era_"):
+                continue
+            try:
+                file_date = datetime.strptime(f.name[:10], "%Y-%m-%d")
+            except ValueError:
+                continue
+            if file_date < cutoff:
+                groups.setdefault(f.name[:7], []).append(f)
+        return groups
+
+    def _build_era_requests(self, server_id: str) -> list:
+        requests = []
+        channels_dir = self._servers_root() / server_id / "channels"
+        if not channels_dir.exists():
+            return requests
+        for ch_dir in sorted(p for p in channels_dir.iterdir() if p.is_dir()):
+            for month, files in self._eligible_episodes(server_id, ch_dir.name).items():
+                corpus = "\n\n---\n\n".join(
+                    f.read_text(encoding="utf-8") for f in files)
+                requests.append({
+                    "custom_id": f"era::{ch_dir.name}::{month}",
+                    "params": {
+                        "model": self.config.api.consolidation_model,
+                        "max_tokens": CONSOLIDATION_MAX_TOKENS,
+                        "system": ERA_SYSTEM_PROMPT,
+                        "messages": [{"role": "user", "content":
+                            f"<episodes channel_id=\"{ch_dir.name}\" month=\"{month}\">\n"
+                            f"{corpus}\n</episodes>"}],
+                        "output_config": {"format": {"type": "json_schema",
+                                                     "schema": ERA_DIGEST_SCHEMA}},
+                    },
+                })
+        return requests
+
+    async def _apply_era_result(self, server_id: str, channel_id: str,
+                                month: str, data: dict) -> None:
+        episodes_dir = (self._servers_root() / server_id / "channels"
+                        / channel_id / "episodes")
+        slug = re.sub(r"[^a-z0-9-]", "", data["slug"].lower().replace(" ", "-"))[:40] or "era"
+        era_file = episodes_dir / f"era_{month}_{slug}.md"
+        body = [f"# {data['title']} ({month})", "", data["summary_markdown"], ""]
+        for heading, key in (("Standing Facts", "standing_facts"),
+                             ("Memorable Moments", "memorable_moments"),
+                             ("Running Jokes", "running_jokes"),
+                             ("Decisions", "decisions")):
+            if data[key]:
+                body.append(f"## {heading}")
+                body.extend(f"- {item}" for item in data[key])
+                body.append("")
+        era_file.write_text("\n".join(body), encoding="utf-8")
+
+        # archive + remove originals; rewrite the channel-state episode index
+        compacted_starts = []
+        for f in self._eligible_episodes(server_id, channel_id).get(month, []):
+            parts = f.name.split("_")
+            if len(parts) >= 3:
+                compacted_starts.append(parts[2])
+            archive_to_history(f)
+            f.unlink()
+        self._rewrite_index_after_compaction(server_id, channel_id, month,
+                                             data["title"], era_file.name,
+                                             compacted_starts)
+
+    def _rewrite_index_after_compaction(self, server_id, channel_id, month,
+                                        title, era_filename, compacted_starts):
+        state_fs = self._servers_root() / server_id / "channels" / f"{channel_id}.md"
+        if not state_fs.exists():
+            return
+        content = state_fs.read_text(encoding="utf-8")
+        parts = content.split("\n## Episode Index")
+        if len(parts) < 2:
+            return
+        keep = [l for l in parts[1].splitlines()
+                if not any(f"msgs {start}-" in l for start in compacted_starts)]
+        era_line = f"- {month} | Era digest: {title} | {era_filename}"
+        lines = [l for l in keep if l.strip()]
+        archive_to_history(state_fs)
+        state_fs.write_text(
+            parts[0] + "\n## Episode Index\n" + era_line + "\n" + "\n".join(lines) + "\n",
+            encoding="utf-8")
+
+    # ---------- Pass 2: profile rewrites ----------
+
+    def _vaulted_channel_ids(self, server_id: str) -> list:
+        if not self.vaults or not self.vaults.vaults:
+            return []
+        return [v for v in self.vaults.vaults if v != server_id]
+
+    async def _build_profile_requests(self, server_id: str) -> list:
+        if self.vaults and server_id in getattr(self.vaults, "vaults", set()):
+            return []  # vaulted server evidence never updates global profiles
+        since = datetime.utcnow() - timedelta(days=CONSOLIDATION_INTERVAL_DAYS)
+        authors = await self.message_memory.get_active_authors(server_id, since)
+        exclude = self._vaulted_channel_ids(server_id)
+        episodes_blurb = self._recent_episode_blurb(server_id)
+        requests = []
+        for uid in authors:
+            if uid == "SYSTEM" or not uid.isdigit():
+                continue
+            msgs = await self.message_memory.get_user_messages(
+                uid, server_id, limit=CONSOLIDATION_EVIDENCE_MESSAGES,
+                exclude_channel_ids=exclude or None)
+            if not msgs:
+                continue
+            transcript = "\n".join(
+                f"[{m.timestamp:%Y-%m-%d %H:%M}] {m.author_name}: {m.content or '[no text]'}"
+                for m in reversed(msgs))
+            gpath = self.memory.get_global_user_profile_path(uid)
+            existing = self.memory.resolve_path(gpath)
+            current = existing.read_text(encoding="utf-8") if existing.exists() else "(no profile yet)"
+            requests.append({
+                "custom_id": f"profile::{uid}",
+                "params": {
+                    "model": self.config.api.consolidation_model,
+                    "max_tokens": CONSOLIDATION_MAX_TOKENS,
+                    "system": PROFILE_SYSTEM_PROMPT,
+                    "messages": [{"role": "user", "content":
+                        f"This server's id: {server_id}\n\n"
+                        f"<current_profile>\n{current}\n</current_profile>\n\n"
+                        f"<recent_episodes>\n{episodes_blurb}\n</recent_episodes>\n\n"
+                        f"<recent_messages user_id=\"{uid}\">\n{transcript}\n</recent_messages>"}],
+                    "output_config": {"format": {"type": "json_schema",
+                                                 "schema": PROFILE_SCHEMA}},
+                },
+            })
+        return requests
+
+    def _recent_episode_blurb(self, server_id: str) -> str:
+        """Newest few episode files server-wide (non-vaulted channels)."""
+        vaulted = set(self._vaulted_channel_ids(server_id))
+        channels_dir = self._servers_root() / server_id / "channels"
+        candidates = []
+        if channels_dir.exists():
+            for ch_dir in channels_dir.iterdir():
+                if not ch_dir.is_dir() or ch_dir.name in vaulted:
+                    continue
+                candidates.extend((ch_dir / "episodes").glob("*.md")
+                                  if (ch_dir / "episodes").exists() else [])
+        newest = sorted(candidates, key=lambda p: p.name)[-CONSOLIDATION_EVIDENCE_EPISODES:]
+        return "\n\n---\n\n".join(f.read_text(encoding="utf-8") for f in newest) or "(none)"
+
+    def _apply_profile_result(self, uid: str, data: dict) -> None:
+        target = self.memory.resolve_path(self.memory.get_global_user_profile_path(uid))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        archive_to_history(target)
+        target.write_text(render_profile(data), encoding="utf-8")
+
+    # ---------- Pass 3: provenance repair ----------
+
+    def repair_provenance(self) -> int:
+        """Pass 3 (code-only): every claim line gets an origin tag; single-server
+        files inherit that server, otherwise 'unspecified'."""
+        gdir = self.memory.get_global_users_dir()
+        if not gdir.exists():
+            return 0
+        fixed = 0
+        for f in gdir.glob("*.md"):
+            content = f.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            known = lines[1] if len(lines) > 1 and lines[1].startswith("Known from:") else ""
+            ids = re.findall(r"\((\d+)\)", known)
+            default_origin = ids[0] if len(ids) == 1 else "unspecified"
+            changed = False
+            for i, line in enumerate(lines):
+                if line.lstrip().startswith("- ") and "[origin:" not in line:
+                    lines[i] = f"{line} [origin: {default_origin}]"
+                    changed = True
+            if changed:
+                archive_to_history(f)
+                f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                fixed += 1
+        return fixed
+
+    # ---------- Pass 4: monthly channel/culture refresh ----------
+
+    def _build_refresh_requests(self, server_id: str) -> list:
+        """Build channel + culture requests when the culture pass is due."""
+        if not self._culture_due(server_id):
+            return []
+        from core.episode_manager import split_channel_state
+        requests = []
+        channels_dir = self._servers_root() / server_id / "channels"
+        channel_bodies = {}  # cid -> body text for the culture request
+        if channels_dir.exists():
+            for ch_dir in sorted(p for p in channels_dir.iterdir() if p.is_dir()):
+                cid = ch_dir.name
+                state_fs = channels_dir / f"{cid}.md"
+                if not state_fs.exists():
+                    continue
+                state_content = state_fs.read_text(encoding="utf-8")
+                body, _ = split_channel_state(state_content)
+                channel_bodies[cid] = body
+                # Collect newest N episode/era files
+                ep_dir = ch_dir / "episodes"
+                ep_files = []
+                if ep_dir.exists():
+                    ep_files = sorted(ep_dir.glob("*.md"), key=lambda p: p.name)
+                    ep_files = ep_files[-CONSOLIDATION_EVIDENCE_EPISODES:]
+                episodes_text = "\n\n---\n\n".join(
+                    f.read_text(encoding="utf-8") for f in ep_files) or "(none)"
+                requests.append({
+                    "custom_id": f"channel::{cid}",
+                    "params": {
+                        "model": self.config.api.consolidation_model,
+                        "max_tokens": CONSOLIDATION_MAX_TOKENS,
+                        "system": REFRESH_SYSTEM_PROMPT,
+                        "messages": [{"role": "user", "content":
+                            f"<channel_state channel_id=\"{cid}\">\n{body}\n</channel_state>\n\n"
+                            f"<recent_episodes>\n{episodes_text}\n</recent_episodes>"}],
+                        "output_config": {"format": {"type": "json_schema",
+                                                     "schema": CHANNEL_BODY_SCHEMA}},
+                    },
+                })
+        # Culture request: current culture.md + all channel bodies
+        culture_fs = self._servers_root() / server_id / "culture.md"
+        culture_text = culture_fs.read_text(encoding="utf-8") if culture_fs.exists() else "(no culture file yet)"
+        channels_summary = "\n\n".join(
+            f"<channel id=\"{cid}\">\n{body}\n</channel>"
+            for cid, body in channel_bodies.items())
+        requests.append({
+            "custom_id": "culture",
+            "params": {
+                "model": self.config.api.consolidation_model,
+                "max_tokens": CONSOLIDATION_MAX_TOKENS,
+                "system": CULTURE_SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content":
+                    f"<culture>\n{culture_text}\n</culture>\n\n"
+                    f"<channels>\n{channels_summary}\n</channels>"}],
+                "output_config": {"format": {"type": "json_schema",
+                                             "schema": CULTURE_SCHEMA}},
+            },
+        })
+        return requests
+
+    def _apply_channel_refresh(self, server_id: str, channel_id: str, data: dict) -> None:
+        from core.episode_manager import render_channel_state, split_channel_state
+        state_fs = self._servers_root() / server_id / "channels" / f"{channel_id}.md"
+        if not state_fs.exists():
+            return
+        _, index_lines = split_channel_state(state_fs.read_text(encoding="utf-8"))
+        archive_to_history(state_fs)
+        state_fs.write_text(
+            render_channel_state(channel_id, data, index_lines), encoding="utf-8")
+
+    def _apply_culture(self, server_id: str, data: dict) -> None:
+        culture_fs = self._servers_root() / server_id / "culture.md"
+        archive_to_history(culture_fs)
+        culture_fs.write_text(data["culture_markdown"], encoding="utf-8")

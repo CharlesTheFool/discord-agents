@@ -851,6 +851,39 @@ class MessageMemory:
         rows = await cursor.fetchall()
         return [self._row_to_message(row) for row in rows]
 
+    async def get_active_authors(self, server_id: str, since: datetime) -> List[str]:
+        """Distinct human author_ids in a server since a cutoff."""
+        cursor = await self._db.execute(
+            """
+            SELECT DISTINCT author_id FROM messages
+            WHERE guild_id = ? AND is_bot = 0 AND is_system = 0 AND timestamp > ?
+            """,
+            (server_id, since.isoformat()),
+        )
+        rows = await cursor.fetchall()
+        return [r["author_id"] for r in rows]
+
+    async def get_user_messages(
+        self, author_id: str, server_id: str, limit: int = 80,
+        exclude_channel_ids: Optional[List[str]] = None,
+    ) -> List[StoredMessage]:
+        """Latest messages by one user in one server (newest first), for
+        profile-rewrite evidence."""
+        sql = """
+            SELECT * FROM messages
+            WHERE author_id = ? AND guild_id = ? AND is_system = 0
+        """
+        params: list = [author_id, server_id]
+        if exclude_channel_ids:
+            ph = ",".join("?" for _ in exclude_channel_ids)
+            sql += f" AND channel_id NOT IN ({ph})"
+            params.extend(exclude_channel_ids)
+        sql += " ORDER BY CAST(message_id AS INTEGER) DESC LIMIT ?"
+        params.append(limit)
+        cursor = await self._db.execute(sql, tuple(params))
+        rows = await cursor.fetchall()
+        return [self._row_to_message(r) for r in rows]
+
     def _row_to_message(self, row: aiosqlite.Row) -> StoredMessage:
         """Convert database row to StoredMessage"""
         timestamp = datetime.fromisoformat(row["timestamp"])
