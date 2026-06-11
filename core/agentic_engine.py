@@ -135,6 +135,13 @@ class AgenticEngine:
         self.consolidator = None
         self._consolidation_task = None
 
+        # Prime coordination (v0.9): approved ask_prime sends, drained
+        # immediately and again each loop tick (quiet hours defer them).
+        # WatchManager attached by bot_manager.
+        self._coordination_queue = []
+        self._coordination_tasks = set()
+        self.watch_manager = None
+
         # Track background task
         self._task = None
         self._running = False
@@ -211,6 +218,9 @@ class AgenticEngine:
                         await self._execute_action(action)
                     except Exception as e:
                         logger.error(f"Error executing action {action.type}: {e}", exc_info=True)
+
+                # Coordination backstop: anything quiet hours deferred (v0.9)
+                await self._drain_coordination_queue()
 
                 # Memory maintenance (daily)
                 current_hour = datetime.now().hour
@@ -570,6 +580,8 @@ class AgenticEngine:
             await self._execute_followup(action)
         elif action.type == "proactive":
             await self._execute_proactive_message(action)
+        elif action.type == "coordination":
+            await self._execute_coordination_message(action)
         elif action.type == "maintenance":
             # Already handled in maintain_memories()
             pass
@@ -926,6 +938,128 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
 
         except Exception as e:
             logger.error(f"Error sending proactive message: {e}", exc_info=True)
+
+    def enqueue_coordination(self, action: ProactiveAction) -> None:
+        """Queue a Prime-approved cross-server send (v0.9). Drained
+        immediately; quiet-hours deferrals wait for the hourly backstop."""
+        self._coordination_queue.append(action)
+        try:
+            task = asyncio.create_task(self._drain_coordination_queue())
+            self._coordination_tasks.add(task)
+            task.add_done_callback(self._coordination_tasks.discard)
+        except RuntimeError:
+            pass  # no running loop (tests) - the hourly backstop drains it
+
+    async def _drain_coordination_queue(self) -> None:
+        """Send queued coordination messages; stop at the first gate so
+        deferred sends retry next tick instead of being dropped."""
+        while self._coordination_queue:
+            action = self._coordination_queue[0]
+            current_hour = datetime.now().hour
+            if current_hour in self._proactive_config["quiet_hours"]:
+                logger.info("Coordination deferred: quiet hours")
+                return
+            if not await self._check_proactive_rate_limits(action.server_id, action.channel_id):
+                logger.info("Coordination deferred: proactive rate limits")
+                return
+            self._coordination_queue.pop(0)
+            try:
+                await self._execute_coordination_message(action)
+            except Exception as e:
+                logger.error(f"Coordination send failed: {e}", exc_info=True)
+
+    async def _execute_coordination_message(self, action: ProactiveAction):
+        """
+        Deliver a Prime-approved message in the target channel (v0.9).
+
+        Same skeleton as a proactive send, but the Prime already judged
+        whether to speak - the particular only phrases it in its own voice
+        and in the room's register. No engagement experiment, no
+        should_send escape hatch.
+        """
+        if not self.discord_client:
+            logger.error("Cannot send coordination message: Discord client not set")
+            return
+
+        try:
+            channel = self.discord_client.get_channel(int(action.channel_id))
+            if not channel:
+                logger.warning(f"Coordination target channel {action.channel_id} not found")
+                return
+
+            guild = channel.guild
+            bot_display_name = guild.me.display_name if guild and guild.me else "Assistant"
+
+            base_prompt = (
+                self.config.personality.base_prompt
+                if self.config.personality
+                else "You are a helpful Discord bot assistant."
+            )
+
+            system_prompt = f"""You are {bot_display_name}.
+
+{base_prompt}
+
+# Word From Your Prime
+
+Your presence in another place asked your Prime to carry something into
+this room, and the Prime agreed. Say it here in your own voice, the way
+this room talks - brief, natural, and honest about where it comes from."""
+
+            recent_messages = await self.message_memory.get_recent(action.channel_id, limit=10)
+            user_parts = ["Recent conversation:", ""]
+            if recent_messages:
+                own_id = (str(self.discord_client.user.id)
+                          if self.discord_client and self.discord_client.user else None)
+                for msg in recent_messages[-5:]:
+                    author = ("Assistant (you)"
+                              if str(msg.author_id) == own_id or (own_id is None and msg.is_bot)
+                              else msg.author_name)
+                    user_parts.append(f"[{msg.timestamp:%H:%M}] **{author}**: {msg.content}")
+            else:
+                user_parts.append("(No recent messages)")
+
+            user_parts.append("")
+            user_parts.append(f"What to carry into this room: {action.message}")
+            if action.context:
+                user_parts.append(f"Where it comes from: {action.context}")
+
+            api_params = {
+                "model": self.config.api.model,
+                "max_tokens": 1500,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": "\n".join(user_parts)}],
+                "output_config": self._build_output_config(FOLLOWUP_MESSAGE_SCHEMA),
+            }
+
+            response = await self.anthropic.messages.create(**api_params)
+            response_text = "".join(b.text for b in response.content if b.type == "text")
+            if not response_text.strip():
+                logger.warning("Coordination generation produced no text; skipping send")
+                return
+
+            generated = json.loads(response_text)["message"].strip()
+
+            from .discord_client import split_message
+            for chunk in split_message(generated):
+                await channel.send(chunk)
+
+            self._increment_proactive_counter(action.channel_id)
+
+            if self.message_memory:
+                await self.message_memory.add_event(
+                    "relay", action.server_id, action.channel_id,
+                    {
+                        "triggers": [], "thinking": "", "tool_calls": [],
+                        "response": generated,
+                        "provenance": action.context or "carried by the Prime",
+                    },
+                )
+
+            logger.info(f"Coordination message delivered to channel {action.channel_id}")
+
+        except Exception as e:
+            logger.error(f"Error sending coordination message: {e}", exc_info=True)
 
     async def settle_pending_engagements(self):
         """

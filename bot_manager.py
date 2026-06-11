@@ -187,6 +187,13 @@ class BotManager:
             )
             logger.info("Memory consolidator initialized (weekly, 3am hook)")
 
+            # Standing watches (v0.9) live in the global memory tree
+            from core.watch_manager import WatchManager
+            agentic_engine.watch_manager = WatchManager(
+                memory_manager.resolve_path(
+                    f"/memories/{self.bot_id}/global/watches.json"))
+            logger.info("Watch manager initialized")
+
         # Initialize Discord client (ties everything together)
         self.client = DiscordClient(
             config=self.config,

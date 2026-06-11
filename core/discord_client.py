@@ -362,6 +362,21 @@ class DiscordClient(discord.Client):
             self.reactive_engine.repository_manager.guild_name_resolver = (
                 lambda gid: self.get_guild(int(gid)).name
                 if gid.isdigit() and self.get_guild(int(gid)) else None)
+
+        # ask_prime executor (v0.9) - needs the connected client for guild
+        # resolution; agentic engine carries the watch manager + send queue
+        if self.agentic_engine and self.agentic_engine.watch_manager:
+            from tools.ask_prime import AskPrimeExecutor
+            self.reactive_engine.ask_prime_executor = AskPrimeExecutor(
+                anthropic=self.reactive_engine.anthropic,
+                model=self.config.api.model,
+                vault_ids=self.config.vaults,
+                watch_manager=self.agentic_engine.watch_manager,
+                agentic_engine=self.agentic_engine,
+                discord_client=self,
+                message_memory=self.message_memory,
+            )
+            logger.info("ask_prime executor initialized")
         logger.info("Discord tools enabled")
 
         # Start periodic conversation scanning

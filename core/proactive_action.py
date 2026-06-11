@@ -16,7 +16,7 @@ class ProactiveAction:
     Used by AgenticEngine to schedule and execute autonomous behaviors.
     """
 
-    type: str  # "followup" | "proactive" | "maintenance"
+    type: str  # "followup" | "proactive" | "maintenance" | "coordination"
     priority: str  # "high" | "medium" | "low"
     server_id: str
     channel_id: str
@@ -30,7 +30,7 @@ class ProactiveAction:
 
     def __post_init__(self):
         """Validate action fields"""
-        valid_types = ["followup", "proactive", "maintenance"]
+        valid_types = ["followup", "proactive", "maintenance", "coordination"]
         if self.type not in valid_types:
             raise ValueError(f"Invalid type: {self.type}. Must be {valid_types}")
 

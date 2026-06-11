@@ -287,6 +287,9 @@ class ReactiveEngine:
         self.discord_tool_executor = None
         self._discord_tools_enabled = True  # Always enabled for Phase 4
 
+        # ask_prime executor (v0.9) - constructed in on_ready (needs the client)
+        self.ask_prime_executor = None
+
         # Initialize v0.5.0 managers
         # MCP Manager
         self.mcp_manager = None
@@ -849,12 +852,16 @@ class ReactiveEngine:
             + "\n</context_update>"
         )
 
-    def _build_api_params(self, system_blocks: list, conversation_state, context) -> dict:
+    def _build_api_params(self, system_blocks: list, conversation_state, context,
+                          is_dm: bool = False) -> dict:
         """
         Assemble the Messages API request shared by both response paths:
         tool registry, beta headers, message history, skills container,
         thinking and effort. The skills catalog joins the cached system
         prefix (it changes only when active skills change).
+
+        is_dm (v0.9): DM requests don't get ask_prime - a DM already IS the
+        Prime. Tool sets stay stable per channel, so the cache holds.
         """
         if self.skills_manager and conversation_state:
             skills_prompt = self.context_builder.build_skills_prompt(
@@ -873,6 +880,11 @@ class ReactiveEngine:
         if self.repository_manager:
             from tools.repository_tool import get_repository_tool
             tools.append(get_repository_tool())
+
+        # ask_prime (v0.9): server contexts only
+        if self.ask_prime_executor and not is_dm:
+            from tools.ask_prime import ASK_PRIME_TOOL
+            tools.append(ASK_PRIME_TOOL)
 
         beta_headers = []
         if self.web_search_enabled:
@@ -1125,6 +1137,23 @@ class ReactiveEngine:
                     )
                 else:
                     result = "Error: repository feature not enabled"
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result
+                })
+
+            # ask_prime (v0.9) - MUST precede the MCP "_" fallthrough
+            elif block.name == "ask_prime":
+                note("prime", "ask_prime", kv(block.input))
+                if self.ask_prime_executor and server_id is not None:
+                    result = await self.ask_prime_executor.execute(
+                        block.input,
+                        current_server_id=server_id,
+                        current_channel_id=channel_id,
+                    )
+                else:
+                    result = "ask_prime isn't available here."
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -1553,7 +1582,9 @@ class ReactiveEngine:
                         context.get("time_context", ""), conversation_state, message
                     )
 
-                    api_params = self._build_api_params(system_blocks, conversation_state, context)
+                    api_params = self._build_api_params(
+                        system_blocks, conversation_state, context,
+                        is_dm=message.guild is None)
                     # Usage recorded later must match the session we measured
                     seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
@@ -1662,7 +1693,8 @@ class ReactiveEngine:
                 volatile_tail = await self._build_volatile_tail(
                     context.get("time_context", ""), conversation_state, synthetic)
 
-                api_params = self._build_api_params(system_blocks, conversation_state, context)
+                api_params = self._build_api_params(
+                    system_blocks, conversation_state, context, is_dm=True)
                 seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
                 result = await self._run_tool_loop(
@@ -2139,7 +2171,9 @@ class ReactiveEngine:
                 message,
             )
 
-            api_params = self._build_api_params(system_blocks, conversation_state, context)
+            api_params = self._build_api_params(
+                system_blocks, conversation_state, context,
+                is_dm=message.guild is None)
             # Usage recorded later must match the session we measured
             seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
