@@ -32,6 +32,13 @@ async function boot() {
   document.getElementById("bot-name").textContent = botId;
   document.title = `Discord Agents — ${botId}`;
 
+  apiGet("/api/supervisor").then((sup) => {
+    document.getElementById("top-version").textContent =
+      `v${sup.version} · localhost:${sup.port}`;
+    document.getElementById("foot-version").textContent =
+      `SUPERVISOR v${sup.version}`;
+  }).catch(() => {});
+
   const status = await apiGet(A("/status"));
   renderNameplate(status);
 
@@ -410,7 +417,8 @@ function renderGauges(s) {
     </div>
     <div class="gauge g-info">
       <div class="k">Tokens today</div>
-      <div class="v figs">${tokens(t.cache_read + t.uncached_in + t.out)}</div>
+      <div class="v figs">${tokens(t.cache_read + t.uncached_in + t.out)}${
+        s.cost_today_usd != null ? `<small> ≈ $${s.cost_today_usd.toFixed(2)}</small>` : ""}</div>
       <div class="meta figs">${tokens(t.cache_read)} read · ${tokens(t.uncached_in)} in · ${tokens(t.out)} out</div>
     </div>`;
 }
@@ -541,21 +549,54 @@ function wireActivity() {
 
 /* ============================ Configure ============================ */
 
-/* Optional schema hints — the real form walks the config generically and
-   consults these (sourced from Config.validate) only for labels, help,
-   enums, and which strings are textareas. Unknown keys still render. */
-/* Enums/labels/help mirror core/config.py (validate()) + internal_constants
-   presets. The form still walks the config generically — unknown keys render
-   from inferred type; HINTS only enrich. */
+/* Knowledge mirrored from core/config.py + internal_constants.py. The form
+   renders ESSENTIALS first (always, with defaults filled in even when the
+   YAML omits a key), then everything else inside a collapsed Advanced
+   section. Checkboxes mean one thing: checked = on. */
+
+const MODEL_OPTIONS = [
+  "claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+];
+// mirrors internal_constants._EFFORT_CAPABLE_MARKERS
+const EFFORT_MARKERS = ["fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6"];
+const supportsEffort = (m) => EFFORT_MARKERS.some((x) => (m || "").includes(x));
+
+/* config.py defaults - merged under the loaded YAML so every essential
+   renders even in a minimal config */
+const DEFAULTS = {
+  discord: { servers: [], timezone: "UTC", status: "Powered by Claude",
+    allow_bot_interactions: false, backfill_enabled: true, backfill_days: 30 },
+  personality: { base_prompt: "", reaction_usage: "moderate" },
+  reactive: { enabled: true, always_respond_to_mentions: true,
+    rate_limit: "moderate", check_interval_seconds: 60 },
+  agentic: { enabled: false, check_interval_hours: 1.0,
+    followups: { enabled: false },
+    proactive: { enabled: false, intensity: "moderate",
+      quiet_hours: [0, 1, 2, 3, 4, 5, 6], allowed_channels: [] } },
+  api: { model: "claude-sonnet-4-6", max_tokens: 4096, context_messages: 30,
+    context_tokens: 80000, effort: null, consolidation_model: "claude-sonnet-4-6",
+    thinking: { enabled: true }, web_search: { enabled: false } },
+  mcp: { enabled: false },
+  skills: { include_anthropic_skills: true, default_skills: ["pdf"] },
+  attachments: { enabled: false, backfill_enabled: true, backfill_days: 30,
+    repository: { enabled: true } },
+  logging: { level: "INFO" },
+  vaults: [],
+};
+
+const HIDDEN = new Set(["bot_id", "discord.token_env_var", "logging.file"]);
+
 const HINTS = {
-  "discord.servers": { label: "Servers", help: "Discord server (guild) ids this bot lives in.", widget: "chips" },
+  "name": { label: "Name", help: "Display name in the dashboard." },
+  "description": { label: "Description", help: "A note to yourself - the bot doesn't see it." },
+  "discord.servers": { label: "Servers", help: "Which of its Discord servers this bot engages with. Inviting the bot to a server happens on Discord; this only selects among them.", widget: "guilds" },
   "discord.status": { label: "Status", help: "Activity line shown under the bot in Discord." },
   "discord.timezone": { label: "Timezone", help: "IANA tz; drives quiet-hours and timestamps." },
   "discord.allow_bot_interactions": { label: "Reply to other bots", help: "Whether other bots can trigger this one." },
   "discord.backfill_enabled": { label: "Backfill history", help: "Pull prior channel history on first join." },
   "discord.backfill_days": { label: "Backfill days", help: "Days of history to pull. 0 = unlimited." },
 
-  "personality.base_prompt": { label: "Personality", help: "The standing prompt — who this bot is.", widget: "prompt" },
+  "personality.base_prompt": { label: "Personality", help: "The standing prompt — who this bot is. The single most load-bearing field.", widget: "prompt" },
   "personality.reaction_usage": { label: "Reaction usage", options: ["never", "rare", "moderate", "frequent"], help: "How often it adds emoji reactions." },
 
   "reactive.enabled": { label: "Reactive engine", help: "Answers @mentions and scans conversation." },
@@ -563,22 +604,22 @@ const HINTS = {
   "reactive.rate_limit": { label: "Rate limit", options: ["strict", "moderate", "permissive", "unlimited"], help: "Preset governing how often it answers." },
   "reactive.check_interval_seconds": { label: "Scan interval", help: "Seconds between periodic conversation scans.", min: 1 },
 
-  "agentic.enabled": { label: "Agentic engine", help: "The background loop (proactive + follow-ups)." },
+  "agentic.enabled": { label: "Agentic engine", help: "The background loop — proactive engagement and follow-ups." },
   "agentic.check_interval_hours": { label: "Loop interval", help: "Hours between agentic wake-ups." },
   "agentic.followups.enabled": { label: "Follow-ups", help: "Lets the bot schedule and fire follow-ups." },
   "agentic.proactive.enabled": { label: "Proactive engagement", help: "Opening conversations unprompted." },
   "agentic.proactive.intensity": { label: "Intensity", options: ["gentle", "moderate", "active"], help: "Preset: idle window + per-day caps." },
-  "agentic.proactive.quiet_hours": { label: "Quiet hours", help: "Local-clock hours (0–23) it stays silent.", widget: "chips" },
-  "agentic.proactive.allowed_channels": { label: "Allowed channels", help: "Where proactive openings are permitted. Empty = none.", widget: "chips" },
+  "agentic.proactive.quiet_hours": { label: "Quiet hours", help: "Local-clock hours when it stays silent. Click hours to toggle.", widget: "hours" },
+  "agentic.proactive.allowed_channels": { label: "Proactive channels", help: "Where unprompted openings are permitted. Empty = none.", widget: "channels" },
 
-  "api.model": { label: "Model", options: ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-8"] },
+  "api.model": { label: "Model", options: MODEL_OPTIONS, help: "The mind. Fable 5 is the most capable; Haiku the most economical." },
   "api.max_tokens": { label: "Max tokens", help: "Cap on tokens per response." },
   "api.context_messages": { label: "Context messages", help: "Live messages kept before reseed (5–100).", min: 5, max: 100 },
   "api.context_tokens": { label: "Context ceiling", help: "Token budget before distill + reseed." },
-  "api.effort": { label: "Effort", options: ["low", "medium", "high", "max"], help: "Cost dial. Rejected at startup on models without effort support." },
-  "api.consolidation_model": { label: "Consolidation model", options: ["claude-sonnet-4-6", "claude-haiku-4-5"], help: "Model used to distill episodes." },
+  "api.effort": { label: "Effort", help: "Depth-of-thought dial. Only models with effort support show this.", widget: "effort" },
+  "api.consolidation_model": { label: "Memory model", options: ["claude-sonnet-4-6", "claude-haiku-4-5"], help: "Distills episodes, runs weekly reconsolidation, and powers induction." },
   "api.thinking.enabled": { label: "Extended thinking", help: "Adaptive thinking; the model decides when." },
-  "api.web_search.enabled": { label: "Web search", help: "All-or-nothing live web lookup tool." },
+  "api.web_search.enabled": { label: "Web search", help: "Live web lookups when conversation calls for it." },
 
   "mcp.enabled": { label: "MCP servers", help: "Load Model Context Protocol servers (see Integrations)." },
   "skills.include_anthropic_skills": { label: "Built-in skills", help: "Include the Anthropic skill set (pdf, xlsx, …)." },
@@ -593,21 +634,54 @@ const HINTS = {
 
   "vaults": { label: "Vaults", help: "Channel/server ids whose content never leaves them. Empty = none.", widget: "chips" },
 };
-const GROUP_NOTES = {
-  personality: "The single most load-bearing field. Changes here reshape every reply.",
-  mcp: "Servers are added and monitored on the Integrations tab.",
-};
 
-let cfg = null, cfgDirty = false;
+const ESSENTIAL_GROUPS = [
+  { title: "Identity", items: ["name", "personality.base_prompt", "personality.reaction_usage"] },
+  { title: "Connection", items: ["__token__", "discord.servers"] },
+  { title: "Brain", items: ["api.model", "api.effort", "api.web_search.enabled"] },
+  { title: "Engagement", items: [
+    "reactive.enabled", "agentic.enabled", "agentic.proactive.enabled",
+    "agentic.proactive.intensity", "agentic.proactive.allowed_channels",
+    "agentic.proactive.quiet_hours", "agentic.followups.enabled"] },
+];
+const ESSENTIAL_SET = new Set(ESSENTIAL_GROUPS.flatMap((g) => g.items));
+
+let cfg = null, cfgDirty = false, setupInfo = null;
+
+function deepMerge(base, over) {
+  if (Array.isArray(base) || Array.isArray(over) || typeof base !== "object"
+      || typeof over !== "object" || base === null || over === null)
+    return over === undefined ? base : over;
+  const out = { ...base };
+  for (const k of Object.keys(over)) out[k] = deepMerge(base[k], over[k]);
+  return out;
+}
+
+const getNested = (obj, path) =>
+  path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+
+function setNested(obj, path, value) {
+  const keys = path.split(".");
+  let cur = obj;
+  for (const k of keys.slice(0, -1)) cur = (cur[k] = cur[k] ?? {});
+  cur[keys.at(-1)] = value;
+}
 
 async function loadConfigure() {
-  cfg = await apiGet(A("/config"));
+  [cfg, setupInfo] = await Promise.all([
+    apiGet(A("/config")), apiGet("/api/setup").catch(() => null)]);
+  cfg = deepMerge(DEFAULTS, cfg);
   const form = document.getElementById("cfg-form");
   buildForm();
   form.addEventListener("input", () => setDirty(true));
   form.addEventListener("change", (e) => {
-    if (e.target.matches('.toggle input')) {
-      e.target.parentElement.lastChild.textContent = ` ${e.target.checked ? "enabled" : "disabled"}`;
+    // model switch shows/hides the effort dial
+    if (e.target.closest('.field[data-path="api.model"]')) renderEffortGate();
+  });
+  form.addEventListener("click", onFormClick);
+  form.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.matches(".chip-in")) {
+      e.preventDefault(); addChipFrom(e.target);
     }
   });
   document.getElementById("cfg-save").addEventListener("click", saveConfig);
@@ -619,35 +693,52 @@ async function loadConfigure() {
 }
 
 function buildForm() {
-  document.getElementById("cfg-form").innerHTML =
-    Object.keys(cfg).map((section) => groupHTML(section, cfg[section])).join("");
+  const essentials = ESSENTIAL_GROUPS.map((g) => `
+    <div class="cfg-group">
+      <h3>${esc(g.title)}</h3>
+      ${g.items.map((p) => p === "__token__" ? tokenFieldHTML() : fieldHTML(p)).join("")}
+    </div>`).join("");
+
+  // Advanced: everything else in the merged config, grouped by section
+  const advanced = Object.keys(cfg).map((section) => {
+    const fields = collectPaths(cfg[section], section)
+      .filter((p) => !ESSENTIAL_SET.has(p) && !HIDDEN.has(p))
+      .map((p) => fieldHTML(p)).join("");
+    return fields ? `<div class="cfg-group"><h3>${esc(section)}</h3>${fields}</div>` : "";
+  }).join("");
+
+  document.getElementById("cfg-form").innerHTML = essentials + `
+    <details class="cfg-adv">
+      <summary>Advanced settings</summary>
+      <div class="adv-body">${advanced}</div>
+    </details>`;
+  renderEffortGate();
+  refreshTokenStatus();
 }
 
-function groupHTML(section, val) {
-  const note = GROUP_NOTES[section] ? `<div class="note">${GROUP_NOTES[section]}</div>` : "";
-  return `<div class="cfg-group"><h3>${section}</h3>${note}${walk(val, section)}</div>`;
+/* every leaf path under a config subtree */
+function collectPaths(val, path) {
+  if (Array.isArray(val) || typeof val !== "object" || val === null) return [path];
+  return Object.keys(val).flatMap((k) => collectPaths(val[k], `${path}.${k}`));
 }
 
-/* Recursively render a config subtree into fields. */
-function walk(val, path) {
-  if (Array.isArray(val) || typeof val !== "object" || val === null)
-    return fieldHTML(path, val);
-  return Object.keys(val).map((k) => walk(val[k], `${path}.${k}`)).join("");
-}
-
-function fieldHTML(path, val) {
+function fieldHTML(path) {
+  if (HIDDEN.has(path)) return "";
+  const val = getNested(cfg, path);
   const h = HINTS[path] || {};
   const label = h.label || path.split(".").pop().replace(/_/g, " ");
-  const widget = h.widget || inferWidget(val);
+  const widget = h.widget || inferWidget(val, h);
   const lab = `<div class="lab">
       <div class="name">${esc(label)}</div>
       <div class="path">${esc(path)}</div>
       ${h.help ? `<div class="help">${esc(h.help)}</div>` : ""}
     </div>`;
-  return `<div class="field" data-path="${esc(path)}">${lab}<div class="ctl">${ctlHTML(widget, val, h)}</div></div>`;
+  return `<div class="field" data-path="${esc(path)}" data-widget="${esc(widget)}">
+    ${lab}<div class="ctl">${ctlHTML(widget, val, h)}</div></div>`;
 }
 
-function inferWidget(val) {
+function inferWidget(val, h) {
+  if (h.options) return "select";
   if (typeof val === "boolean") return "toggle";
   if (typeof val === "number") return "number";
   if (Array.isArray(val)) return "chips";
@@ -655,28 +746,203 @@ function inferWidget(val) {
   return "text";
 }
 
+function chipsHTML(items, editable = true) {
+  const chips = (items || []).map((x) =>
+    `<span class="chip" data-val="${esc(String(x))}">${esc(String(x))}${
+      editable ? `<button class="x" type="button" title="remove">×</button>` : ""}</span>`).join("");
+  const adder = editable
+    ? `<span class="chip-adder"><input class="chip-in" placeholder="add…">` +
+      `<button class="chip-add" type="button">+</button></span>` : "";
+  return `<div class="chips ${editable ? "edit" : ""}">${chips}${adder}</div>`;
+}
+
+function hoursHTML(selected) {
+  const sel = new Set((selected || []).map(Number));
+  const cells = Array.from({ length: 24 }, (_, h) =>
+    `<span class="hr ${sel.has(h) ? "sel" : ""}" data-h="${h}">${h}</span>`).join("");
+  return `<div class="hours">${cells}</div>
+    <div class="hours-cap">shaded = quiet (host's local clock)</div>`;
+}
+
 function ctlHTML(widget, val, h) {
   switch (widget) {
     case "toggle":
-      return `<label class="toggle"><input type="checkbox" ${val ? "checked" : ""}> ${val ? "enabled" : "disabled"}</label>`;
+      return `<label class="toggle"><input type="checkbox" ${val ? "checked" : ""}></label>`;
     case "prompt":
-      return `<textarea class="prompt">${esc(String(val))}</textarea>`;
+      return `<textarea class="prompt">${esc(String(val ?? ""))}</textarea>`;
     case "number":
       return `<input type="number" value="${esc(String(val))}" ${h.min != null ? `min="${h.min}"` : ""} ${h.max != null ? `max="${h.max}"` : ""}><div class="err"></div>`;
-    case "chips": {
-      const items = Array.isArray(val) ? val : [];
-      const chips = items.length
-        ? items.map((x) => `<span class="chip">${esc(String(x))}</span>`).join("")
-        : `<span class="empty">none</span>`;
-      return `<div class="chips">${chips}</div>`;
+    case "chips":
+      return chipsHTML(val);
+    case "hours":
+      return hoursHTML(val);
+    case "guilds":
+      return chipsHTML(val) +
+        `<button class="btn small fetch-guilds" type="button">Choose from Discord…</button>
+         <div class="picker"></div><div class="err"></div>`;
+    case "channels":
+      return chipsHTML(val) +
+        `<button class="btn small fetch-channels" type="button">Choose from Discord…</button>
+         <div class="picker"></div><div class="err"></div>`;
+    case "effort": {
+      const cur = val ?? "";
+      const opts = ["", "low", "medium", "high", "max"].map((o) =>
+        `<option value="${o}" ${o === cur ? "selected" : ""}>${o || "default (high)"}</option>`).join("");
+      return `<select>${opts}</select>`;
     }
+    case "select":
+      return `<select>${(h.options || []).map((o) =>
+        `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     default:
-      if (h.options)
-        return `<select>${h.options.map((o) =>
-          `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
-      return `<input type="text" value="${esc(String(val))}"><div class="err"></div>`;
+      return `<input type="text" value="${esc(String(val ?? ""))}"><div class="err"></div>`;
   }
 }
+
+/* --- Discord token (write-only; lives in .env, not the YAML) --- */
+
+function tokenFieldHTML() {
+  return `<div class="field" data-token>
+    <div class="lab">
+      <div class="name">Discord bot token</div>
+      <div class="path">stored locally in .env</div>
+      <div class="help">From the Discord Developer Portal → your app → Bot →
+        Reset Token. Pasted once, validated against Discord, never shown again.</div>
+    </div>
+    <div class="ctl tokenctl">
+      <div class="tok-status">…</div>
+      <div class="tok-row">
+        <input type="password" class="tok-in" placeholder="paste bot token" autocomplete="off">
+        <button class="btn small tok-save" type="button">Validate &amp; save</button>
+      </div>
+      <div class="err"></div>
+    </div></div>`;
+}
+
+function refreshTokenStatus() {
+  const el = document.querySelector(".tok-status");
+  if (!el) return;
+  const me = (setupInfo?.bots || []).find((b) => b.bot_id === botId);
+  el.innerHTML = me?.token_set
+    ? `<span class="chip on"><span class="led"></span>token set</span>`
+    : `<span class="chip off"><span class="led"></span>no token yet — the bot can't log in</span>`;
+}
+
+async function saveToken(field) {
+  const input = field.querySelector(".tok-in");
+  const btn = field.querySelector(".tok-save");
+  const err = field.querySelector(".err");
+  err.style.display = "none";
+  if (!input.value.trim()) return;
+  btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const r = await fetch(A("/token"), {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: input.value.trim() }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || `Discord validation failed (${r.status})`);
+    input.value = "";
+    field.querySelector(".tok-status").innerHTML =
+      `<span class="chip on"><span class="led"></span>connected as <b>${esc(body.bot_user)}</b>${
+        body.restart_required ? " — restart to apply" : ""}</span>`;
+    setupInfo = await apiGet("/api/setup").catch(() => setupInfo);
+  } catch (e) {
+    err.textContent = e.message; err.style.display = "block";
+  }
+  btn.disabled = false; btn.textContent = "Validate & save";
+}
+
+/* --- guild / channel pickers (read live from Discord via the daemon) --- */
+
+async function openGuildPicker(field) {
+  const picker = field.querySelector(".picker");
+  const err = field.querySelector(".err");
+  err.style.display = "none";
+  picker.innerHTML = `<div class="empty">asking Discord…</div>`;
+  try {
+    const guilds = await apiGet(A("/guilds"));
+    const current = new Set(chipValues(field));
+    picker.innerHTML = guilds.map((g) => `
+      <label class="pick"><input type="checkbox" value="${esc(g.id)}"
+        ${current.has(g.id) ? "checked" : ""}>
+        ${esc(g.name)} <span class="pid">${esc(g.id)}</span></label>`).join("")
+      || `<div class="empty">this bot account isn't in any server yet — invite it from the Discord Developer Portal (OAuth2 → URL generator)</div>`;
+    field.querySelector(".chips")?.classList.add("superseded");
+  } catch (e) {
+    picker.innerHTML = "";
+    err.textContent = /409/.test(e.message)
+      ? "set the Discord token first, then I can list its servers"
+      : `couldn't reach Discord: ${e.message}`;
+    err.style.display = "block";
+  }
+  setDirty(true);
+}
+
+async function openChannelPicker(field) {
+  const picker = field.querySelector(".picker");
+  const err = field.querySelector(".err");
+  err.style.display = "none";
+  // channels come from the servers currently selected in THIS form
+  const serversField = document.querySelector('.field[data-path="discord.servers"]');
+  const serverIds = serversField ? fieldValue(serversField) : [];
+  if (!serverIds.length) {
+    err.textContent = "pick the bot's servers first (Connection, above)";
+    err.style.display = "block";
+    return;
+  }
+  picker.innerHTML = `<div class="empty">asking Discord…</div>`;
+  try {
+    const current = new Set(chipValues(field));
+    const parts = [];
+    for (const sid of serverIds) {
+      const chans = await apiGet(A(`/guilds/${encodeURIComponent(sid)}/channels`));
+      parts.push(chans.map((c) => `
+        <label class="pick"><input type="checkbox" value="${esc(c.id)}"
+          ${current.has(c.id) ? "checked" : ""}>
+          <span class="hash">${c.type === 2 ? "🔊" : "#"}</span>${esc(c.name)} <span class="pid">${esc(c.id)}</span></label>`).join(""));
+    }
+    picker.innerHTML = parts.join("") || `<div class="empty">no text channels found</div>`;
+    field.querySelector(".chips")?.classList.add("superseded");
+  } catch (e) {
+    picker.innerHTML = "";
+    err.textContent = /409/.test(e.message)
+      ? "set the Discord token first, then I can list channels"
+      : `couldn't reach Discord: ${e.message}`;
+    err.style.display = "block";
+  }
+  setDirty(true);
+}
+
+/* --- shared form interaction --- */
+
+function onFormClick(e) {
+  const field = e.target.closest(".field");
+  if (e.target.matches(".hr")) {
+    e.target.classList.toggle("sel"); setDirty(true); return;
+  }
+  if (e.target.matches(".chip .x")) {
+    e.target.closest(".chip").remove(); setDirty(true); return;
+  }
+  if (e.target.matches(".chip-add")) {
+    addChipFrom(e.target.parentElement.querySelector(".chip-in")); return;
+  }
+  if (e.target.matches(".fetch-guilds")) { openGuildPicker(field); return; }
+  if (e.target.matches(".fetch-channels")) { openChannelPicker(field); return; }
+  if (e.target.matches(".tok-save")) { saveToken(field); return; }
+}
+
+function addChipFrom(input) {
+  const v = (input.value || "").trim();
+  if (!v) return;
+  input.value = "";
+  input.closest(".chips").querySelector(".chip-adder").insertAdjacentHTML(
+    "beforebegin",
+    `<span class="chip" data-val="${esc(v)}">${esc(v)}<button class="x" type="button">×</button></span>`);
+  setDirty(true);
+}
+
+const chipValues = (field) =>
+  [...field.querySelectorAll(".chip[data-val]")].map((c) => c.dataset.val);
 
 function setDirty(d) {
   cfgDirty = d;
@@ -684,31 +950,45 @@ function setDirty(d) {
   document.getElementById("cfg-save").disabled = !d;
 }
 
-/* Collect the edited form back into a config object (chips stay read-only
-   and keep their loaded values). */
-function setNested(obj, path, value) {
-  const keys = path.split(".");
-  let cur = obj;
-  for (const k of keys.slice(0, -1)) cur = (cur[k] = cur[k] ?? {});
-  cur[keys.at(-1)] = value;
+/* Effort only renders meaningfully on effort-capable models; switching to a
+   model without it hides the dial (and the collected value goes null). */
+function renderEffortGate() {
+  const modelSel = document.querySelector('.field[data-path="api.model"] select');
+  const effortField = document.querySelector('.field[data-path="api.effort"]');
+  if (!modelSel || !effortField) return;
+  effortField.style.display = supportsEffort(modelSel.value) ? "" : "none";
+}
+
+/* read one field's current value out of the DOM */
+function fieldValue(field) {
+  const widget = field.dataset.widget;
+  const ctl = field.querySelector(".ctl");
+  switch (widget) {
+    case "toggle": return ctl.querySelector("input[type=checkbox]").checked;
+    case "prompt": return ctl.querySelector("textarea.prompt").value;
+    case "number": return Number(ctl.querySelector("input[type=number]").value);
+    case "hours":
+      return [...ctl.querySelectorAll(".hr.sel")].map((c) => Number(c.dataset.h)).sort((a, b) => a - b);
+    case "effort": {
+      const modelSel = document.querySelector('.field[data-path="api.model"] select');
+      if (modelSel && !supportsEffort(modelSel.value)) return null;
+      return ctl.querySelector("select").value || null;
+    }
+    case "select": return ctl.querySelector("select").value;
+    case "guilds": case "channels": {
+      const checks = [...ctl.querySelectorAll(".picker input[type=checkbox]")];
+      if (checks.length) return checks.filter((c) => c.checked).map((c) => c.value);
+      return chipValues(field);
+    }
+    case "chips": return chipValues(field);
+    default: return ctl.querySelector("input[type=text]").value;
+  }
 }
 
 function collectFormValues() {
   const out = structuredClone(cfg);
-  document.querySelectorAll(".field[data-path]").forEach((field) => {
-    const path = field.dataset.path;
-    const ctl = field.querySelector(".ctl");
-    const toggle = ctl.querySelector(".toggle input");
-    if (toggle) return setNested(out, path, toggle.checked);
-    const prompt = ctl.querySelector("textarea.prompt");
-    if (prompt) return setNested(out, path, prompt.value);
-    const select = ctl.querySelector("select");
-    if (select) return setNested(out, path, select.value);
-    const num = ctl.querySelector('input[type="number"]');
-    if (num) return setNested(out, path, Number(num.value));
-    const text = ctl.querySelector('input[type="text"]');
-    if (text) return setNested(out, path, text.value);
-    // chips and anything unrecognized: keep the loaded value
+  document.querySelectorAll("#cfg-form .field[data-path]").forEach((field) => {
+    setNested(out, field.dataset.path, fieldValue(field));
   });
   return out;
 }
@@ -755,8 +1035,8 @@ async function saveConfig() {
 
 /* ====================== file browser (shared) ====================== */
 
-function makeBrowser(panelId, treeData, kind) {
-  const root = document.getElementById(panelId);
+function makeBrowser(rootEl, treeData, kind) {
+  const root = typeof rootEl === "string" ? document.getElementById(rootEl) : rootEl;
   root.innerHTML = `
     <div class="browser">
       <div class="tree"></div>
@@ -813,9 +1093,16 @@ async function showFile(paneEl, node, kind) {
   const editable = kind === "memory" && isTextFile(node);
   if (node.content == null) {
     if (!isTextFile(node)) {
+      const del = kind === "repository"
+        ? `<button class="pen danger del">Delete</button>` : "";
       paneEl.innerHTML = `<div class="crumb"><span class="path">${esc(node.path)}</span>
-        <span class="meta figs">${fileMeta(node)}</span></div>
+        <span class="meta figs">${fileMeta(node)}</span>${del}</div>
         <div class="empty">Binary file — view it on disk.</div>`;
+      if (del) paneEl.querySelector(".del").onclick = async () => {
+        if (!confirm(`Delete ${node.path} from the repository?`)) return;
+        await apiSend("DELETE", A(`/repository/file?path=${encodeURIComponent(node.path)}`));
+        loadRepository();
+      };
       return;
     }
     paneEl.innerHTML = `<div class="empty">Loading…</div>`;
@@ -835,14 +1122,22 @@ function renderView(paneEl, node, kind, editable) {
   const isMd = node.name.endsWith(".md") || node.kind === "md";
   const body = isMd ? `<div class="md">${renderMarkdown(node.content)}</div>`
                     : `<pre>${esc(node.content)}</pre>`;
+  const del = kind === "repository"
+    ? `<button class="pen danger del">Delete</button>` : "";
   paneEl.innerHTML = `
     <div class="crumb">
       <span class="path">${esc(node.path)}</span>
       <span class="meta figs">${fileMeta(node)}</span>
+      ${del}
       ${editable ? `<button class="pen">Edit</button>`
                  : `<button class="pen ro">read-only</button>`}
     </div>${body}`;
-  if (editable) paneEl.querySelector(".pen").onclick = () => renderEditor(paneEl, node, kind);
+  if (editable) paneEl.querySelector(".pen:not(.del)").onclick = () => renderEditor(paneEl, node, kind);
+  if (del) paneEl.querySelector(".del").onclick = async () => {
+    if (!confirm(`Delete ${node.path} from the repository?`)) return;
+    await apiSend("DELETE", A(`/repository/file?path=${encodeURIComponent(node.path)}`));
+    loadRepository();
+  };
 }
 
 function renderEditor(paneEl, node, kind) {
@@ -890,13 +1185,153 @@ function renderMarkdown(src) {
   return html + closeList();
 }
 
+/* ---- Memories: browser + new-file + induction (memory pre-population) ---- */
+
 async function loadMemories() {
-  const tree = await apiGet(A("/memory/tree"));
-  makeBrowser("tab-memories", tree, "memory");
+  const panel = document.getElementById("tab-memories");
+  const [tree, status] = await Promise.all([
+    apiGet(A("/memory/tree")), apiGet(A("/status"))]);
+  const serverOpts = (status.servers || []).map((s) =>
+    `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+  panel.innerHTML = `
+    <div class="induct">
+      <div class="ihead">
+        <h3>Build starting memory</h3>
+        <span class="sub">induction — distill a server's stored history into
+          memory the bot starts with</span>
+      </div>
+      <div class="irow">
+        <select id="ind-server">${serverOpts || `<option value="">no servers configured</option>`}</select>
+        <button class="btn small" id="ind-dry">Preview scope &amp; cost</button>
+        <button class="btn small primary" id="ind-run">Run induction</button>
+        <span class="inote">uses the memory model from Configure · the bot must
+          be stopped${status.running ? " — <b>it is running now</b>" : ""}</span>
+      </div>
+      <pre class="iout" id="ind-out" hidden></pre>
+    </div>
+    <div class="browse-bar">
+      <button class="btn small" id="mem-new">+ New memory file</button>
+      <span class="sub">memory files are the bot's own notes — edits land
+        before its next turn</span>
+    </div>
+    <div id="mem-browser"></div>`;
+  makeBrowser(document.getElementById("mem-browser"), tree, "memory");
+  document.getElementById("mem-new").onclick = newMemoryFile;
+  document.getElementById("ind-dry").onclick = () => startInduct(true);
+  document.getElementById("ind-run").onclick = () => startInduct(false);
+  pollInduct(false); // surface an induction already in flight
 }
+
+function newMemoryFile() {
+  const dlg = document.getElementById("dlg-memfile");
+  const path = document.getElementById("memfile-path");
+  const body = document.getElementById("memfile-body");
+  const err = document.getElementById("memfile-err");
+  path.value = ""; body.value = ""; err.style.display = "none";
+  dlg.showModal();
+  dlg.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const rel = path.value.trim().replace(/^\/+/, "");
+    if (!rel) { err.textContent = "give the file a path"; err.style.display = "block"; return; }
+    try {
+      await apiSend("PUT", A(`/memory/file?path=${encodeURIComponent(rel)}`),
+        { content: body.value });
+    } catch (ex) {
+      err.textContent = ex.message; err.style.display = "block"; return;
+    }
+    dlg.close();
+    loadMemories();
+  };
+}
+
+let inductTimer = null;
+async function startInduct(dryRun) {
+  const server = document.getElementById("ind-server").value;
+  const out = document.getElementById("ind-out");
+  if (!server) return;
+  if (!dryRun && !confirm(
+    "Run a full induction? This writes starting-memory files for the " +
+    "selected server (existing memory files are not overwritten silently — " +
+    "per-channel failures write nothing). It uses the Batches API and can " +
+    "take a while.")) return;
+  out.hidden = false;
+  out.textContent = dryRun ? "previewing…" : "induction starting…";
+  try {
+    const r = await fetch(A("/induct"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ server, dry_run: dryRun }),
+    });
+    const bodyJson = await r.json().catch(() => ({}));
+    if (!r.ok) { out.textContent = bodyJson.error || `failed (${r.status})`; return; }
+  } catch (e) { out.textContent = String(e); return; }
+  pollInduct(true);
+}
+
+async function pollInduct(loud) {
+  clearTimeout(inductTimer);
+  const out = document.getElementById("ind-out");
+  if (!out) return;
+  let st;
+  try { st = await apiGet(A("/induct")); } catch { return; }
+  if (!st.lines.length && !st.running && !loud) return; // nothing to show
+  out.hidden = false;
+  out.textContent = st.lines.join("\n") || (st.running ? "working…" : "");
+  out.scrollTop = out.scrollHeight;
+  if (st.running) inductTimer = setTimeout(() => pollInduct(true), 2500);
+  else if (loud) {
+    out.textContent += st.returncode === 0
+      ? "\n\n— done." : `\n\n— exited with code ${st.returncode}.`;
+  }
+}
+
+/* ---- Repository: browser + upload + delete ---- */
+
 async function loadRepository() {
+  const panel = document.getElementById("tab-repository");
   const tree = await apiGet(A("/repository/tree"));
-  makeBrowser("tab-repository", tree, "repository");
+  const folders = (tree.tree || []).filter((n) => n.type === "dir").map((n) => n.name);
+  panel.innerHTML = `
+    <div class="browse-bar">
+      <label class="sub">into folder</label>
+      <input id="repo-folder" list="repo-folders" value="${esc(folders[0] || "")}"
+        placeholder="server id folder">
+      <datalist id="repo-folders">${folders.map((f) =>
+        `<option value="${esc(f)}">`).join("")}</datalist>
+      <input type="file" id="repo-file" multiple>
+      <button class="btn small" id="repo-upload">Upload</button>
+      <span class="sub">files land in the bot's repository — it sees them on
+        its next turn</span>
+      <span class="err" id="repo-err"></span>
+    </div>
+    <div id="repo-browser"></div>`;
+  makeBrowser(document.getElementById("repo-browser"), tree, "repository");
+  document.getElementById("repo-upload").onclick = uploadRepoFiles;
+}
+
+async function uploadRepoFiles() {
+  const folder = document.getElementById("repo-folder").value.trim().replace(/^\/+|\/+$/g, "");
+  const files = document.getElementById("repo-file").files;
+  const err = document.getElementById("repo-err");
+  err.textContent = "";
+  if (!folder) { err.textContent = "name a folder (usually the server id)"; return; }
+  if (!files.length) { err.textContent = "choose at least one file"; return; }
+  const btn = document.getElementById("repo-upload");
+  btn.disabled = true; btn.textContent = "Uploading…";
+  try {
+    for (const f of files) {
+      const r = await fetch(A(`/repository/file?path=${encodeURIComponent(`${folder}/${f.name}`)}`),
+        { method: "PUT", body: f });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        throw new Error(b.error || `upload failed (${r.status})`);
+      }
+    }
+  } catch (e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.textContent = "Upload";
+    return;
+  }
+  loadRepository();
 }
 
 /* ====================== Integrations (skills + MCP) ====================== */

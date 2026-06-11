@@ -1,13 +1,14 @@
 {
   "name": "discord-agents",
   "productName": "Discord Agents",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "description": "Control panel for Discord Agents - persistent AI minds on Discord",
   "main": "main.js",
   "author": "Charles Belanger",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "bundle": "node build-bundle.js",
     "dist": "electron-builder --win nsis",
     "release": "electron-builder --win nsis --publish always",
     "test": "node test/updater.test.js"
@@ -30,12 +31,17 @@
     ],
     "files": [
       "main.js",
-      "preload.js",
       "updater.js",
-      "placeholder.html"
+      "placeholder.html",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      { "from": "bundle/runtime", "to": "runtime" },
+      { "from": "bundle/framework", "to": "framework" }
     ],
     "win": {
       "target": "nsis",
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {

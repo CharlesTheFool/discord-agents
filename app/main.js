@@ -30,9 +30,13 @@ function log(msg) {
 const updaterLogger = { info: log, warn: log, error: log, debug: () => {} };
 
 function readConfig() {
-  // app-config.json beside the executable (or the project in dev):
-  // { "root": "C:\\path\\to\\install", "python": "python" }
-  // Optional: "autoUpdateFramework": false, "frameworkBranch": "main".
+  // Resolution order:
+  //  1. app-config.json beside the executable (or the project in dev) -
+  //     the git-checkout model; points at a framework install.
+  //  2. Packaged bundle (resources/framework + resources/runtime) - the
+  //     self-contained installer; data lives in the user's appData.
+  //  3. Dev fallback: the repo this app folder sits in.
+  // { "root": ..., "python": ..., "autoUpdateFramework": false, "frameworkBranch": "main" }
   const candidates = [
     path.join(path.dirname(app.getPath("exe")), "app-config.json"),
     path.join(__dirname, "app-config.json"),
@@ -41,6 +45,17 @@ function readConfig() {
     try {
       return JSON.parse(fs.readFileSync(p, "utf-8"));
     } catch (e) { /* next */ }
+  }
+  const bundledFramework = path.join(process.resourcesPath || "", "framework");
+  const bundledPython = path.join(process.resourcesPath || "", "runtime", "python", "python.exe");
+  if (app.isPackaged && fs.existsSync(bundledFramework) && fs.existsSync(bundledPython)) {
+    return {
+      bundled: true,
+      codeRoot: bundledFramework,
+      python: bundledPython,
+      root: app.getPath("userData"),       // %APPDATA%\Discord Agents - survives updates
+      autoUpdateFramework: false,          // the installer updates the framework
+    };
   }
   return { root: path.join(__dirname, ".."), python: "python" };
 }
@@ -59,17 +74,18 @@ function daemonUp() {
 async function ensureDaemon() {
   if (await daemonUp()) return true; // operator already runs one - attach, leave it be
   const cfg = readConfig();
-  const script = path.join(cfg.root, "supervisor.py");
+  const codeRoot = cfg.codeRoot || cfg.root;
+  const script = path.join(codeRoot, "supervisor.py");
   if (!fs.existsSync(script)) {
     dialog.showErrorBox(
       "Discord Agents",
-      `No supervisor.py found at ${cfg.root}.\n` +
+      `No supervisor.py found at ${codeRoot}.\n` +
       "Point app-config.json's \"root\" at your Discord Agents install.");
     return false;
   }
   // Catch the framework up to the latest release before it boots. Skipped on
-  // dev branches, dirty trees, and non-git installs (see updater.js).
-  if (cfg.autoUpdateFramework !== false) {
+  // dev branches, dirty trees, non-git installs, and bundled installs.
+  if (cfg.autoUpdateFramework !== false && !cfg.bundled) {
     const r = updateFrameworkRepo({
       root: cfg.root,
       python: cfg.python || "python",
@@ -79,7 +95,11 @@ async function ensureDaemon() {
     log(`framework update: ${r.status}${r.reason ? ` (${r.reason})` : ""}` +
         (r.status === "updated" ? ` ${r.from.slice(0, 7)}→${r.to.slice(0, 7)}` : ""));
   }
-  daemon = spawn(cfg.python || "python", [script, "--root", cfg.root],
+  fs.mkdirSync(cfg.root, { recursive: true }); // data root (the daemon seeds inside it)
+  const args = [script, "--root", cfg.root];
+  if (cfg.codeRoot) args.push("--code-root", cfg.codeRoot);
+  log(`spawning daemon: ${cfg.python || "python"} ${args.join(" ")}`);
+  daemon = spawn(cfg.python || "python", args,
                  { cwd: cfg.root, stdio: "ignore" });
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
@@ -88,6 +108,34 @@ async function ensureDaemon() {
   dialog.showErrorBox("Discord Agents",
                       "The supervisor daemon didn't come up - check logs.");
   return false;
+}
+
+// Closing the window means closing the app: bots stop cleanly (their desired
+// state is kept, so they come back on next launch). Only a daemon WE spawned
+// is stopped - one the operator runs from a terminal is left alone.
+function requestShutdown() {
+  return new Promise((resolve) => {
+    const req = http.request(`${BASE}/api/supervisor/shutdown`, { method: "POST" },
+      (res) => { res.resume(); resolve(res.statusCode === 200); });
+    req.on("error", () => resolve(false));
+    req.setTimeout(3000, () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+
+async function shutdownDaemon() {
+  if (!daemon) return; // attached to an operator-run daemon - leave it be
+  log("window closed - asking the daemon to stop its bots and exit");
+  const accepted = await requestShutdown();
+  if (accepted) {
+    for (let i = 0; i < 30; i++) {           // up to 15s for clean bot stops
+      await new Promise((r) => setTimeout(r, 500));
+      if (!(await daemonUp())) { log("daemon stopped cleanly"); daemon = null; return; }
+    }
+  }
+  log("graceful shutdown timed out - killing the daemon process");
+  try { daemon.kill(); } catch (e) { /* already gone */ }
+  daemon = null;
 }
 
 // electron-updater pulls the new installer from GitHub Releases, stages it,
@@ -133,6 +181,7 @@ async function createWindow() {
     minHeight: 640,
     autoHideMenuBar: true,
     title: "Discord Agents",
+    icon: path.join(__dirname, "build", "icon.png"),
   });
   setupShellAutoUpdate(win);
   if (await ensureDaemon()) {
@@ -144,7 +193,7 @@ async function createWindow() {
 
 app.whenReady().then(createWindow);
 
-app.on("window-all-closed", () => {
-  if (daemon) daemon.kill();
+app.on("window-all-closed", async () => {
+  await shutdownDaemon();
   app.quit();
 });

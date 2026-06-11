@@ -14,7 +14,7 @@
 
   <div class="topbar">
     <span><a href="index.html">← Discord Agents</a> &nbsp;/&nbsp; Supervisor</span>
-    <span>v0.9.2 · localhost:8642</span>
+    <span id="top-version"></span>
   </div>
 
   <div class="nameplate" id="nameplate">
@@ -55,10 +55,10 @@
 
   <!-- CONFIGURE -->
   <section class="tabpanel" id="tab-configure">
-    <p class="cfg-intro">The bot's YAML config, rendered as a form. Saving validates
-       through <code>Config.validate()</code> before anything is written — an
-       invalid value is rejected and nothing changes. Secrets and tokens never
-       appear here.</p>
+    <p class="cfg-intro">Everything a bot needs, and nothing it doesn't —
+       the rare knobs live under Advanced. Saving validates before anything
+       is written; an invalid value is rejected and nothing changes. Tokens
+       are stored locally and never shown back.</p>
     <div class="cfg-banner" id="cfg-banner"></div>
     <div id="cfg-form"></div>
     <div class="cfg-actions">
@@ -109,7 +109,7 @@
   <section class="tabpanel" id="tab-repository"></section>
 
   <footer class="page">
-    <span>SUPERVISOR v0.9.2</span>
+    <span id="foot-version">SUPERVISOR</span>
     <span>read-only mirror · writes go through Config.validate()</span>
   </footer>
 
@@ -127,6 +127,25 @@
     <div class="actions">
       <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Cancel</button>
       <button type="submit" class="btn primary">Add skill</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-memfile">
+  <h2>New memory file</h2>
+  <p>A markdown note placed directly into the bot's memory tree — it reads
+     it like its own notes. Paths are relative to <code>memories/&lt;bot&gt;/</code>,
+     e.g. <code>servers/123…/things-to-know.md</code> or
+     <code>global/background.md</code>.</p>
+  <form method="dialog" novalidate>
+    <label for="memfile-path">Path</label>
+    <input type="text" id="memfile-path" placeholder="global/background.md" autocomplete="off">
+    <label for="memfile-body">Content</label>
+    <textarea id="memfile-body" rows="10" spellcheck="false"></textarea>
+    <div class="field-error" id="memfile-err"></div>
+    <div class="actions">
+      <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn primary">Create</button>
     </div>
   </form>
 </dialog>
@@ -156,6 +175,6 @@
   </form>
 </dialog>
 
-<script type="module" src="assets/bot.js?v=10"></script>
+<script type="module" src="assets/bot.js?v=11"></script>
 </body>
 </html>

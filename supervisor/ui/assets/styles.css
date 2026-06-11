@@ -745,3 +745,102 @@ footer.page {
 .md a.wikilink:hover { border-bottom-color: var(--green); }
 .md code, .pane pre { font-family: var(--mono); font-size: 13px; }
 .pane pre { background: rgba(33,29,22,.04); border: 1px solid var(--rule); padding: 18px 20px; overflow-x: auto; line-height: 1.5; white-space: pre-wrap; }
+
+/* ============== v0.10: config overhaul + app-surface widgets ============== */
+
+/* essentials/advanced split */
+.cfg-adv { margin-top: 34px; }
+.cfg-adv > summary {
+  cursor: pointer; font-family: var(--mono); font-size: 12px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft);
+  padding: 10px 0; border-top: 2px solid var(--ink); user-select: none;
+}
+.cfg-adv > summary:hover { color: var(--ink); }
+.cfg-adv[open] > summary { margin-bottom: -16px; }
+
+/* editable chips */
+.chips.edit .chip { display: inline-flex; align-items: center; gap: 6px; }
+.chips.edit .chip .x {
+  border: 0; background: none; cursor: pointer; color: var(--ink-faint);
+  font-size: 13px; line-height: 1; padding: 0;
+}
+.chips.edit .chip .x:hover { color: var(--red); }
+.chips.superseded { display: none; }
+.chip-adder { display: inline-flex; gap: 4px; }
+.chip-adder .chip-in {
+  width: 130px; font-family: var(--mono); font-size: 12px; padding: 4px 8px;
+  border: 1px dashed var(--ink-faint); background: transparent;
+}
+.chip-adder .chip-add {
+  border: 1px solid var(--ink-faint); background: none; cursor: pointer;
+  font-size: 13px; padding: 0 9px; color: var(--ink-soft);
+}
+.chip-adder .chip-add:hover { border-color: var(--ink); color: var(--ink); }
+
+/* quiet-hours grid */
+.hours { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; max-width: 460px; }
+.hours .hr {
+  font-family: var(--mono); font-size: 11.5px; text-align: center;
+  padding: 6px 0; border: 1px solid var(--rule); cursor: pointer;
+  color: var(--ink-soft); user-select: none;
+}
+.hours .hr:hover { border-color: var(--ink); }
+.hours .hr.sel { background: var(--ink); color: var(--paper, #fff); border-color: var(--ink); }
+.hours-cap { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-top: 6px; }
+
+/* discord pickers (guilds / channels) */
+.field .fetch-guilds, .field .fetch-channels { margin-top: 10px; }
+.picker { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; }
+.picker .pick {
+  display: flex; align-items: center; gap: 9px; padding: 7px 10px;
+  font-size: 14px; border: 1px solid var(--rule); cursor: pointer;
+}
+.picker .pick:hover { border-color: var(--ink-faint); }
+.picker .pick input { accent-color: var(--green); }
+.picker .pick .pid { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); margin-left: auto; }
+.picker .pick .hash { color: var(--ink-faint); }
+.picker .empty { font-style: italic; color: var(--ink-faint); font-size: 13.5px; padding: 8px 2px; }
+
+/* token control */
+.tokenctl .tok-status { margin-bottom: 10px; }
+.tokenctl .tok-row { display: flex; gap: 8px; }
+.tokenctl .tok-row input { flex: 1; }
+.btn.small {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+  padding: 7px 13px; border: 1px solid var(--ink); background: none;
+  cursor: pointer; white-space: nowrap;
+}
+.btn.small:hover { background: var(--ink); color: var(--paper, #fff); }
+.btn.small.primary { background: var(--ink); color: var(--paper, #fff); }
+.btn.small[disabled] { opacity: .5; cursor: default; }
+
+/* memories/repository toolbars */
+.browse-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 0; border-bottom: 1px solid var(--rule); margin-bottom: 14px;
+}
+.browse-bar .sub { font-size: 12.5px; color: var(--ink-soft); }
+.browse-bar input[type="text"], .browse-bar input:not([type]), .browse-bar input[list] {
+  font-family: var(--mono); font-size: 12px; padding: 6px 9px;
+  border: 1px solid var(--ink-faint); background: transparent; width: 200px;
+}
+.browse-bar .err { font-family: var(--mono); font-size: 11.5px; color: var(--red); }
+.pen.danger { color: var(--red); border-color: var(--red); }
+
+/* induction card */
+.induct { border: 2px solid var(--ink); padding: 16px 18px; margin-bottom: 22px; }
+.induct .ihead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.induct .ihead h3 { font-size: 17px; }
+.induct .ihead .sub { font-size: 12.5px; color: var(--ink-soft); }
+.induct .irow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.induct .irow select { font-family: var(--mono); font-size: 12px; padding: 6px 9px; }
+.induct .inote { font-size: 12px; color: var(--ink-soft); }
+.induct .iout {
+  margin-top: 14px; max-height: 320px; overflow: auto; font-family: var(--mono);
+  font-size: 11.5px; line-height: 1.55; background: var(--well, #f5f2ea);
+  padding: 12px 14px; white-space: pre-wrap;
+}
+
+/* fleet: claude key cell */
+.gb.key { cursor: pointer; }
+.gb.key.warn .gv { color: var(--red); }
