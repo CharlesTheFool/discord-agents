@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from .config import BotConfig
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
-    from .data_isolation import DataIsolationEnforcer
     from .unified_attachment_manager import UnifiedAttachmentManager
     from .skills_manager import SkillsManager
 
@@ -49,14 +48,12 @@ class ContextBuilder:
         config: "BotConfig",
         message_memory: "MessageMemory",
         memory_manager: "MemoryManager",
-        data_isolation: Optional["DataIsolationEnforcer"] = None,
         attachment_manager: Optional["UnifiedAttachmentManager"] = None,
         skills_manager: Optional["SkillsManager"] = None
     ):
         self.config = config
         self.message_memory = message_memory
         self.memory_manager = memory_manager
-        self.data_isolation = data_isolation
         self.attachment_manager = attachment_manager
         self.skills_manager = skills_manager
         self._mention_names: Dict[int, str] = {}  # id -> display name memo
@@ -199,11 +196,6 @@ Skip follow-ups for:
 **Timing:** Use judgment based on the event. The system checks periodically, so schedule follow-ups for when it would be natural to check in.
 """
 
-        # Add data isolation transparency (v0.5.0)
-        isolation_transparency = ""
-        if self.data_isolation:
-            isolation_transparency = "\n" + self.data_isolation.get_transparency_message() + "\n"
-
         # Add web search disabled notice if applicable
         web_search_notice = ""
         if not self.config.api.web_search.enabled:
@@ -244,7 +236,7 @@ state does not survive the session boundary, memory files do.
 <instructions>
 {MANDATORY_RESPONSE_JUDGMENT_PROMPT}
 {base_prompt}{followup_instructions}
-{isolation_transparency}{web_search_notice}
+{web_search_notice}
 IMPORTANT: In the conversation history below, messages marked "Assistant (you)" are YOUR OWN previous responses. Do not refer to them as if someone else said them. These are what you already said earlier in this conversation.
 
 NOTE: Messages showing "[Forwarded message - content not accessible]" are forwards from other channels. You cannot see forwarded message content due to Discord API limitations.

@@ -9,11 +9,10 @@ Operations: view, create, str_replace, insert, delete, rename
 
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import Dict, Any, Optional
 import shutil
 
-if TYPE_CHECKING:
-    from .data_isolation import DataIsolationEnforcer
+from .vaults import VaultEnforcer
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +29,12 @@ class MemoryToolExecutor:
         self,
         memory_base_path: Path,
         bot_id: str,
-        data_isolation: Optional['DataIsolationEnforcer'] = None
+        vaults: Optional[VaultEnforcer] = None
     ):
         self.bot_id = bot_id
         self.base_path = memory_base_path / bot_id
         self.base_path.mkdir(parents=True, exist_ok=True)
-        self.data_isolation = data_isolation
+        self.vaults = vaults
 
         logger.info(f"MemoryToolExecutor initialized at {self.base_path}")
 
@@ -56,21 +55,25 @@ class MemoryToolExecutor:
         command = tool_input.get("command")
         path = tool_input.get("path", "")
 
-        # Validate path (except rename which uses old_path/new_path)
         if command != "rename":
             if not self._validate_path(path):
                 return f"Error: Invalid path '{path}'"
+            vault_paths = [path]
+        else:
+            vault_paths = [tool_input.get("path", ""), tool_input.get("new_path", "")]
 
-            # Check data isolation permissions (v0.5.0)
-            if self.data_isolation and current_server_id and current_channel_id:
-                is_allowed, reason = self.data_isolation.validate_memory_access(
-                    requested_path=path,
-                    current_server_id=current_server_id,
-                    current_channel_id=current_channel_id
+        # Vault gate (v0.7.0) - mechanical, applies to every command incl. rename.
+        # None context (DMs) counts as outside every vault.
+        if self.vaults:
+            for vp in vault_paths:
+                if not vp:
+                    continue
+                allowed, reason = self.vaults.check_memory_access(
+                    vp, command, current_server_id, current_channel_id
                 )
-                if not is_allowed:
-                    logger.warning(f"Memory access denied: {reason}")
-                    return f"Error: Access denied. {reason}"
+                if not allowed:
+                    logger.warning(f"Vault denial ({command} {vp}): {reason}")
+                    return f"Error: Access denied - {reason}."
 
         try:
             if command == "view":

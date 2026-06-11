@@ -35,7 +35,7 @@ from .mcp_manager import MCPManager
 from .skills_manager import SkillsManager
 from .unified_attachment_manager import UnifiedAttachmentManager
 from .files_api_client import FilesAPIClient
-from .data_isolation import DataIsolationEnforcer
+from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .internal_constants import TOOL_STUB_KEEP_TURNS, format_size
 from tools.web_search import get_web_search_tools
@@ -220,25 +220,19 @@ class ReactiveEngine:
         # Cache internal config values (v0.6.0 - simplified config)
         self._rate_limiting_config = config.get_rate_limiting_config()
 
-        # Initialize data isolation enforcer first (v0.5.0)
-        # data_isolation is now a string mode, not an object - use helper method to expand
-        data_isolation_config = config.get_data_isolation_config()
-        self.data_isolation = DataIsolationEnforcer(data_isolation_config)
-        logger.info(f"Data isolation enforcer initialized (mode: {config.data_isolation})")
+        # Vault enforcement (v0.7.0) - the one mechanical isolation gate
+        self.vaults = VaultEnforcer(config.vaults)
 
-        # Initialize memory tool executor
         self.memory_tool_executor = MemoryToolExecutor(
             memory_base_path=Path("memories"),
             bot_id=config.bot_id,
-            data_isolation=self.data_isolation
+            vaults=self.vaults,
         )
 
-        # Initialize context builder
         self.context_builder = ContextBuilder(
             config=config,
             message_memory=message_memory,
             memory_manager=memory_manager,
-            data_isolation=self.data_isolation
         )
 
         # Web search: all-or-nothing (no rate limiting)

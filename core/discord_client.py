@@ -276,7 +276,7 @@ class DiscordClient(discord.Client):
         self.reactive_engine.discord_tool_executor = DiscordToolExecutor(
             message_memory=self.message_memory,
             user_cache=self.user_cache,
-            data_isolation=self.reactive_engine.data_isolation,
+            vaults=self.reactive_engine.vaults,
             attachment_manager=self.reactive_engine.attachment_manager,
             # Phase 6.4: Pass conversation_state_manager for in_context_only filtering
             conversation_state_manager=self.reactive_engine.conversation_state_manager

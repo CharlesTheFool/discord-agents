@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 if TYPE_CHECKING:
     from core.message_memory import MessageMemory
     from core.user_cache import UserCache
-    from core.data_isolation import DataIsolationEnforcer
+    from core.vaults import VaultEnforcer
     from core.conversation_state_manager import ConversationStateManager
 
 logger = logging.getLogger(__name__)
@@ -32,13 +32,13 @@ class DiscordToolExecutor:
         self,
         message_memory: "MessageMemory",
         user_cache: "UserCache",
-        data_isolation: Optional["DataIsolationEnforcer"] = None,
+        vaults: Optional["VaultEnforcer"] = None,
         attachment_manager: Optional["UnifiedAttachmentManager"] = None,
         conversation_state_manager: Optional["ConversationStateManager"] = None
     ):
         self.message_memory = message_memory
         self.user_cache = user_cache
-        self.data_isolation = data_isolation
+        self.vaults = vaults
         self.attachment_manager = attachment_manager
         # Phase 6.4: Store conversation_state_manager for in_context_only filtering
         self.conversation_state_manager = conversation_state_manager
@@ -60,16 +60,10 @@ class DiscordToolExecutor:
         """
         command = tool_input.get("command", "")
 
-        # Apply data isolation scope if enabled (v0.5.0)
-        scope = {}
-        if self.data_isolation and current_server_id and current_channel_id:
-            scope = self.data_isolation.get_search_scope(current_server_id, current_channel_id)
-            logger.debug(f"Data isolation scope applied: {scope}")
-
         if command == "search_messages":
-            return await self._search_messages(tool_input, scope)
+            return await self._search_messages(tool_input, current_server_id, current_channel_id)
         elif command == "view_messages":
-            return await self._view_messages(tool_input, scope)
+            return await self._view_messages(tool_input, current_server_id, current_channel_id)
         elif command == "get_user_info":
             return await self._get_user_info(tool_input)
         elif command == "get_channel_info":
@@ -82,7 +76,7 @@ class DiscordToolExecutor:
         else:
             return f"Unknown Discord tool command: {command}"
 
-    async def _search_messages(self, params: dict, scope: dict) -> str:
+    async def _search_messages(self, params: dict, current_server_id, current_channel_id) -> str:
         """
         Search message history using FTS5 full-text search.
 
@@ -97,24 +91,12 @@ class DiscordToolExecutor:
         if not query:
             return "Error: query parameter required"
 
-        # Apply data isolation scope constraints (v0.5.0)
-        guild_id = None
-        if scope:
-            if scope.get("server_id"):
-                # Enforced in SQL - not merely logged
-                guild_id = scope["server_id"]
-                logger.debug(f"Search scoped to server: {guild_id}")
-            if scope.get("channel_id"):
-                # Force search to specific channel
-                channel_id = scope["channel_id"]
-                logger.debug(f"Search scoped to channel: {channel_id}")
-
         try:
             results = await self.message_memory.search_messages(
                 query=query,
                 channel_id=channel_id,
                 author_id=author_id,
-                guild_id=guild_id,
+                guild_id=None,
                 limit=limit
             )
 
@@ -153,7 +135,7 @@ class DiscordToolExecutor:
             logger.error(f"Error searching messages: {e}", exc_info=True)
             return f"Error searching messages: {str(e)}"
 
-    async def _view_messages(self, params: dict, scope: dict) -> str:
+    async def _view_messages(self, params: dict, current_server_id, current_channel_id) -> str:
         """
         View messages with flexible exploration modes.
 
@@ -165,22 +147,10 @@ class DiscordToolExecutor:
         """
         mode = params.get("mode", "recent")
         channel_id = params.get("channel_id")
-
-        # Apply data isolation scope constraints (v0.5.0)
-        if scope and scope.get("channel_id"):
-            if channel_id and channel_id != scope["channel_id"]:
-                return f"Error: Access denied. Cannot view messages from other channels."
-            channel_id = scope["channel_id"]
         limit = min(params.get("limit", 30), 100)  # Cap at 100 to avoid overwhelming output
 
         if not channel_id:
             return "Error: channel_id parameter required"
-
-        # Server scope: the requested channel must belong to the current server
-        if scope and scope.get("server_id") and not scope.get("channel_id"):
-            owner = await self.message_memory.get_server_for_channel(channel_id)
-            if owner and owner != scope["server_id"]:
-                return "Error: Access denied. Cannot view messages from other servers."
 
         try:
             messages = []

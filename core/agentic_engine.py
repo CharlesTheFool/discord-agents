@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 from .proactive_action import ProactiveAction
 from .engagement_tracker import EngagementTracker
-from .data_isolation import DataIsolationEnforcer
+from .vaults import VaultEnforcer
 from .internal_constants import (
     AGENTIC_EFFORT,
     FOLLOWUP_STANDALONE_IDLE_MINUTES,
@@ -108,12 +108,10 @@ class AgenticEngine:
 
         # Memory tool executor for the proactive tool loop (MemoryManager has
         # no execute(); calling it crashed any memory tool use in this engine).
-        # Same isolation enforcement as the reactive engine - proactive memory
-        # access must not bypass a configured scope.
         self.memory_tool = MemoryToolExecutor(
             memory_base_path=Path("memories"),
             bot_id=config.bot_id,
-            data_isolation=DataIsolationEnforcer(config.get_data_isolation_config()),
+            vaults=VaultEnforcer(config.vaults),
         )
 
         # Cache proactive config (v0.6.0 - simplified config with presets)
