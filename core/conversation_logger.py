@@ -122,6 +122,15 @@ class ConversationLogger:
         entry += "\n"
         self._write(entry)
 
+    def log_tool_call(self, tool: str, action: str, detail: str = ""):
+        """Log a client-side tool call (discord/repository/mcp/skills) - v0.9.
+        Memory keeps its richer log_memory_tool line."""
+        entry = f"\n[TOOL] {tool}.{action}"
+        if detail:
+            entry += f" - {detail[:120]}"
+        entry += "\n"
+        self._write(entry)
+
     def log_tool_use_loop(self, iteration: int, stop_reason: str):
         """Log tool use loop iteration"""
         entry = f"\n[TOOL_LOOP] Iteration {iteration}: {stop_reason}\n"

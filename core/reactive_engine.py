@@ -178,6 +178,7 @@ class ToolLoopResult:
     tools_were_used: bool = False
     usage: Any = None  # usage of the final response in the loop
     container_file_ids: List[str] = field(default_factory=list)
+    tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
 
 
 class ReactiveEngine:
@@ -928,7 +929,8 @@ class ReactiveEngine:
 
     async def _execute_tool_blocks(self, response, message: discord.Message,
                                    conversation_state, api_params: dict,
-                                   container_file_ids: list = None):
+                                   container_file_ids: list = None,
+                                   tool_calls_log: list = None):
         """
         Execute the client-side tool_use blocks in a response.
 
@@ -936,6 +938,9 @@ class ReactiveEngine:
         pending_file_blocks are document/container_upload blocks from
         get_attachment that ride in the same user message AFTER the results;
         container_rebuilt signals request_skill replaced the skills container.
+        tool_calls_log (v0.9): caller-owned accumulator; every dispatched
+        block lands there as {tool, action, detail} and (memory excepted -
+        it has its richer line) in the conversations log.
         """
         channel_id = str(message.channel.id)
         server_id = str(message.guild.id) if message.guild else None
@@ -943,6 +948,17 @@ class ReactiveEngine:
         tool_results = []
         pending_file_blocks = []
         container_rebuilt = False
+
+        def note(tool: str, action: str, detail: str = ""):
+            detail = detail[:120]
+            if tool_calls_log is not None:
+                tool_calls_log.append({"tool": tool, "action": action, "detail": detail})
+            if tool != "memory":
+                self.conversation_logger.log_tool_call(tool, action, detail)
+
+        def kv(tool_input: dict, *exclude) -> str:
+            return ", ".join(
+                f"{k}={v}" for k, v in tool_input.items() if k not in exclude)
 
         for block in response.content:
             if block.type != "tool_use":
@@ -959,6 +975,7 @@ class ReactiveEngine:
                     current_channel_id=channel_id
                 )
                 self.conversation_logger.log_memory_tool(command, path, result)
+                note("memory", command, path)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -968,6 +985,7 @@ class ReactiveEngine:
             # Progressive disclosure (v0.5.0)
             elif block.name == "request_skill":
                 logger.info(f"Executing request_skill tool: {block.input.get('skill_name', 'unknown')}")
+                note("skills", "request_skill", block.input.get("skill_name", ""))
                 if conversation_state:
                     result = self.skill_request_executor.execute(block.input, conversation_state)
                     await self.conversation_state_manager.save(conversation_state)
@@ -994,6 +1012,8 @@ class ReactiveEngine:
             elif block.name == "discord_tools":
                 if self.discord_tool_executor:
                     logger.debug(f"Executing Discord tool: {block.input.get('command', 'unknown')}")
+                    note("discord_tools", block.input.get("command", "unknown"),
+                         kv(block.input, "command"))
                     result = await self.discord_tool_executor.execute(
                         block.input,
                         current_server_id=server_id,
@@ -1017,6 +1037,8 @@ class ReactiveEngine:
             elif block.name == "repository":
                 if self.repository_manager:
                     logger.debug(f"Executing repository tool: {block.input.get('action', 'unknown')}")
+                    note("repository", block.input.get("action", "unknown"),
+                         kv(block.input, "action"))
                     result = await self.repository_manager.execute(
                         block.input, current_server_id=server_id,
                         current_channel_id=channel_id,
@@ -1033,6 +1055,7 @@ class ReactiveEngine:
             # MCP tools are prefixed with their server name (v0.5.0)
             elif "_" in block.name and self.mcp_manager:
                 logger.debug(f"Executing MCP tool: {block.name} with input: {block.input}")
+                note("mcp", block.name, kv(block.input))
                 try:
                     result = await self.mcp_manager.execute_tool(
                         tool_name=block.name,
@@ -1149,6 +1172,7 @@ class ReactiveEngine:
                 tool_results, pending_file_blocks, container_rebuilt = await self._execute_tool_blocks(
                     response, message, conversation_state, api_params,
                     container_file_ids=result.container_file_ids,
+                    tool_calls_log=result.tool_calls,
                 )
 
                 # Tool results ride in the next user message; fetched file
