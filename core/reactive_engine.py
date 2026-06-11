@@ -228,6 +228,7 @@ class ReactiveEngine:
         self.vaults = VaultEnforcer(config.vaults)
         self.vaults.thread_parent_resolver = message_memory.thread_parent
         self.vaults.threads_of = message_memory.threads_of
+        self.vaults.dm_partner_resolver = user_cache.dm_partner if user_cache else None
 
         self.memory_tool_executor = MemoryToolExecutor(
             memory_base_path=Path("memories"),

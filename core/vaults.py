@@ -27,6 +27,8 @@ class VaultEnforcer:
         # Set post-construction when MessageMemory is available.
         self.thread_parent_resolver = None  # sync: channel_id -> parent_id or None
         self.threads_of = None              # sync: vault_channel_id -> [thread ids]
+        # Set post-construction when UserCache is available (v0.9).
+        self.dm_partner_resolver = None     # sync: dm channel_id -> user_id or None
 
     @property
     def active(self) -> bool:
@@ -68,9 +70,43 @@ class VaultEnforcer:
         A vaulted SERVER's repo is inside the vault - fine."""
         return str(channel_id or "") in self.vaults
 
+    def _check_dm_memory(self, path: str, command: str,
+                         server_id, channel_id) -> Optional[Tuple[bool, Optional[str]]]:
+        """DM privacy rules (v0.9): every DM is an implicit vault scoped to
+        its conversation. Returns a verdict, or None when DM rules have no
+        opinion (server vault rules still apply)."""
+        parts = path.split("/")
+        is_dm_path = len(parts) >= 5 and parts[3] == "global" and parts[4] == "dms"
+        in_dm = server_id in (None, "DM")
+
+        if is_dm_path:
+            if not in_dm:
+                return False, "that's a private conversation's memory - it stays there"
+            partner = (self.dm_partner_resolver(str(channel_id))
+                       if self.dm_partner_resolver else None)
+            if partner:
+                own = parts[5:6] == [partner]
+            else:
+                own = parts[5:7] == ["_unresolved", str(channel_id)]
+            if not own:
+                return False, "that's a different private conversation's memory - it stays there"
+            return True, None
+
+        if in_dm and command in _WRITE_COMMANDS:
+            return False, (
+                "from a DM, what you write down stays in this conversation's "
+                "own memory (its global/dms/ folder)"
+            )
+        return None
+
     def check_memory_access(self, path: str, command: str,
                             server_id, channel_id) -> Tuple[bool, Optional[str]]:
         """Gate one memory-tool call. Returns (allowed, reason_if_denied)."""
+        # DM privacy is mechanical and holds even with no vaults configured
+        dm_verdict = self._check_dm_memory(path, command, server_id, channel_id)
+        if dm_verdict is not None:
+            return dm_verdict
+
         if not self.vaults:
             return True, None
 
