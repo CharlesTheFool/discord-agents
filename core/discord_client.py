@@ -363,6 +363,12 @@ class DiscordClient(discord.Client):
                 lambda gid: self.get_guild(int(gid)).name
                 if gid.isdigit() and self.get_guild(int(gid)) else None)
 
+        # Watches inject relay notes into conversation states (v0.9); the
+        # state manager lives on the reactive engine after async_initialize
+        if self.agentic_engine:
+            self.agentic_engine.conversation_state_manager = (
+                self.reactive_engine.conversation_state_manager)
+
         # ask_prime executor (v0.9) - needs the connected client for guild
         # resolution; agentic engine carries the watch manager + send queue
         if self.agentic_engine and self.agentic_engine.watch_manager:

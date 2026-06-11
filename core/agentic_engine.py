@@ -31,6 +31,12 @@ from .internal_constants import (
     FOLLOWUP_STANDALONE_IDLE_MINUTES,
     PROACTIVE_INCLUDES_THREADS,
     PROACTIVE_SETTLE_DELAY_MINUTES,
+    WATCH_EVAL_MAX_TOKENS,
+    WATCH_EVAL_MODEL,
+    WATCH_EVAL_PROMPT,
+    WATCH_EVAL_SCHEMA,
+    WATCH_EXPIRED_NOTE,
+    WATCH_RELAY_NOTE,
     model_supports_effort,
 )
 from .memory_tool_executor import MemoryToolExecutor
@@ -137,10 +143,12 @@ class AgenticEngine:
 
         # Prime coordination (v0.9): approved ask_prime sends, drained
         # immediately and again each loop tick (quiet hours defer them).
-        # WatchManager attached by bot_manager.
+        # WatchManager attached by bot_manager; conversation_state_manager
+        # attached by discord_client.on_ready (it lives on ReactiveEngine).
         self._coordination_queue = []
         self._coordination_tasks = set()
         self.watch_manager = None
+        self.conversation_state_manager = None
 
         # Track background task
         self._task = None
@@ -211,6 +219,9 @@ class AgenticEngine:
                 if self._proactive_config["enabled"]:
                     engagement_actions = await self.check_engagement_opportunities()
                     actions.extend(engagement_actions)
+
+                # Standing watches (v0.9): answers found get relayed back
+                await self.check_watches()
 
                 # Execute actions
                 for action in actions:
@@ -938,6 +949,130 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
 
         except Exception as e:
             logger.error(f"Error sending proactive message: {e}", exc_info=True)
+
+    async def check_watches(self) -> None:
+        """Standing watches (v0.9): look for answers in target channels,
+        relay matches back to the originating channel, retire the expired."""
+        if not self.watch_manager:
+            return
+
+        for watch in self.watch_manager.active():
+            try:
+                messages = await self.message_memory.get_messages_since(
+                    watch["target_channel_id"],
+                    after_message_id=watch["last_checked_message_id"],
+                    after_timestamp=watch["created_at"],
+                    limit=50,
+                )
+                human = [m for m in messages if not m.is_bot]
+                if not human:
+                    continue
+                newest_id = messages[-1].message_id
+
+                transcript = "\n".join(
+                    f"[{m.timestamp:%H:%M}] {m.author_name}: {m.content or '[no text]'}"
+                    for m in human
+                )
+                try:
+                    response = await self.anthropic.messages.create(
+                        model=WATCH_EVAL_MODEL,
+                        max_tokens=WATCH_EVAL_MAX_TOKENS,
+                        system=WATCH_EVAL_PROMPT.format(question=watch["question"]),
+                        messages=[{"role": "user", "content": transcript}],
+                        output_config={"format": {"type": "json_schema",
+                                                  "schema": WATCH_EVAL_SCHEMA}},
+                    )
+                    verdict = json.loads("".join(
+                        b.text for b in response.content if b.type == "text"))
+                except Exception as e:
+                    logger.error(f"Watch eval failed for {watch['id']}: {e}")
+                    self.watch_manager.mark_checked(watch["id"], newest_id)
+                    continue
+
+                if not verdict["answered"]:
+                    self.watch_manager.mark_checked(watch["id"], newest_id)
+                    continue
+
+                # Answered: durable note in the origin channel, a delivery
+                # the origin particular speaks from, the watch retired
+                server_name = self._guild_name(watch["target_server_id"])
+                answer = verdict["answer"].strip()
+                await self._inject_context_note(
+                    watch["origin_channel_id"],
+                    WATCH_RELAY_NOTE.format(
+                        server_name=server_name, answer=answer,
+                        question=watch["question"]),
+                )
+                self.enqueue_coordination(ProactiveAction(
+                    type="coordination",
+                    priority="high",
+                    server_id=watch["origin_server_id"],
+                    channel_id=watch["origin_channel_id"],
+                    message=(f"The answer you were watching for came back: "
+                             f"{answer}"),
+                    context=f"relayed via Prime, from {server_name}",
+                    delivery_method="immediate",
+                ))
+                if self.message_memory:
+                    await self.message_memory.add_event(
+                        "watch", watch["origin_server_id"],
+                        watch["origin_channel_id"],
+                        {
+                            "triggers": [], "thinking": "", "tool_calls": [],
+                            "response": None,
+                            "question": watch["question"], "answer": answer,
+                            "provenance": (f"watch resolved · relayed via "
+                                           f"Prime, from {server_name}"),
+                        },
+                    )
+                self.watch_manager.resolve(watch["id"])
+                logger.info(f"Watch {watch['id']} resolved and relayed")
+
+            except Exception as e:
+                logger.error(f"Watch check failed for {watch.get('id')}: {e}",
+                             exc_info=True)
+
+        for watch in self.watch_manager.pop_expired():
+            try:
+                server_name = self._guild_name(watch["target_server_id"])
+                await self._inject_context_note(
+                    watch["origin_channel_id"],
+                    WATCH_EXPIRED_NOTE.format(
+                        server_name=server_name, question=watch["question"]),
+                )
+                if self.message_memory:
+                    await self.message_memory.add_event(
+                        "watch", watch["origin_server_id"],
+                        watch["origin_channel_id"],
+                        {
+                            "triggers": [], "thinking": "", "tool_calls": [],
+                            "response": None,
+                            "question": watch["question"],
+                            "provenance": "watch expired - no answer",
+                        },
+                    )
+                logger.info(f"Watch {watch['id']} expired without an answer")
+            except Exception as e:
+                logger.error(f"Watch expiry handling failed: {e}", exc_info=True)
+
+    def _guild_name(self, server_id: str) -> str:
+        if self.discord_client:
+            guild = self.discord_client.get_guild(int(server_id))
+            if guild:
+                return guild.name
+        return "another server"
+
+    async def _inject_context_note(self, channel_id: str, note: str) -> None:
+        """Persist a <context_update> user turn into a channel's conversation
+        state - durable context, unlike the per-request volatile tail.
+        Appending a user message is always invariant-safe."""
+        if not self.conversation_state_manager:
+            logger.warning("No conversation state manager - context note dropped")
+            return
+        state = await self.conversation_state_manager.get_or_create(str(channel_id))
+        state.add_message("user", note)
+        state.enforce_message_cap()
+        await self.conversation_state_manager.save(state)
 
     def enqueue_coordination(self, action: ProactiveAction) -> None:
         """Queue a Prime-approved cross-server send (v0.9). Drained

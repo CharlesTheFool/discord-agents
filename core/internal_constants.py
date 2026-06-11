@@ -108,6 +108,43 @@ PRIME_WATCH_EXPIRY_HOURS = 24
 WATCH_EVAL_MODEL = "claude-haiku-4-5"
 WATCH_EVAL_MAX_TOKENS = 300
 
+# Watch evaluation + relay notes. The eval is one cheap structured call;
+# the notes are persisted user-turn context updates in the ORIGIN channel.
+WATCH_EVAL_PROMPT = (
+    "You kept an eye on a channel for an answer to: \"{question}\"\n"
+    "Below are the new messages since. Did any of them actually answer it? "
+    "Partial or implied counts only if a reasonable person would call it "
+    "answered."
+)
+
+WATCH_RELAY_NOTE = (
+    "<context_update>\n(Automated context, not a user message)\n"
+    "Your Prime brings word back - relayed via Prime, from {server_name}: "
+    "{answer}\nThis answers what you were watching for: \"{question}\". "
+    "Bring it up naturally when it fits.\n</context_update>"
+)
+
+WATCH_EXPIRED_NOTE = (
+    "<context_update>\n(Automated context, not a user message)\n"
+    "The watch on \"{question}\" ({server_name}) expired with no clear "
+    "answer. If anyone's still waiting on it, say so honestly.\n"
+    "</context_update>"
+)
+
+WATCH_EVAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answered": {"type": "boolean"},
+        "answer": {
+            "type": "string",
+            "description": "The answer, plainly restated (empty if not answered)",
+        },
+    },
+    "required": ["answered", "answer"],
+    "additionalProperties": False,
+}
+
+
 # The Prime's judgment call: one bounded decision, made like someone who
 # knows both rooms. Refusals travel back as plain humanity, not policy.
 PRIME_JUDGMENT_PROMPT = (

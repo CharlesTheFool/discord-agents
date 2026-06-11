@@ -745,6 +745,27 @@ class MessageMemory:
         row = await cursor.fetchone()
         return self._row_to_message(row) if row else None
 
+    async def get_messages_since(self, channel_id: str,
+                                 after_message_id: Optional[str] = None,
+                                 after_timestamp: Optional[str] = None,
+                                 limit: int = 50) -> List[StoredMessage]:
+        """Non-system messages after a cursor, oldest-first (v0.9 watches).
+        after_message_id wins when set; after_timestamp (ISO string) is the
+        fallback for a watch that has never been checked."""
+        query = "SELECT * FROM messages WHERE channel_id = ? AND is_system = 0"
+        params: list = [str(channel_id)]
+        if after_message_id is not None:
+            query += " AND CAST(message_id AS INTEGER) > ?"
+            params.append(int(after_message_id))
+        elif after_timestamp is not None:
+            query += " AND timestamp > ?"
+            params.append(after_timestamp)
+        query += " ORDER BY CAST(message_id AS INTEGER) ASC LIMIT ?"
+        params.append(limit)
+        cursor = await self._db.execute(query, params)
+        rows = await cursor.fetchall()
+        return [self._row_to_message(r) for r in rows]
+
     async def get_channel_stats(self, channel_id: str) -> Dict:
         """Get channel statistics (message count, unique users, time range)"""
         if not self._db:
