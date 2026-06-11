@@ -37,7 +37,11 @@ logger = logging.getLogger(__name__)
 
 def describe_channel(channel) -> str:
     """Channel line for the volatile tail, marking non-text surfaces so the
-    bot knows the room (people in a VC text chat may be mid-call)."""
+    bot knows the room (people in a VC text chat may be mid-call; a DM is
+    private, not a server)."""
+    if isinstance(channel, discord.DMChannel):
+        who = getattr(channel.recipient, "display_name", None) or "this person"
+        return f"DM with {who} - private, one-on-one (ID: {channel.id})"
     name = getattr(channel, "name", None)
     if name is None:
         return f"(ID: {channel.id})"
