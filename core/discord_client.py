@@ -21,6 +21,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def iter_backfill_channels(guild):
+    """Every readable history surface in a guild: text channels, their threads
+    (active + archived - TextChannel.history() does NOT include thread
+    messages), and voice-channel text chats (VoiceChannel is Messageable).
+
+    Archived-thread enumeration is one HTTP call per text channel and needs
+    read_message_history; failures skip that channel's archive quietly.
+    """
+    for channel in guild.text_channels:
+        yield channel
+        for thread in getattr(channel, "threads", []):
+            yield thread
+        try:
+            async for thread in channel.archived_threads(limit=None):
+                yield thread
+        except Exception as e:
+            logger.debug(f"Archived threads unavailable for #{channel.name}: {e}")
+    for channel in guild.voice_channels:
+        yield channel
+
+
 def split_message(text: str, max_length: int = 2000) -> list[str]:
     """
     Split a message into chunks that fit Discord's character limit.
@@ -646,10 +667,16 @@ class DiscordClient(discord.Client):
 
             logger.info(f"Backfilling server: {guild.name}")
 
-            for channel in guild.text_channels:
+            async for channel in iter_backfill_channels(guild):
                 try:
                     channel_messages = 0
                     logger.debug(f"  Backfilling #{channel.name}...")
+
+                    # Threads met during backfill register their parent mapping
+                    if isinstance(channel, discord.Thread):
+                        await self.message_memory.upsert_thread(
+                            str(channel.id), parent_id=str(channel.parent_id),
+                            name=channel.name, archived=bool(channel.archived))
 
                     # Use cutoff if provided, otherwise fetch all
                     async for message in channel.history(limit=None, after=cutoff):
