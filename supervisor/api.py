@@ -19,6 +19,9 @@ from aiohttp import web
 from core.config import BotConfig
 
 from .data import BotData
+from .integrations import (add_skill, apply_skills, load_mcp_servers,
+                           save_mcp_servers, skills_catalog)
+from .mcp_health import MCPHealthPoller
 from .paths import PathJailError, SupervisorRoot
 from .process_manager import ProcessManager
 
@@ -48,9 +51,12 @@ def json_response(data, status=200):
         d, ensure_ascii=False, default=str))
 
 
-def build_app(root: SupervisorRoot, pm: ProcessManager) -> web.Application:
+def build_app(root: SupervisorRoot, pm: ProcessManager,
+              health: MCPHealthPoller = None) -> web.Application:
     data = BotData(root)
+    health = health or MCPHealthPoller(lambda: load_mcp_servers(root))
     app = web.Application()
+    app["health"] = health
 
     def known(bot_id: str) -> bool:
         return bot_id in root.bot_ids()
@@ -267,6 +273,61 @@ def build_app(root: SupervisorRoot, pm: ProcessManager) -> web.Application:
         blob = data.repository_file(bot_id, request.query.get("path", ""))
         return web.Response(body=blob, content_type="application/octet-stream")
 
+    # --- integrations -------------------------------------------------------------------
+
+    async def get_integrations(request):
+        bot_id = bot_or_404(request)
+        config = data.load_config(bot_id)
+        servers = []
+        for s in load_mcp_servers(root):
+            entry = dict(s)
+            entry.update(health.status_for(s.get("name", "?")))
+            servers.append(entry)
+        return json_response({
+            "skills": skills_catalog(root, config),
+            "mcp": {
+                "enabled": (config.get("mcp") or {}).get("enabled", False),
+                "servers": servers,
+            },
+        })
+
+    async def put_integrations(request):
+        bot_id = bot_or_404(request)
+        body = await request.json()
+        if "skills" in body:
+            apply_skills(
+                root, bot_id,
+                body["skills"].get("default_skills", []),
+                body["skills"].get("include_anthropic_skills", True))
+        if "mcp" in body and "servers" in body["mcp"]:
+            save_mcp_servers(root, body["mcp"]["servers"])
+            await health.check_all()
+        restarted = False
+        if request.query.get("restart") == "1" and pm.is_running(bot_id):
+            await pm.restart(bot_id)
+            restarted = True
+        return json_response({"saved": True, "restarted": restarted,
+                              "restart_required": pm.is_running(bot_id) and not restarted})
+
+    async def post_skill(request):
+        bot_or_404(request)
+        name = request.query.get("name", "")
+        blob = await request.read()
+        try:
+            added = add_skill(root, name, blob)
+        except ValueError as e:
+            return json_response({"error": str(e)}, status=400)
+        return json_response({"added": added}, status=201)
+
+    async def reconnect_mcp(request):
+        bot_or_404(request)
+        name = request.match_info["name"]
+        server = next((s for s in load_mcp_servers(root)
+                       if s.get("name") == name), None)
+        if server is None:
+            return json_response({"error": f"no MCP server {name}"}, status=404)
+        return json_response(await health.check_server(server))
+
     # --- routes ------------------------------------------------------------------------
 
     app.router.add_get("/api/supervisor", get_supervisor)
@@ -288,5 +349,9 @@ def build_app(root: SupervisorRoot, pm: ProcessManager) -> web.Application:
     app.router.add_put("/api/bots/{bot_id}/memory/file", put_memory_file)
     app.router.add_get("/api/bots/{bot_id}/repository/tree", get_repo_tree)
     app.router.add_get("/api/bots/{bot_id}/repository/file", get_repo_file)
+    app.router.add_get("/api/bots/{bot_id}/integrations", get_integrations)
+    app.router.add_put("/api/bots/{bot_id}/integrations", put_integrations)
+    app.router.add_post("/api/bots/{bot_id}/skills", post_skill)
+    app.router.add_post("/api/bots/{bot_id}/mcp/{name}/reconnect", reconnect_mcp)
 
     return app
