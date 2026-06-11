@@ -85,6 +85,23 @@ class SupervisorRoot:
     def trash_dir(self) -> Path:
         return self.root / "trash"
 
+    # --- first-run seeding -------------------------------------------------
+
+    def seed(self) -> None:
+        """Scaffold a data root: the directory tree, an empty .env, a
+        default mcp_servers.json. Idempotent - existing files are never
+        touched."""
+        for d in (self.bots_dir(), self.persistence_dir(), self.logs_dir(),
+                  self.root / "memories", self.root / "repository"):
+            d.mkdir(parents=True, exist_ok=True)
+        if not self.env_file().exists():
+            self.env_file().write_text(
+                "# Discord Agents secrets - managed from the app (Settings)\n",
+                encoding="utf-8")
+        if not self.mcp_servers_json().exists():
+            self.mcp_servers_json().write_text('{"servers": []}\n',
+                                               encoding="utf-8")
+
     # --- the jail --------------------------------------------------------
 
     def jailed(self, base: Path, relative: str) -> Path:

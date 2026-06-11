@@ -28,24 +28,9 @@ logger = logging.getLogger("supervisor")
 DEFAULT_PORT = 8642
 
 
-def seed_data_root(root: SupervisorRoot) -> None:
-    """First-run scaffold for a data root: the directory tree, an empty
-    .env, a default mcp_servers.json. Idempotent - existing files are
-    never touched."""
-    for d in (root.bots_dir(), root.persistence_dir(), root.logs_dir(),
-              root.root / "memories", root.root / "repository"):
-        d.mkdir(parents=True, exist_ok=True)
-    if not root.env_file().exists():
-        root.env_file().write_text(
-            "# Discord Agents secrets - managed from the app (Settings)\n",
-            encoding="utf-8")
-    if not root.mcp_servers_json().exists():
-        root.mcp_servers_json().write_text('{"servers": []}\n', encoding="utf-8")
-
-
 async def main(root_path: Path, port: int, code_root: Path = None) -> None:
     root = SupervisorRoot(root_path, code_root=code_root)
-    seed_data_root(root)
+    root.seed()
     # Validation parity needs the managed install's env (file-to-file only;
     # the API never serves these values)
     load_dotenv(root.env_file())
