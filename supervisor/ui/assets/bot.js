@@ -249,7 +249,7 @@ function skillStream(s) {
     <div class="actrow">
       <div class="av" style="background:var(--info)">⚡</div>
       <div>
-        <div class="head"><span class="un" style="color:var(--info)">SLH-01</span>
+        <div class="head"><span class="un" style="color:var(--info)">${esc(botId)}</span>
           <span class="skillchip">skill · ${esc(s.name)}</span>
           <span class="ts">${clockTime(new Date(s.ts))}</span></div>
         <div class="atrigger">${esc(s.trigger)}</div>
@@ -276,7 +276,10 @@ function episodeStream(e) {
 function chatMsg(user, text, ts, opts = {}) {
   const col = opts.bot ? "var(--ok)" : avatarColor(user);
   const av = opts.bot ? "AI" : initials(user);
-  const txt = opts.mention ? text.replace(/@SLH-01/g, `<span class="at">@SLH-01</span>`) : esc(text);
+  // raw mention tokens (<@123…>) render as a highlighted @botname
+  const txt = opts.mention
+    ? esc(text).replace(/&lt;@!?\d+&gt;/g, `<span class="at">@${esc(botId)}</span>`)
+    : esc(text);
   const tags = opts.bot
     ? `<span class="bottag">BOT</span>${opts.ktag ? `<span class="ktag ${opts.ktag}">${KIND_LABEL[opts.ktag] || opts.ktag}</span>` : ""}`
     : "";
@@ -284,7 +287,7 @@ function chatMsg(user, text, ts, opts = {}) {
     <div class="msg ${opts.bot ? "bot k-" + (opts.ktag || "mention") : ""} ${opts.mention ? "mention" : ""}">
       <div class="av" style="background:${col}">${av}</div>
       <div>
-        <div class="head"><span class="un">${opts.bot ? "SLH-01" : esc(user)}</span>${tags}<span class="ts">${clockTime(ts)}</span></div>
+        <div class="head"><span class="un">${opts.bot ? esc(botId) : esc(user)}</span>${tags}<span class="ts">${clockTime(ts)}</span></div>
         <div class="txt">${opts.mention ? txt : esc(text)}</div>
       </div>
     </div>`;
@@ -298,7 +301,7 @@ function turnStream(t, chan) {
   // incoming messages (skip system "·" markers; render them as a thin note)
   for (const m of (t.triggers || [])) {
     if (m.user === "·") { html += `<div class="tsep"><span>${esc(m.text)}</span></div>`; continue; }
-    html += chatMsg(m.user, m.text, ts, { mention: m.addressed && /@SLH-01/.test(m.text) });
+    html += chatMsg(m.user, m.text, ts, { mention: !!m.addressed });
   }
 
   // the X-RAY: the bot's private processing
@@ -333,7 +336,7 @@ function turnStream(t, chan) {
     </div>`;
 
   // the bot's actual message in the channel (if it spoke)
-  if (t.response) html += chatMsg("SLH-01", t.response, ts, { bot: true, ktag: t.kind === "mention" || t.kind === "scan" ? null : t.kind });
+  if (t.response) html += chatMsg(botId, t.response, ts, { bot: true, ktag: t.kind === "mention" || t.kind === "scan" ? null : t.kind });
 
   return html;
 }

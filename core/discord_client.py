@@ -335,6 +335,21 @@ class DiscordClient(discord.Client):
                 except Exception as e:
                     logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
 
+        # Channel-name cache sweep (v0.9): the dashboard reads names from
+        # artifacts only, and the per-message upsert covers just channels with
+        # traffic - seed every visible channel from the gateway cache instead.
+        # Threads stay out (they resolve via the threads table).
+        try:
+            for guild in self.guilds:
+                await self.message_memory.upsert_channel_name(
+                    str(guild.id), guild.name, kind="server")
+                for channel in [*guild.text_channels, *guild.voice_channels]:
+                    await self.message_memory.upsert_channel_name(
+                        str(channel.id), channel.name,
+                        kind="channel", guild_id=str(guild.id))
+        except Exception as e:
+            logger.debug(f"Channel-name sweep failed: {e}")
+
         # Write running flag with current timestamp
         flag_file.parent.mkdir(parents=True, exist_ok=True)
         flag_file.write_text(str(online_time.timestamp()))
