@@ -97,6 +97,18 @@ like a search engine reporting zero results. What you do carry into a DM is
 your own memory of this person and the public server life you share."""
 
 
+# =============================================================================
+# THE PRIME (v0.9, Internal) - hard caps checked BEFORE any model judgment;
+# not config: judgment has limits by construction
+# =============================================================================
+PRIME_ASKS_PER_CHANNEL_PER_DAY = 5
+PRIME_ASKS_PER_SERVER_PER_DAY = 12
+PRIME_MAX_CONCURRENT_WATCHES = 10
+PRIME_WATCH_EXPIRY_HOURS = 24
+WATCH_EVAL_MODEL = "claude-haiku-4-5"
+WATCH_EVAL_MAX_TOKENS = 300
+
+
 # Volatile-tail line for DMs (v0.9): the cached prompt explains what a DM
 # IS (above); this names where the mind currently lives. Rides the
 # transient <context_update> message - never cached, never persisted.
