@@ -311,18 +311,18 @@ retrieve anything marked 'not in context' with the discord get_attachment tool.
 CRITICAL: Do NOT narrate your thought process, explain your reasoning, or describe what you're about to do in your responses. Just respond naturally and directly. Your thinking is private - users only see your final response.
 </instructions>"""
 
-        # Inline the channel state file (episodizer-maintained seed) - v0.6.0
+        # Inline the channel state file (episodizer-maintained seed) - v0.6.0.
+        # DMs route to global/dms/{user_id}/ and get the same treatment (v0.9).
         server_id = str(message.guild.id) if message.guild else None
-        if server_id:
-            state_path = self.memory_manager.get_channel_context_path(server_id, str(message.channel.id))
-            channel_state = await self.memory_manager.read(state_path)
-            if channel_state:
-                channel_state = self._trim_episode_index(channel_state)
-                episodes_dir = self.memory_manager.get_episodes_dir_path(server_id, str(message.channel.id))
-                system_prompt += (
-                    f"\n\n<channel_state>\nEpisode files live in: {episodes_dir}/\n\n"
-                    f"{channel_state}\n</channel_state>"
-                )
+        state_path = self.memory_manager.get_channel_context_path(server_id, str(message.channel.id))
+        channel_state = await self.memory_manager.read(state_path)
+        if channel_state:
+            channel_state = self._trim_episode_index(channel_state)
+            episodes_dir = self.memory_manager.get_episodes_dir_path(server_id, str(message.channel.id))
+            system_prompt += (
+                f"\n\n<channel_state>\nEpisode files live in: {episodes_dir}/\n\n"
+                f"{channel_state}\n</channel_state>"
+            )
 
         # Get recent messages (excluding current to avoid duplication)
         channel_id = str(message.channel.id)
@@ -432,13 +432,16 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                 history_parts.append("")
                 history_parts.append(memory_context)
             else:
-                # DM: no server tree, but the person is known globally
+                # DM: no server tree, but the person is known globally and
+                # this conversation has its own private memory dir (v0.9)
                 profile_path = self.memory_manager.get_global_user_profile_path(
                     str(message.author.id))
+                dm_dir = self.memory_manager.get_episodes_dir_path(None, channel_id).rsplit("/episodes", 1)[0]
                 history_parts.append("")
                 history_parts.append(
                     "MEMORY (DM)\n"
                     f"- Your notes on this person: {profile_path}\n"
+                    f"- This conversation's own memory (private to it): {dm_dir}/\n"
                     "Use the memory tool to read them if needed."
                 )
 

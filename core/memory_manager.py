@@ -28,6 +28,8 @@ class MemoryManager:
         # Set post-construction by bot_manager after MessageMemory exists.
         # Sync callable: channel_id -> parent_id or None.
         self.thread_parent_resolver = None
+        # Sync callable: dm channel_id -> partner user_id or None (v0.9).
+        self.dm_partner_resolver = None
 
         logger.info(f"MemoryManager initialized for bot '{bot_id}' at {self.base_path}")
 
@@ -45,15 +47,26 @@ class MemoryManager:
     def _thread_parent(self, channel_id: str):
         return self.thread_parent_resolver(str(channel_id)) if self.thread_parent_resolver else None
 
+    def _dm_dir(self, channel_id: str) -> str:
+        """global/dms/{user}/ for a DM channel; _unresolved keyed by channel
+        when the registry hasn't met this DM yet (v0.9)."""
+        user_id = self.dm_partner_resolver(str(channel_id)) if self.dm_partner_resolver else None
+        return f"global/dms/{user_id}" if user_id else f"global/dms/_unresolved/{channel_id}"
+
     def get_channel_context_path(self, server_id: str, channel_id: str) -> str:
         """Standard path for channel context memory file (threads nest under
-        their parent: places are local, a thread is part of its parent place)."""
+        their parent: places are local, a thread is part of its parent place;
+        a DM belongs to the person, so it lives in the global tree)."""
+        if server_id in (None, "DM"):
+            return f"/memories/{self.bot_id}/{self._dm_dir(channel_id)}/notes.md"
         parent = self._thread_parent(channel_id)
         if parent:
             return f"/memories/{self.bot_id}/servers/{server_id}/channels/{parent}/threads/{channel_id}.md"
         return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}.md"
 
     def get_episodes_dir_path(self, server_id: str, channel_id: str) -> str:
+        if server_id in (None, "DM"):
+            return f"/memories/{self.bot_id}/{self._dm_dir(channel_id)}/episodes"
         parent = self._thread_parent(channel_id)
         if parent:
             return f"/memories/{self.bot_id}/servers/{server_id}/channels/{parent}/threads/{channel_id}/episodes"
