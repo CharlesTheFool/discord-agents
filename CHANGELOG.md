@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] - 0.9.0 (bot core; supervisor + app to follow)
+## [0.9.0] - 2026-06-11
+
+**Status:** Pre-release (beta). Validated by a live end-to-end campaign:
+DM round-trip and /memory cycle driven through a real Discord session,
+ask_prime mechanical gates, a standing watch resolved and relayed, the
+supervisor managing real bot processes (crash auto-restart included), the
+dashboard rendering the campaign as it happened, and the packaged Windows
+app attaching to a live daemon.
 
 ### Added
 
@@ -93,6 +100,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Repository (browse)
 - Electron shell (`app/`): attaches to a running daemon or spawns one,
   opens the dashboard in a window; packaged as a Windows NSIS installer
+
+### Fixed (found live, during the release campaign)
+- Contentless Discord messages (sticker-only, pin/system notices) persisted
+  as empty user turns and 400'd every later request on that channel
+  ("text content blocks must be non-empty") - now skipped at ingestion and
+  seeding, and healed at the wire for states already carrying the residue
+- Outbound DM replies through the slash-command path could register the
+  bot as its own DM partner, poisoning `dm_partner()` resolution for that
+  channel - outbound registration now refuses the bot's own id
+- The dashboard's channel rail showed raw ids for channels without recent
+  traffic: the bot now seeds the channel-name cache for every visible
+  channel at startup; the monitor feed also rendered the prototype's
+  hardcoded bot name instead of the real bot id
 
 ### Notes
 - No new config keys: DMs and /memory ship enabled (core surface, not a

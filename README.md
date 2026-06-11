@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.8.0 (Pre-release Beta)
+**Version:** 0.9.0 (Pre-release Beta)
 
 Build intelligent Discord bots that think, remember, and act autonomously. Powered by Claude.
 
@@ -58,6 +58,28 @@ engagement rates so it backs off where it isn't wanted.
 - **File repository** — a per-server local drive you can edit by hand and
   the bot manages with its `repository` tool; files survive Discord's CDN
   expiry.
+- **DM memory** — DMs are a first-class memory surface: notes and episodes
+  live in a global per-person tree (`global/dms/`) that belongs to the
+  person, not to any server, and is mechanically invisible from everywhere
+  else.
+- **/memory commands** — in a DM, `/memory show` returns your profile
+  verbatim; `/memory remember`, `forget`, and `feedback` let you teach or
+  correct the bot directly, through a one-shot grant that opens exactly
+  your own profile file for that turn.
+
+### One mind across servers
+
+A bot in several servers is one mind with separate rooms — and v0.9 gives
+the rooms a hallway. The `ask_prime` tool lets the bot in one server ask
+"the Prime" (itself, above all its servers) to pose a question or announce
+something in another server. Mechanical gates run before any model
+judgment: vault boundaries in both directions, daily budgets, DM refusal.
+Approved messages are delivered by the target server's bot in its own
+voice. A **standing watch** can ride along: the hourly loop watches the
+target channel for an answer (one cheap model call per check) and relays
+it back — "relayed via Prime, from {server}" — durably, into the asking
+channel. DMs sit above this entirely: a DM is a conversation with the
+Prime itself.
 
 ### Capabilities
 
@@ -72,6 +94,28 @@ engagement rates so it backs off where it isn't wanted.
 - **Every surface** — text channels, threads (active and archived, with
   memory nested under the parent channel), voice-channel text chats, and
   private DMs; the bot always knows what kind of room it's in.
+
+### Operator surface (v0.9)
+
+- **Supervisor daemon** — `python supervisor.py` runs a separate
+  process-manager + localhost API (127.0.0.1:8642): start/stop/restart
+  bots, crash recovery with exponential backoff, and a full read surface
+  over every bot's artifacts (status, memory, logs, events). It reads
+  files, never imports bot internals; every file route is path-jailed.
+- **Dashboard** — served by the daemon at `/`: a fleet board and per-bot
+  pages — Monitor (engine gauges, live-context fill, and a channel
+  monitor that shows the bot's *x-ray stream*: what it read, what it
+  thought, which tools it called, what it said or why it stayed quiet),
+  Configure (the YAML as a form, validated by the same code the bot boots
+  with), Integrations (skill toggles, MCP health), Memories (browse and
+  edit), Repository.
+- **Desktop app** — an Electron shell packaged as a Windows installer:
+  attaches to a running daemon or spawns one, opens the dashboard in a
+  window.
+- **Events substrate** — every bot turn (mention, DM, scan, *stayed
+  silent*, proactive, follow-up, memory write, relay, watch, reseed)
+  writes one structured row; the dashboard and the conversations log both
+  read from it.
 
 ### Production posture
 
@@ -151,6 +195,16 @@ python bot_manager.py spawn alpha
 
 The bot connects, backfills message history in the background, starts its
 autonomous loop, and responds to @mentions.
+
+### 5. (Optional) Run the dashboard
+
+```bash
+python supervisor.py            # http://127.0.0.1:8642
+```
+
+Manage bots, watch the channel monitor, edit memories and config from the
+browser — or install the desktop app from the release assets, which opens
+the same dashboard in its own window.
 
 ---
 
@@ -295,7 +349,7 @@ reporting via [GitHub Security Advisories](../../security/advisories/new)
 
 ## Project Stats
 
-- ~27 core modules, 437 unit tests
+- ~30 core modules + the supervisor package, 595 unit tests
 - Validated by live scenario campaigns on a real Discord server: narrative
   scenarios, pre-release code audits, and release stress tests every cycle —
   including wire-level bugs that mocked tests structurally can't catch (see
@@ -321,7 +375,7 @@ Built with:
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) — next up: **0.9** (the Prime: a graphical
-operator surface over the systems that now exist).
+See [ROADMAP.md](ROADMAP.md) — the 0.x roadmap is complete; next up:
+**1.0** (polish).
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
