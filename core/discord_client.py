@@ -461,13 +461,13 @@ class DiscordClient(discord.Client):
             else:
                 logger.debug(f"Processing message from bot: {message.author.name} (allow_bot_interactions=True)")
 
-        # Check if this is an urgent message (@mention)
-        is_mention = self.user in message.mentions
+        # Urgent = @mention, or any DM (a DM is inherently addressed to the bot)
+        is_urgent = self.user in message.mentions or message.guild is None
 
-        if is_mention:
+        if is_urgent:
             logger.info(
                 f"@mention from {message.author.name} in "
-                f"#{message.channel.name}: {message.content[:50]}..."
+                f"#{getattr(message.channel, 'name', 'DM')}: {message.content[:50]}..."
             )
 
             # Check for reindex command trigger (manual backfill)
@@ -512,7 +512,8 @@ class DiscordClient(discord.Client):
             message_id = message.id
             self.reactive_engine.add_pending_message(channel_id, message_id)
             logger.debug(
-                f"Message {message_id} from {message.author.name} in #{message.channel.name} (stored, added to pending)"
+                f"Message {message_id} from {message.author.name} in "
+                f"#{getattr(message.channel, 'name', 'DM')} (stored, added to pending)"
             )
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -525,7 +526,7 @@ class DiscordClient(discord.Client):
             before: Message before edit
             after: Message after edit
         """
-        logger.info(f"[EDIT EVENT] Message {after.id} edited by {after.author.name} in #{after.channel.name}")
+        logger.info(f"[EDIT EVENT] Message {after.id} edited by {after.author.name} in #{getattr(after.channel, 'name', 'DM')}")
         logger.info(f"[EDIT EVENT] Before: {before.content[:100] if before.content else '(no content)'}")
         logger.info(f"[EDIT EVENT] After: {after.content[:100] if after.content else '(no content)'}")
 
