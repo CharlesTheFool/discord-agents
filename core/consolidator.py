@@ -168,6 +168,7 @@ class MemoryConsolidator:
         self.vaults = vaults
         self.guild_name_resolver = guild_name_resolver
         self._running = False
+        self._pending_era_files: dict = {}  # key "channel_id::month" -> list[Path]
 
     # ---------- cadence ----------
 
@@ -251,8 +252,12 @@ class MemoryConsolidator:
                 if result.type != "succeeded":
                     logger.warning(f"Batch item {cid} {result.type} - skipped")
                     continue
-                text = next(b.text for b in result.message.content if b.type == "text")
-                data = json.loads(text)
+                try:
+                    text = next(b.text for b in result.message.content if b.type == "text")
+                    data = json.loads(text)
+                except (StopIteration, json.JSONDecodeError) as e:
+                    logger.warning(f"Batch item {cid} unparseable ({e}) - skipped")
+                    continue
                 kind, *rest = cid.split("::")
                 if kind == "era":
                     await self._apply_era_result(server_id, rest[0], rest[1], data)
@@ -373,12 +378,15 @@ class MemoryConsolidator:
         return groups
 
     def _build_era_requests(self, server_id: str) -> list:
+        self._pending_era_files.clear()
         requests = []
         channels_dir = self._servers_root() / server_id / "channels"
         if not channels_dir.exists():
             return requests
         for ch_dir in sorted(p for p in channels_dir.iterdir() if p.is_dir()):
             for month, files in self._eligible_episodes(server_id, ch_dir.name).items():
+                key = f"{ch_dir.name}::{month}"
+                self._pending_era_files[key] = files
                 corpus = "\n\n---\n\n".join(
                     f.read_text(encoding="utf-8") for f in files)
                 requests.append({
@@ -413,9 +421,16 @@ class MemoryConsolidator:
                 body.append("")
         era_file.write_text("\n".join(body), encoding="utf-8")
 
-        # archive + remove originals; rewrite the channel-state episode index
+        # archive + remove originals captured at request-build time; rewrite index.
+        # Fall back to _eligible_episodes only when called directly (e.g. tests)
+        # without a preceding _build_era_requests call.
+        key = f"{channel_id}::{month}"
+        captured_files = self._pending_era_files.pop(
+            key, self._eligible_episodes(server_id, channel_id).get(month, []))
         compacted_starts = []
-        for f in self._eligible_episodes(server_id, channel_id).get(month, []):
+        for f in captured_files:
+            if not f.exists():
+                continue  # already gone (manual delete between batch submit and apply)
             parts = f.name.split("_")
             if len(parts) >= 3:
                 compacted_starts.append(parts[2])
@@ -500,7 +515,8 @@ class MemoryConsolidator:
                     continue
                 candidates.extend((ch_dir / "episodes").glob("*.md")
                                   if (ch_dir / "episodes").exists() else [])
-        newest = sorted(candidates, key=lambda p: p.name)[-CONSOLIDATION_EVIDENCE_EPISODES:]
+        recent = [p for p in candidates if not p.name.startswith("era_")]
+        newest = sorted(recent, key=lambda p: p.name)[-CONSOLIDATION_EVIDENCE_EPISODES:]
         return "\n\n---\n\n".join(f.read_text(encoding="utf-8") for f in newest) or "(none)"
 
     def _apply_profile_result(self, uid: str, data: dict) -> None:
@@ -554,11 +570,12 @@ class MemoryConsolidator:
                 state_content = state_fs.read_text(encoding="utf-8")
                 body, _ = split_channel_state(state_content)
                 channel_bodies[cid] = body
-                # Collect newest N episode/era files
+                # Collect newest N non-era episode files (era digests are derived, not evidence)
                 ep_dir = ch_dir / "episodes"
                 ep_files = []
                 if ep_dir.exists():
-                    ep_files = sorted(ep_dir.glob("*.md"), key=lambda p: p.name)
+                    all_eps = sorted(ep_dir.glob("*.md"), key=lambda p: p.name)
+                    ep_files = [p for p in all_eps if not p.name.startswith("era_")]
                     ep_files = ep_files[-CONSOLIDATION_EVIDENCE_EPISODES:]
                 episodes_text = "\n\n---\n\n".join(
                     f.read_text(encoding="utf-8") for f in ep_files) or "(none)"
