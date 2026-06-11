@@ -219,16 +219,7 @@ class MemoryManager:
         if user_ids:
             context_parts.append("- User profiles (global, one per human):")
             for user_id in user_ids[:5]:
-                global_path = self.get_global_user_profile_path(user_id)
-                if self.resolve_path(global_path).exists():
-                    context_parts.append(f"  - {global_path}")
-                    continue
-                legacy_path = self.get_user_profile_path(server_id, user_id)
-                if self.resolve_path(legacy_path).exists():
-                    # pre-0.7 file not yet migrated by the consolidator (shim, removed in 0.8)
-                    context_parts.append(f"  - {legacy_path}")
-                else:
-                    context_parts.append(f"  - {global_path}")
+                context_parts.append(f"  - {self.get_global_user_profile_path(user_id)}")
 
         context_parts.append("")
         context_parts.append(
