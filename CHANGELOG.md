@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - Unreleased
+
+**Status:** In development.
+
+### Added
+
+**Server Induction**
+- `python bot_manager.py induct <bot_id> --server <id> [--dry-run]
+  [--channels id,id,...] [--force-full]` distills a backfilled server's
+  stored backlog into era digests, channel notes, lean global user profiles,
+  and server culture - explicitly framed as archaeology ("observations, not
+  lived memory"), never first-person history
+- `--dry-run` prints a per-channel message/token table with a batch-rate
+  cost estimate and writes nothing
+- Incremental by default (re-runs only process messages past the episode
+  watermark); `--force-full` reprocesses everything; a failed channel writes
+  no partial files and keeps its watermark
+- Refuses to run while the bot is live (watermark races)
+
+**Threads**
+- Threads are first-class surfaces: a persistent thread registry maps each
+  thread to its parent channel; memory nests under
+  `channels/{parent}/threads/{thread_id}` (a thread is part of its parent
+  place)
+- Vault inheritance: a thread inside a vaulted parent is inside the vault -
+  search exclusion, memory sealing, and content gates all expand to thread
+  ids
+- Backfill covers active and archived threads; thread deletion purges
+  stored messages, attachments, and the registry row
+- Context marks the surface: "thread of #parent"
+
+**Voice-channel text**
+- Voice channels' text chats are watched, backfilled, and remembered like
+  any text channel; context marks them "voice channel text chat"
+
+### Changed
+- Proactive engagement skips threads (reactive-only there; internal
+  constant, revisit on demand)
+- The 0.7 per-server profile read shim is removed - memory context always
+  lists the global profile path
+
 ## [0.7.0] - Unreleased
 
 **Status:** In development.

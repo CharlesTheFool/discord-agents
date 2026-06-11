@@ -34,6 +34,7 @@ discord:
   allow_bot_interactions: false
 
   # Historical message backfill
+  # Covers text channels, threads (active + archived), and voice-channel text
   backfill_enabled: true
   backfill_days: 30  # Set to 0 for unlimited
 
