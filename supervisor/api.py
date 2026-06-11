@@ -97,7 +97,7 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
         return json_response({
             "online": True,
             "status": "running",
-            "version": "0.9.0",
+            "version": "0.9.1",
             "port": request.transport.get_extra_info("sockname")[1]
             if request.transport else None,
             "started": app["started"],

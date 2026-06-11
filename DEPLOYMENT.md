@@ -71,6 +71,40 @@ Rollback is one command and never touches data:
 git checkout v0.6.0    # or any prior tag; `git checkout main` to return
 ```
 
+## Desktop app: automatic updates (v0.9.1+)
+
+The packaged Windows app (`app/`) updates itself on two fronts:
+
+- **The launcher** updates via GitHub Releases (`electron-updater`): it checks
+  on launch and every 6 hours, downloads a new installer in the background, and
+  offers a one-click restart. Bots, config, and memories are never touched.
+- **The framework** catches up on its own. Because `main` only advances at
+  releases, the app fast-forwards its git checkout to `origin/main` *before*
+  starting the supervisor daemon, so the daemon always boots on the latest
+  release. `pip install` runs only when `requirements.txt` changed.
+
+The framework updater is deliberately conservative — it acts only on a clean
+git checkout sitting on `main`. A dev workspace (any other branch) or an
+install with local edits is left untouched. This means a production install
+gets new releases with zero manual steps, while the manual `git pull` flow
+above still works and stays the fallback.
+
+`app-config.json` (beside the executable) controls it:
+
+```json
+{
+  "root": "C:\\path\\to\\prod",
+  "python": "C:\\path\\to\\prod\\.venv\\Scripts\\python.exe",
+  "autoUpdateFramework": true,
+  "frameworkBranch": "main"
+}
+```
+
+Set `"python"` to the install's venv interpreter so the framework's dependency
+installs land in the right place. Set `"autoUpdateFramework": false` to pin an
+install to whatever it has. Forward-only: a pre-0.9.1 install has no updater
+and must be reinstalled once to reach 0.9.1; every release after is automatic.
+
 ## Auto-start on Windows (optional)
 
 Run the bot at logon via Task Scheduler:

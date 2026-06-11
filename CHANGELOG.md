@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.1] - 2026-06-11
+
+**Status:** Pre-release (beta). Point release: automatic updates for the
+desktop application.
+
+### Added
+
+**Auto-update (two layers)**
+- The Electron launcher updates itself from GitHub Releases via
+  `electron-updater`: it checks on launch and every 6 hours, downloads a new
+  installer in the background, and offers a one-click restart to apply it.
+  Bots, config, and memories are never touched. Pre-releases are tracked
+  (releases ship marked as pre-release).
+- The framework catches up on its own. Because `main` only advances at
+  releases, a production install fast-forwards its git checkout to
+  `origin/main` *before* the supervisor daemon starts, so the daemon always
+  boots on the latest release. `pip install` runs only when
+  `requirements.txt` actually changed in the incoming range.
+
+### Notes
+
+- Forward-only: a v0.9.0 install has no updater and must be reinstalled once
+  to reach v0.9.1; every release after that is automatic.
+- The framework updater is deliberately conservative - it only acts on a
+  clean git checkout sitting on `main`. Dev workspaces (any other branch) and
+  installs with local edits are left untouched. Disable per-install with
+  `"autoUpdateFramework": false` in `app-config.json`.
+
+---
+
 ## [0.9.0] - 2026-06-11
 
 **Status:** Pre-release (beta). Validated by a live end-to-end campaign:
