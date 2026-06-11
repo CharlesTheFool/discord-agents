@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] - 0.9.0 (bot core; supervisor + app to follow)
+
+### Added
+
+**DM support proper (the Prime's surface)**
+- A persistent `dm_channels` registry (users.db) - Discord can't enumerate
+  DM channels after a restart, so the bot keeps its own memory of who it
+  talks to privately; upserted on every DM in and out
+- DM memory lives in the global tree: `global/dms/{user_id}/` (notes +
+  episodes) - a DM belongs to the person, not to any server; episodization
+  and channel-state seeding work unchanged
+- DM memory trees are mechanically private: visible and writable only from
+  their own conversation, invisible from servers and other DMs, enforced
+  before any vault logic and with zero vaults configured
+- DMs know where they stand: the volatile tail carries `<prime_context>` -
+  the same mind, above all its servers, naming the places it lives
+
+**/memory commands (consent through the DM vault)**
+- `/memory show` - your global profile, verbatim (no model call)
+- `/memory remember|forget|feedback <text>` - injects a structured intent
+  into the DM conversation and runs the normal pipeline with a one-shot
+  grant opening exactly your own profile file for that turn; writes carry
+  the private origin tag (shapes behavior everywhere, cited nowhere)
+- Registered globally, DM-only contexts; first slash-command surface
+
+**Cross-server coordination (ask_prime + standing watches)**
+- `ask_prime` tool (server contexts only): a particular asks the Prime to
+  pose a question or announce something in another server. Mechanical
+  gates run before any model spend - vault boundaries both directions,
+  daily budgets (5/channel, 12/server), DM refusal; then one bounded
+  judgment call that can refuse with a relayable reason
+- Approved sends are delivered by the target particular in its own voice,
+  honoring quiet hours and proactive rate limits
+- `watch_for_response: true` registers a standing watch
+  (`global/watches.json`, max 10 concurrent, 24h expiry): the hourly loop
+  evaluates new messages with one cheap Haiku call; an answer is injected
+  into the asking channel as a durable "relayed via Prime, from {server}"
+  note and delivered there; expiry injects an honest no-answer note
+
+**Events substrate (what the supervisor dashboard will read)**
+- An `events` table in messages.db: one structured row per bot turn-event
+  (kind, server, channel, payload with triggers/thinking/tool calls/
+  response/tokens/provenance), auto-created on first run
+- Every action kind writes: mention, dm, scan, **silent** (considered and
+  stayed quiet is now first-class), proactive (sent and "no opening
+  taken"), followup, memory, relay, watch, skill, reseed (with
+  ceiling/idle reason and episode title)
+- Conversations log finally shows discord/repository/MCP/skill tool calls
+  (the 0.8 stress-campaign observability gap)
+
+### Notes
+- No new config keys: DMs and /memory ship enabled (core surface, not a
+  feature flag); Prime caps are internal constants
+- Supervisor daemon, dashboard, and the desktop app land later in 0.9
+  on this substrate
+
+---
+
 ## [0.8.0] - 2026-06-10
 
 **Status:** Pre-release (beta). Ships together with 0.7.0 below (one tag —
