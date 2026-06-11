@@ -37,9 +37,11 @@ function readConfig() {
   //     self-contained installer; data lives in the user's appData.
   //  3. Dev fallback: the repo this app folder sits in.
   // { "root": ..., "python": ..., "autoUpdateFramework": false, "frameworkBranch": "main" }
+  // userData copy survives installer upgrades (the exe-dir copy may not)
   const candidates = [
     path.join(path.dirname(app.getPath("exe")), "app-config.json"),
     path.join(__dirname, "app-config.json"),
+    path.join(app.getPath("userData"), "app-config.json"),
   ];
   for (const p of candidates) {
     try {

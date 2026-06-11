@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.0] - 2026-06-11
+
+**Status:** Pre-release (beta). The app becomes the product: a self-contained
+installer a non-technical person can run — no Python, no git, no `.env`
+editing, no terminal — plus a ground-up overhaul of the configuration UX.
+The git-checkout developer model keeps working unchanged.
+
+### Added
+
+**Self-contained distributable**
+- The installer ships an embedded CPython runtime and the framework source as
+  app resources; bot data (configs, memories, databases, logs, secrets) lives
+  in `%APPDATA%\Discord Agents` and survives every update.
+- Framework split: `supervisor.py --code-root` + `SupervisorRoot(root,
+  code_root)` separate read-only code from writable data. In a git checkout
+  both are the same directory and nothing changes.
+- First-run seeding: the daemon scaffolds the data root (directory tree,
+  `.env`, `mcp_servers.json`) on boot, idempotently.
+- `app/build-bundle.js` stages the embeddable CPython + vendored
+  dependencies + framework for electron-builder's `extraResources`.
+
+**Secrets in the app**
+- Claude API key and per-bot Discord tokens are entered in the UI, validated
+  against the live APIs before being written, stored in the install's `.env`,
+  and never echoed back. First-run onboarding asks for the key.
+- New endpoints: `GET /api/setup` (booleans only), `PUT /api/setup/anthropic`,
+  `PUT /api/bots/{id}/token`.
+
+**Configuration UX, rebuilt**
+- Essentials first (identity, connection, brain, engagement); everything else
+  under a collapsed Advanced section. Defaults merge under the loaded YAML so
+  every setting renders and works even in a minimal config.
+- Servers and proactive channels are picked from Discord by name (fetched
+  live with the bot's token) — pasted ids are gone. Which servers a bot is
+  *in* is decided by inviting it on Discord; the config only selects among
+  them.
+- Quiet hours: a clickable 24-hour grid (was a dead, read-only chip row).
+- Editable chips for hand-edited lists; checkboxes mean checked = on.
+- Model picker includes Fable 5; the effort dial renders only on
+  effort-capable models (elsewhere it would 400 every call).
+
+**Memory pre-population + induction from the app**
+- Memories tab: create memory files directly; induction card runs a
+  dry-run cost preview or a full induction with live output streaming.
+- Repository tab: upload files into a bot's repository and delete them.
+
+**Cost monitoring**
+- Dollar estimates beside token counts (per-bot gauge and fleet bar), priced
+  per model; unknown models show no number rather than a guess.
+
+### Fixed
+
+- **Closing the app no longer orphans bots.** The window now asks the daemon
+  to shut down cleanly: bots stop, their desired state is kept, and they come
+  back automatically when the app reopens. A daemon the operator runs from a
+  terminal is left alone.
+- The daemon restores desired bots on boot (shutdown's docstring promise,
+  previously unimplemented) and reclaims orphaned bot processes before
+  spawning — ending the double-login-on-same-token failure mode.
+- App icon: the stock Electron logo is replaced by the project icon
+  (`slh_icon.svg` → ico/png at build time; embedded with rcedit in an
+  afterPack hook, sidestepping the winCodeSign cache's Developer Mode
+  requirement).
+- Hardcoded `v0.9.2` strings in the dashboard chrome now read the version
+  from the API.
+- `supervisor.py` inserts its own directory on `sys.path` (the embeddable
+  interpreter has no implicit script-dir entry).
+
+### Notes
+
+- `api.context_messages` and `api.max_tokens` are still load-bearing (reseed
+  tail window and per-reply cap) — they moved to Advanced, not out.
+- `app-config.json` is now also read from the app's userData directory,
+  which survives installer upgrades; keep the git-install pointer there.
+
+---
+
 ## [0.9.2] - 2026-06-11
 
 **Status:** Pre-release (beta). Dashboard polish — the first release delivered

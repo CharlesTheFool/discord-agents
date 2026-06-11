@@ -18,10 +18,12 @@
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "rcedit": "^5.0.2"
   },
   "build": {
     "appId": "dev.discordagents.supervisor",
+    "afterPack": "./after-pack.js",
     "publish": [
       {
         "provider": "github",
@@ -36,8 +38,14 @@
       "build/icon.png"
     ],
     "extraResources": [
-      { "from": "bundle/runtime", "to": "runtime" },
-      { "from": "bundle/framework", "to": "framework" }
+      {
+        "from": "bundle/runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "bundle/framework",
+        "to": "framework"
+      }
     ],
     "win": {
       "target": "nsis",

@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.9.0 (Pre-release Beta)
+**Version:** 0.10.0 (Pre-release Beta)
 
 Build intelligent Discord bots that think, remember, and act autonomously. Powered by Claude.
 
@@ -109,9 +109,13 @@ Prime itself.
   Configure (the YAML as a form, validated by the same code the bot boots
   with), Integrations (skill toggles, MCP health), Memories (browse and
   edit), Repository.
-- **Desktop app** — an Electron shell packaged as a Windows installer:
-  attaches to a running daemon or spawns one, opens the dashboard in a
-  window.
+- **Desktop app (v0.10: self-contained)** — the Windows installer ships an
+  embedded Python runtime and the framework: download, run, create a bot,
+  paste your Claude key and Discord token in the app, press Start. No
+  Python, no git, no terminal. Bot data lives in `%APPDATA%\Discord Agents`
+  and survives updates; closing the window stops bots cleanly and they
+  return on relaunch. (A git checkout + `app-config.json` keeps the
+  developer model working unchanged.)
 - **Events substrate** — every bot turn (mention, DM, scan, *stayed
   silent*, proactive, follow-up, memory write, relay, watch, reseed)
   writes one structured row; the dashboard and the conversations log both
@@ -145,6 +149,14 @@ Prime itself.
 ---
 
 ## Quick Start
+
+### The short way (no Python, no git)
+
+Download **Discord Agents Setup** from the latest release, run it, and the
+app walks you through the rest: paste a Claude API key on first launch,
+commission a bot, paste its Discord token on the bot's Configure tab, pick
+its servers from a list, press Start. Everything below is the developer
+path.
 
 ### 1. Clone and install
 
