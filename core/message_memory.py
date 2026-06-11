@@ -94,12 +94,22 @@ class MessageMemory:
         last_episodized_message_id TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS threads (
+        thread_id TEXT PRIMARY KEY,
+        parent_id TEXT NOT NULL,
+        name TEXT,
+        archived BOOLEAN NOT NULL DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
     """
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db: Optional[aiosqlite.Connection] = None
+        self._thread_parents: dict = {}
+        self._threads_by_parent: dict = {}
 
     async def initialize(self):
         """Initialize database connection and create tables"""
@@ -114,6 +124,14 @@ class MessageMemory:
 
         # Run migrations for existing databases
         await self._run_migrations()
+
+        # Hydrate thread->parent sync caches
+        self._thread_parents = {}
+        self._threads_by_parent = {}
+        cursor = await self._db.execute("SELECT thread_id, parent_id FROM threads")
+        for row in await cursor.fetchall():
+            self._thread_parents[row["thread_id"]] = row["parent_id"]
+            self._threads_by_parent.setdefault(row["parent_id"], set()).add(row["thread_id"])
 
         logger.info(f"Message memory initialized: {self.db_path}")
 
@@ -553,6 +571,49 @@ class MessageMemory:
             )
         rows = await cursor.fetchall()
         return [self._row_to_message(row) for row in rows]
+
+    def thread_parent(self, channel_id: str) -> Optional[str]:
+        """Parent channel id if this id is a known thread, else None. Sync —
+        path helpers and vault checks need it without awaiting."""
+        return self._thread_parents.get(str(channel_id))
+
+    def threads_of(self, parent_id: str) -> list:
+        """Sorted thread ids whose parent is parent_id. Sync."""
+        return sorted(self._threads_by_parent.get(str(parent_id), set()))
+
+    async def upsert_thread(self, thread_id: str, parent_id: str,
+                            name: str = None, archived: bool = False) -> None:
+        await self._db.execute(
+            """
+            INSERT INTO threads (thread_id, parent_id, name, archived, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(thread_id) DO UPDATE SET
+                parent_id = excluded.parent_id,
+                name = excluded.name,
+                archived = excluded.archived,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (str(thread_id), str(parent_id), name, archived),
+        )
+        await self._db.commit()
+        self._thread_parents[str(thread_id)] = str(parent_id)
+        self._threads_by_parent.setdefault(str(parent_id), set()).add(str(thread_id))
+
+    async def get_threads_for_parent(self, parent_id: str) -> List[str]:
+        cursor = await self._db.execute(
+            "SELECT thread_id FROM threads WHERE parent_id = ?", (str(parent_id),))
+        return [r["thread_id"] for r in await cursor.fetchall()]
+
+    async def get_thread_rows(self, parent_id: str) -> list:
+        cursor = await self._db.execute(
+            "SELECT * FROM threads WHERE parent_id = ?", (str(parent_id),))
+        return await cursor.fetchall()
+
+    async def get_message_ids_in_channel(self, channel_id: str) -> List[str]:
+        cursor = await self._db.execute(
+            "SELECT message_id FROM messages WHERE channel_id = ? AND is_system = 0",
+            (str(channel_id),))
+        return [r["message_id"] for r in await cursor.fetchall()]
 
     async def get_last_message_id_before(
         self, channel_id: str, cutoff: datetime
