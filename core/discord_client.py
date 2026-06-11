@@ -460,6 +460,23 @@ class DiscordClient(discord.Client):
             except Exception as e:
                 logger.debug(f"Thread registry update failed: {e}")
 
+        # Channel-name cache (v0.9): the supervisor labels channels offline.
+        # No-op guarded, so steady state costs a dict lookup.
+        try:
+            if message.guild is not None:
+                if not isinstance(message.channel, discord.Thread):
+                    await self.message_memory.upsert_channel_name(
+                        str(message.channel.id), message.channel.name,
+                        kind="channel", guild_id=str(message.guild.id))
+                await self.message_memory.upsert_channel_name(
+                    str(message.guild.id), message.guild.name, kind="server")
+            elif message.author.id != self.user.id:
+                await self.message_memory.upsert_channel_name(
+                    str(message.channel.id),
+                    f"DM · {message.author.display_name}", kind="dm")
+        except Exception as e:
+            logger.debug(f"Channel-name cache update failed: {e}")
+
         # Process attachments if enabled (v0.5.0)
         processed_attachments = []
         if self.reactive_engine.attachment_manager and message.attachments:

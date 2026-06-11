@@ -103,6 +103,14 @@ class MessageMemory:
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS channel_names (
+        id        TEXT PRIMARY KEY,
+        name      TEXT NOT NULL,
+        kind      TEXT NOT NULL DEFAULT 'channel',
+        guild_id  TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS events (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         ts         TEXT NOT NULL,
@@ -123,6 +131,7 @@ class MessageMemory:
         self._thread_parents: dict = {}
         self._threads_by_parent: dict = {}
         self._thread_meta: dict = {}  # tid -> (parent, name, archived); upsert no-op guard
+        self._channel_name_cache: dict = {}  # id -> (name, kind, guild_id); no-op guard (v0.9)
 
     async def initialize(self):
         """Initialize database connection and create tables"""
@@ -148,6 +157,12 @@ class MessageMemory:
             self._threads_by_parent.setdefault(row["parent_id"], set()).add(row["thread_id"])
             self._thread_meta[row["thread_id"]] = (
                 row["parent_id"], row["name"], bool(row["archived"]))
+
+        # Hydrate channel-name no-op guard (v0.9)
+        self._channel_name_cache = {}
+        cursor = await self._db.execute("SELECT id, name, kind, guild_id FROM channel_names")
+        for row in await cursor.fetchall():
+            self._channel_name_cache[row["id"]] = (row["name"], row["kind"], row["guild_id"])
 
         logger.info(f"Message memory initialized: {self.db_path}")
 
@@ -178,6 +193,34 @@ class MessageMemory:
         if self._db:
             await self._db.close()
             logger.info("Message memory closed")
+
+    # ------------------------------------------------------------------
+    # Channel names (v0.9): offline name source for the supervisor UI.
+    # ------------------------------------------------------------------
+
+    async def upsert_channel_name(self, id: str, name: str,
+                                  kind: str = "channel",
+                                  guild_id: Optional[str] = None) -> None:
+        """Cache a channel/server/dm display name; no-op when unchanged."""
+        key = str(id)
+        value = (name, kind, str(guild_id) if guild_id else None)
+        if self._channel_name_cache.get(key) == value:
+            return
+        await self._db.execute(
+            """INSERT INTO channel_names (id, name, kind, guild_id, updated_at)
+               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(id) DO UPDATE SET
+                 name = excluded.name, kind = excluded.kind,
+                 guild_id = excluded.guild_id, updated_at = CURRENT_TIMESTAMP""",
+            (key, name, kind, value[2]),
+        )
+        await self._db.commit()
+        self._channel_name_cache[key] = value
+
+    async def get_channel_names(self) -> List[dict]:
+        cursor = await self._db.execute(
+            "SELECT id, name, kind, guild_id FROM channel_names")
+        return [dict(r) for r in await cursor.fetchall()]
 
     # ------------------------------------------------------------------
     # Turn events (v0.9): one structured row per bot turn-event, the
