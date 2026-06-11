@@ -455,8 +455,12 @@ class DiscordToolExecutor:
 
             # Scope: server (default) constrains to current server; global removes constraint
             if scope == "server" and current_server_id:
-                query += " AND (server_id = ? OR channel_id = ?)"
-                query_params.extend([current_server_id, current_channel_id or ""])
+                if current_channel_id:
+                    query += " AND (server_id = ? OR (server_id IS NULL AND channel_id = ?))"
+                    query_params.extend([current_server_id, current_channel_id])
+                else:
+                    query += " AND server_id = ?"
+                    query_params.append(current_server_id)
 
             if channel_id:
                 query += " AND channel_id = ?"
