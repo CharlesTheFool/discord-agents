@@ -97,6 +97,18 @@ like a search engine reporting zero results. What you do carry into a DM is
 your own memory of this person and the public server life you share."""
 
 
+# Volatile-tail line for DMs (v0.9): the cached prompt explains what a DM
+# IS (above); this names where the mind currently lives. Rides the
+# transient <context_update> message - never cached, never persisted.
+PRIME_CONTEXT_TEMPLATE = (
+    "<prime_context>\n"
+    "This is a DM - no server around it. You're the same mind that lives in "
+    "{server_list}, just here as yourself, above all of them. What you know "
+    "from those places informs you; what's said here stays here.\n"
+    "</prime_context>"
+)
+
+
 # =============================================================================
 # SERVER INDUCTION (v0.8.0, Internal)
 # =============================================================================

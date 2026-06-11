@@ -284,6 +284,8 @@ class DiscordClient(discord.Client):
 
         # Give reactive engine access to Discord client for periodic checks
         self.reactive_engine.discord_client = self
+        # DM prime-context line names the places this mind inhabits (v0.9)
+        self.reactive_engine.list_servers = lambda: [g.name for g in self.guilds]
 
         # Initialize v0.5.0 managers (MCP, Skills)
         try:

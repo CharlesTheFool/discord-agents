@@ -38,7 +38,7 @@ from .unified_attachment_manager import UnifiedAttachmentManager
 from .files_api_client import FilesAPIClient
 from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
-from .internal_constants import TOOL_STUB_KEEP_TURNS, format_size
+from .internal_constants import TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size
 from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
 from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
@@ -217,6 +217,9 @@ class ReactiveEngine:
         self.memory_manager = memory_manager
         self.conversation_logger = conversation_logger
         self.user_cache = user_cache
+        # Sync callable: () -> list of guild names (set by discord_client in
+        # on_ready); feeds the DM prime-context line (v0.9).
+        self.list_servers = None
 
         # Initialize Anthropic client
         self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
@@ -772,6 +775,16 @@ class ReactiveEngine:
         state.
         """
         parts = [base] if base else []
+
+        # DMs: name where the mind lives (v0.9). Guild list changes rarely
+        # but this whole message is per-request anyway - cache-safe by place.
+        if message is not None and message.guild is None and self.list_servers:
+            try:
+                names = [n for n in self.list_servers() if n]
+                server_list = ", ".join(names) if names else "your servers (none yet)"
+                parts.append(PRIME_CONTEXT_TEMPLATE.format(server_list=server_list))
+            except Exception as e:
+                logger.error(f"Failed to build prime context: {e}")
 
         if conversation_state and self.attachment_manager:
             try:
