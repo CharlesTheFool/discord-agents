@@ -619,6 +619,20 @@ class MessageMemory:
         if parent:
             self._threads_by_parent.get(parent, set()).discard(tid)
 
+    async def get_channel_volume(
+        self, channel_id: str, after_message_id: Optional[str] = None
+    ) -> tuple:
+        """(message_count, content_chars) for induction dry-run estimates."""
+        sql = "SELECT COUNT(*), COALESCE(SUM(LENGTH(content)), 0) FROM messages " \
+              "WHERE channel_id = ? AND is_system = 0"
+        params: list = [channel_id]
+        if after_message_id is not None:
+            sql += " AND CAST(message_id AS INTEGER) > CAST(? AS INTEGER)"
+            params.append(after_message_id)
+        cursor = await self._db.execute(sql, tuple(params))
+        row = await cursor.fetchone()
+        return row[0], row[1]
+
     async def get_threads_for_parent(self, parent_id: str) -> List[str]:
         cursor = await self._db.execute(
             "SELECT thread_id FROM threads WHERE parent_id = ?", (str(parent_id),))

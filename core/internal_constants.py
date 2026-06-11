@@ -85,6 +85,22 @@ PROACTIVE_MIN_PROVOCATION_GAP_HOURS = 1.0
 PROACTIVE_INCLUDES_THREADS = False
 
 
+# =============================================================================
+# SERVER INDUCTION (v0.8.0, Internal)
+# =============================================================================
+INDUCTION_CHUNK_TOKENS = 100_000   # target input tokens per distillation call (chars/4)
+INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
+
+# Batch-rate $/MTok (50% of live) for the dry-run cost table; unknown models
+# print "n/a" rather than a guess
+MODEL_BATCH_PRICES = {
+    "haiku-4-5": (0.50, 2.50),
+    "sonnet-4-5": (1.50, 7.50),
+    "sonnet-4-6": (1.50, 7.50),
+    "opus-4": (7.50, 37.50),
+}
+
+
 def format_size(size_bytes: int) -> str:
     """Human-readable byte size ('1.3 MB') - the one shared implementation."""
     size = float(size_bytes or 0)
