@@ -127,6 +127,7 @@ class BotManager:
         # Initialize memory manager (markdown-based long-term memory)
         memory_base_path = Path("memories")
         memory_manager = MemoryManager(self.bot_id, memory_base_path)
+        memory_manager.thread_parent_resolver = self.message_memory.thread_parent
         logger.info("Memory manager initialized")
 
         # Initialize conversation logger (human-readable conversation dumps)

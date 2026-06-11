@@ -108,10 +108,13 @@ class AgenticEngine:
 
         # Memory tool executor for the proactive tool loop (MemoryManager has
         # no execute(); calling it crashed any memory tool use in this engine).
+        _vaults = VaultEnforcer(config.vaults)
+        _vaults.thread_parent_resolver = message_memory.thread_parent
+        _vaults.threads_of = message_memory.threads_of
         self.memory_tool = MemoryToolExecutor(
             memory_base_path=Path("memories"),
             bot_id=config.bot_id,
-            vaults=VaultEnforcer(config.vaults),
+            vaults=_vaults,
         )
 
         # Cache proactive config (v0.6.0 - simplified config with presets)

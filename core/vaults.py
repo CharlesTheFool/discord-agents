@@ -24,21 +24,35 @@ class VaultEnforcer:
         self.vaults = {str(v) for v in (vault_ids or []) if str(v).strip()}
         if self.vaults:
             logger.info(f"Vaults active: {sorted(self.vaults)}")
+        # Set post-construction when MessageMemory is available.
+        self.thread_parent_resolver = None  # sync: channel_id -> parent_id or None
+        self.threads_of = None              # sync: vault_channel_id -> [thread ids]
 
     @property
     def active(self) -> bool:
         return bool(self.vaults)
 
     def _context_ids(self, server_id, channel_id) -> set:
-        return {str(i) for i in (server_id, channel_id) if i}
+        ids = {str(i) for i in (server_id, channel_id) if i}
+        if channel_id and self.thread_parent_resolver:
+            parent = self.thread_parent_resolver(str(channel_id))
+            if parent:
+                ids.add(str(parent))
+        return ids
 
     def is_inside(self, server_id, channel_id) -> bool:
         """Is the current context inside ANY vault?"""
         return bool(self.vaults & self._context_ids(server_id, channel_id))
 
     def excluded_ids(self, server_id, channel_id) -> List[str]:
-        """Vault ids the context is NOT inside - excluded from search/listing SQL."""
-        return sorted(self.vaults - self._context_ids(server_id, channel_id))
+        """Vault ids the context is NOT inside - excluded from search/listing SQL.
+        Expands vaulted channels with their thread ids."""
+        base = self.vaults - self._context_ids(server_id, channel_id)
+        expanded = set(base)
+        if self.threads_of:
+            for vid in base:
+                expanded.update(str(t) for t in (self.threads_of(vid) or []))
+        return sorted(expanded)
 
     def blocks_content(self, content_server_id, content_channel_id,
                        server_id, channel_id) -> bool:
@@ -78,6 +92,17 @@ class VaultEnforcer:
                             "that path belongs to a vaulted channel - it can "
                             "only be touched from inside it"
                         )
+                    # Thread path: channels/{parent}/threads/{tid}
+                    if "threads" in parts:
+                        t_idx = parts.index("threads") + 1
+                        if t_idx < len(parts):
+                            tid = parts[t_idx].replace(".md", "").replace("_stats.json", "")
+                            excluded = set(self.excluded_ids(server_id, channel_id))
+                            if tid in excluded:
+                                return False, (
+                                    "that path belongs to a vaulted channel - it can "
+                                    "only be touched from inside it"
+                                )
 
         # Global profile writes from inside a vault would leak onto other servers
         if (command in _WRITE_COMMANDS

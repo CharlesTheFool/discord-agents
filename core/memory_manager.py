@@ -25,6 +25,9 @@ class MemoryManager:
         self.bot_id = bot_id
         self.base_path = memory_base_path / bot_id
         self.base_path.mkdir(parents=True, exist_ok=True)
+        # Set post-construction by bot_manager after MessageMemory exists.
+        # Sync callable: channel_id -> parent_id or None.
+        self.thread_parent_resolver = None
 
         logger.info(f"MemoryManager initialized for bot '{bot_id}' at {self.base_path}")
 
@@ -39,12 +42,21 @@ class MemoryManager:
         """Legacy per-server profile path (pre-0.7) - migration + fallback shim only."""
         return f"/memories/{self.bot_id}/servers/{server_id}/users/{user_id}.md"
 
+    def _thread_parent(self, channel_id: str):
+        return self.thread_parent_resolver(str(channel_id)) if self.thread_parent_resolver else None
+
     def get_channel_context_path(self, server_id: str, channel_id: str) -> str:
-        """Standard path for channel context memory file"""
+        """Standard path for channel context memory file (threads nest under
+        their parent: places are local, a thread is part of its parent place)."""
+        parent = self._thread_parent(channel_id)
+        if parent:
+            return f"/memories/{self.bot_id}/servers/{server_id}/channels/{parent}/threads/{channel_id}.md"
         return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}.md"
 
     def get_episodes_dir_path(self, server_id: str, channel_id: str) -> str:
-        """Standard path for a channel's episode directory"""
+        parent = self._thread_parent(channel_id)
+        if parent:
+            return f"/memories/{self.bot_id}/servers/{server_id}/channels/{parent}/threads/{channel_id}/episodes"
         return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}/episodes"
 
     def get_server_culture_path(self, server_id: str) -> str:
@@ -91,6 +103,9 @@ class MemoryManager:
 
     def get_channel_stats_path(self, server_id: str, channel_id: str) -> str:
         """Standard path for channel engagement stats JSON"""
+        parent = self._thread_parent(channel_id)
+        if parent:
+            return f"/memories/{self.bot_id}/servers/{server_id}/channels/{parent}/threads/{channel_id}_stats.json"
         return f"/memories/{self.bot_id}/servers/{server_id}/channels/{channel_id}_stats.json"
 
     async def get_engagement_stats(self, server_id: str, channel_id: str) -> dict:

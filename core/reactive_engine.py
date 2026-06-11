@@ -222,6 +222,8 @@ class ReactiveEngine:
 
         # Vault enforcement (v0.7.0) - the one mechanical isolation gate
         self.vaults = VaultEnforcer(config.vaults)
+        self.vaults.thread_parent_resolver = message_memory.thread_parent
+        self.vaults.threads_of = message_memory.threads_of
 
         self.memory_tool_executor = MemoryToolExecutor(
             memory_base_path=Path("memories"),
