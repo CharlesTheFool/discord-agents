@@ -313,7 +313,11 @@ async def _run_consolidation(bot_id: str, server_id: str, force: bool):
     from core.vaults import VaultEnforcer
 
     load_dotenv()
-    config = BotConfig.load(Path(f"bots/{bot_id}.yaml"))
+    config_path = Path(f"bots/{bot_id}.yaml")
+    if not config_path.exists():
+        print(f"Error: no config at {config_path}")
+        sys.exit(1)
+    config = BotConfig.load(config_path)
     memory = MessageMemory(Path("persistence") / f"{bot_id}_messages.db")
     await memory.initialize()
     user_cache = UserCache(Path("persistence") / f"{bot_id}_users.db")
@@ -389,8 +393,9 @@ def main():
             print("Usage: python bot_manager.py consolidate <bot_id> --server <server_id> [--force]")
             sys.exit(1)
         bot_id = sys.argv[2]
-        server_id = sys.argv[sys.argv.index("--server") + 1] if "--server" in sys.argv else None
-        if not server_id:
+        try:
+            server_id = sys.argv[sys.argv.index("--server") + 1]
+        except (ValueError, IndexError):
             print("Error: --server <server_id> is required")
             sys.exit(1)
         if Path(f"persistence/{bot_id}_running.flag").exists():

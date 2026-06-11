@@ -1049,4 +1049,11 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             except asyncio.CancelledError:
                 pass
 
+        if self._consolidation_task and not self._consolidation_task.done():
+            self._consolidation_task.cancel()
+            try:
+                await self._consolidation_task
+            except asyncio.CancelledError:
+                pass
+
         logger.info("Agentic engine shutdown complete")

@@ -88,7 +88,7 @@ class MemoryConsolidator:
 
     def _is_due(self, server_id: str) -> bool:
         stamp = self._read_stamp(server_id)
-        if stamp is None:
+        if stamp is None or "last_run" not in stamp:
             return True
         last = datetime.fromisoformat(stamp["last_run"])
         return datetime.utcnow() - last >= timedelta(days=CONSOLIDATION_INTERVAL_DAYS)

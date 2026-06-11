@@ -41,6 +41,8 @@ class BatchClient:
         logger.info(f"Batch {batch.id} submitted ({len(requests)} requests)")
 
         deadline = time.monotonic() + self.timeout_seconds
+        # "canceling" resolves to "ended"; any unknown future status is bounded
+        # by the timeout rather than treated as terminal
         while batch.processing_status != "ended":
             if time.monotonic() > deadline:
                 raise BatchTimeoutError(
