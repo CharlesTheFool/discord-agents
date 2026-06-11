@@ -351,6 +351,18 @@ class DiscordClient(discord.Client):
         except Exception as e:
             logger.error(f"Error storing message: {e}")
 
+        # Thread registry (v0.8.0): keep thread -> parent mapping fresh
+        if isinstance(message.channel, discord.Thread):
+            try:
+                await self.message_memory.upsert_thread(
+                    str(message.channel.id),
+                    parent_id=str(message.channel.parent_id),
+                    name=message.channel.name,
+                    archived=bool(message.channel.archived),
+                )
+            except Exception as e:
+                logger.debug(f"Thread registry update failed: {e}")
+
         # Process attachments if enabled (v0.5.0)
         processed_attachments = []
         if self.reactive_engine.attachment_manager and message.attachments:
@@ -527,6 +539,26 @@ class DiscordClient(discord.Client):
         """Bulk deletions (mod sweeps) get the same purge per message."""
         for message_id in payload.message_ids:
             await self._purge_deleted_message(message_id)
+
+    async def on_thread_update(self, before: discord.Thread, after: discord.Thread):
+        """Track archival state + renames (archived threads auto-unarchive on send)."""
+        await self.message_memory.upsert_thread(
+            str(after.id), parent_id=str(after.parent_id),
+            name=after.name, archived=bool(after.archived),
+        )
+
+    async def on_raw_thread_delete(self, payload: discord.RawThreadDeleteEvent):
+        """Deleting a thread purges its stored messages + attachments, mirroring
+        the per-message raw-deletion path (which never fires for container
+        deletion)."""
+        thread_id = str(payload.thread_id)
+        try:
+            message_ids = await self.message_memory.get_message_ids_in_channel(thread_id)
+            for mid in message_ids:
+                if mid.isdigit():
+                    await self._purge_deleted_message(int(mid))
+        except Exception as e:
+            logger.warning(f"Thread {thread_id} purge incomplete: {e}")
 
     async def _purge_deleted_message(self, message_id: int):
         """Remove a deleted message from storage and the attachment pipeline."""
