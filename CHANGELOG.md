@@ -57,11 +57,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conversations log finally shows discord/repository/MCP/skill tool calls
   (the 0.8 stress-campaign observability gap)
 
+**Supervisor daemon**
+- `python supervisor.py [--root <path>] [--port <n>]` - process management
+  (start/stop/restart, crash recovery with exponential backoff capped at
+  5/hour) + a localhost-only HTTP API on 127.0.0.1:8642
+- Full dashboard surface: fleet list, rich per-bot status (engines,
+  live-context fill, tokens-today from the events table, DMs, follow-ups,
+  watches, vaults, engagement readout), stats, memory tree
+  (read AND write - editable memories), repository tree (read-only),
+  log tails with SSE follow, channel navigation (servers → channels +
+  the DM rail), and the channel stream (messages ⋈ turn-events,
+  cursor-paginated)
+- Integrations: skills catalog with toggles (= membership in
+  `skills.default_skills`), add-skill upload, MCP server management
+  (mcp_servers.json) with a 60s health poller (connected/error/
+  connecting/disabled + latency + discovered tools) and live reconnect
+- Config as data: GET returns the YAML; PUT validates through the same
+  `Config.validate()` the bot boots with and rejects invalid writes
+- Commission/retire: create bots from a template (id validated); delete
+  refuses while running and moves everything to `trash/`, never deletes
+- Every file route is path-jailed; `.env` and tokens are unreachable by
+  construction
+- A `channel_names` cache table lets the dashboard label channels while
+  bots are asleep
+
 ### Notes
 - No new config keys: DMs and /memory ship enabled (core surface, not a
   feature flag); Prime caps are internal constants
-- Supervisor daemon, dashboard, and the desktop app land later in 0.9
-  on this substrate
+- Dashboard UI and the desktop app land next on this substrate
 
 ---
 
