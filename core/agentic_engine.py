@@ -117,6 +117,10 @@ class AgenticEngine:
         # Cache proactive config (v0.6.0 - simplified config with presets)
         self._proactive_config = config.get_proactive_config()
 
+        # Consolidator (attached externally by bot_manager after construction)
+        self.consolidator = None
+        self._consolidation_task = None
+
         # Track background task
         self._task = None
         self._running = False
@@ -198,6 +202,14 @@ class AgenticEngine:
                 current_hour = datetime.now().hour
                 if current_hour == 3:  # 3am maintenance
                     await self.maintain_memories()
+                    # Weekly memory reconsolidation: batch-based, hours-long -
+                    # runs as a background task so the loop keeps ticking.
+                    # Stamp files make double-fires harmless.
+                    if self.consolidator and (
+                            self._consolidation_task is None
+                            or self._consolidation_task.done()):
+                        self._consolidation_task = asyncio.create_task(
+                            self.consolidator.nightly_tick())
 
                 logger.debug("Agentic loop iteration complete")
 
