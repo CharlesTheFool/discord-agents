@@ -211,7 +211,60 @@ class DiscordClient(discord.Client):
         # create_task calls can be garbage-collected mid-run
         self._background_tasks = set()
 
+        # Slash commands (v0.9): /memory, DM-only, registered globally
+        self.tree = discord.app_commands.CommandTree(self)
+
         logger.info(f"Discord client initialized for bot '{config.bot_id}'")
+
+    async def setup_hook(self):
+        """Register slash commands before the gateway connects (discord.py
+        calls this once after login). /memory is DM-only by contexts."""
+        memory_group = discord.app_commands.Group(
+            name="memory",
+            description="What this bot remembers about you",
+            allowed_contexts=discord.app_commands.AppCommandContext(
+                guild=False, dm_channel=True, private_channel=True),
+        )
+
+        @memory_group.command(name="show", description="See your profile, verbatim")
+        async def memory_show(interaction: discord.Interaction):
+            await self._run_memory_command(interaction, "show", "")
+
+        @memory_group.command(name="remember", description="Teach the bot something, privately")
+        @discord.app_commands.describe(text="What should it keep in mind?")
+        async def memory_remember(interaction: discord.Interaction, text: str):
+            await self._run_memory_command(interaction, "remember", text)
+
+        @memory_group.command(name="forget", description="Correct or remove something it has on you")
+        @discord.app_commands.describe(text="What should it forget or fix?")
+        async def memory_forget(interaction: discord.Interaction, text: str):
+            await self._run_memory_command(interaction, "forget", text)
+
+        @memory_group.command(name="feedback", description="Tell it how its behavior landed")
+        @discord.app_commands.describe(text="What worked, what didn't?")
+        async def memory_feedback(interaction: discord.Interaction, text: str):
+            await self._run_memory_command(interaction, "feedback", text)
+
+        self.tree.add_command(memory_group)
+        try:
+            await self.tree.sync()
+            logger.info("Slash commands synced (/memory, DM-only)")
+        except Exception as e:
+            logger.error(f"Slash command sync failed: {e}", exc_info=True)
+
+    async def _run_memory_command(self, interaction: discord.Interaction,
+                                  kind: str, text: str) -> None:
+        """Ack within Discord's 3s window, then run the real pipeline; the
+        bot's actual reply arrives as a normal DM message."""
+        try:
+            await interaction.response.send_message(
+                "let me think about that..." if kind != "show" else "pulling it up...",
+                ephemeral=True)
+        except discord.HTTPException as e:
+            logger.error(f"/memory ack failed: {e}")
+            return
+        self._track_task(self.reactive_engine.handle_memory_command(
+            interaction.channel, interaction.user, kind, text))
 
     def _track_task(self, coro) -> asyncio.Task:
         """create_task with a strong reference held until completion."""

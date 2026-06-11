@@ -71,7 +71,8 @@ class VaultEnforcer:
         return str(channel_id or "") in self.vaults
 
     def _check_dm_memory(self, path: str, command: str,
-                         server_id, channel_id) -> Optional[Tuple[bool, Optional[str]]]:
+                         server_id, channel_id,
+                         write_grant: Optional[str] = None) -> Optional[Tuple[bool, Optional[str]]]:
         """DM privacy rules (v0.9): every DM is an implicit vault scoped to
         its conversation. Returns a verdict, or None when DM rules have no
         opinion (server vault rules still apply)."""
@@ -93,6 +94,9 @@ class VaultEnforcer:
             return True, None
 
         if in_dm and command in _WRITE_COMMANDS:
+            # One-shot consent (/memory): the caller's own global profile only
+            if write_grant and path.rstrip("/").endswith(f"global/users/{write_grant}.md"):
+                return True, None
             return False, (
                 "from a DM, what you write down stays in this conversation's "
                 "own memory (its global/dms/ folder)"
@@ -100,10 +104,14 @@ class VaultEnforcer:
         return None
 
     def check_memory_access(self, path: str, command: str,
-                            server_id, channel_id) -> Tuple[bool, Optional[str]]:
-        """Gate one memory-tool call. Returns (allowed, reason_if_denied)."""
+                            server_id, channel_id, *,
+                            write_grant: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        """Gate one memory-tool call. Returns (allowed, reason_if_denied).
+        write_grant (v0.9): one-shot /memory consent - the named user's own
+        global profile becomes writable from their DM, nothing else."""
         # DM privacy is mechanical and holds even with no vaults configured
-        dm_verdict = self._check_dm_memory(path, command, server_id, channel_id)
+        dm_verdict = self._check_dm_memory(path, command, server_id, channel_id,
+                                           write_grant=write_grant)
         if dm_verdict is not None:
             return dm_verdict
 

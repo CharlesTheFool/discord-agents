@@ -42,7 +42,8 @@ class MemoryToolExecutor:
         self,
         tool_input: Dict[str, Any],
         current_server_id: Optional[str] = None,
-        current_channel_id: Optional[str] = None
+        current_channel_id: Optional[str] = None,
+        write_grant: Optional[str] = None
     ) -> str:
         """
         Execute memory tool command, returning result string for Claude.
@@ -51,6 +52,8 @@ class MemoryToolExecutor:
             tool_input: Tool parameters (command, path, etc.)
             current_server_id: Current server context for isolation
             current_channel_id: Current channel context for isolation
+            write_grant: one-shot /memory consent (v0.9) - that user's own
+                global profile is writable from their DM for this turn
         """
         command = tool_input.get("command")
         path = tool_input.get("path", "")
@@ -69,7 +72,8 @@ class MemoryToolExecutor:
                 if not vp:
                     continue
                 allowed, reason = self.vaults.check_memory_access(
-                    vp, command, current_server_id, current_channel_id
+                    vp, command, current_server_id, current_channel_id,
+                    write_grant=write_grant
                 )
                 if not allowed:
                     logger.warning(f"Vault denial ({command} {vp}): {reason}")

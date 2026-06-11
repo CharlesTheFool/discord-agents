@@ -13,6 +13,7 @@ import io
 import logging
 from anthropic import Anthropic, AsyncAnthropic, NotFoundError
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, List, Optional, TYPE_CHECKING
 from pathlib import Path
 from collections import deque
@@ -167,6 +168,36 @@ def with_message_cache_breakpoint(messages: list) -> list:
         new_msg = {**messages[mi], "content": new_content}
         return messages[:mi] + [new_msg] + messages[mi + 1:]
     return messages
+
+
+def memory_intent(kind: str, text: str, display_name: str) -> str:
+    """The structured intent a /memory command injects into the DM (v0.9)."""
+    return (
+        f'<memory_request kind="{kind}">{text}</memory_request>\n'
+        f"(A /memory {kind} command from {display_name} - they're "
+        f"deliberately asking; handle it with your memory tool, then "
+        f"answer them in your own voice. Anything you write down from "
+        f"this carries the private origin tag - it shapes how you treat "
+        f"them everywhere, cited nowhere.)"
+    )
+
+
+class _SyntheticDMMessage:
+    """Message-shaped carrier for /memory commands (no discord.Message exists
+    for a slash interaction). Carries exactly the attributes the context
+    builder and tool loop touch."""
+
+    def __init__(self, channel, author, content: str):
+        self.channel = channel
+        self.author = author
+        self.content = content
+        self.guild = None
+        self.id = 0
+        self.reference = None
+        self.attachments = []
+        self.reactions = []
+        self.mentions = []
+        self.created_at = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -976,7 +1007,8 @@ class ReactiveEngine:
     async def _execute_tool_blocks(self, response, message: discord.Message,
                                    conversation_state, api_params: dict,
                                    container_file_ids: list = None,
-                                   tool_calls_log: list = None):
+                                   tool_calls_log: list = None,
+                                   memory_write_grant: Optional[str] = None):
         """
         Execute the client-side tool_use blocks in a response.
 
@@ -1018,7 +1050,8 @@ class ReactiveEngine:
                 result = self.memory_tool_executor.execute(
                     block.input,
                     current_server_id=server_id,
-                    current_channel_id=channel_id
+                    current_channel_id=channel_id,
+                    write_grant=memory_write_grant,
                 )
                 self.conversation_logger.log_memory_tool(command, path, result)
                 note("memory", command, path)
@@ -1131,6 +1164,7 @@ class ReactiveEngine:
         fallback_text: Optional[str] = None,
         volatile_tail: str = "",
         log_suffix: str = "",
+        memory_write_grant: Optional[str] = None,
     ) -> ToolLoopResult:
         """
         Drive the Claude API tool-use loop to completion (both response paths).
@@ -1219,6 +1253,7 @@ class ReactiveEngine:
                     response, message, conversation_state, api_params,
                     container_file_ids=result.container_file_ids,
                     tool_calls_log=result.tool_calls,
+                    memory_write_grant=memory_write_grant,
                 )
 
                 # Tool results ride in the next user message; fetched file
@@ -1562,6 +1597,101 @@ class ReactiveEngine:
             await message.channel.send(
                 f"{message.author.mention} Sorry, I encountered an error processing your request."
             )
+
+    async def handle_memory_command(self, channel, user, kind: str, text: str) -> None:
+        """
+        /memory show|remember|forget|feedback - the consent gate through the
+        DM vault (v0.9, spec §2). The handler never writes files itself:
+        remember/forget/feedback inject a structured intent into the DM
+        conversation and run the normal pipeline with a one-shot grant that
+        lets the memory tool write the caller's own global profile. show is
+        modelless: the profile file, verbatim.
+        """
+        channel_id = str(channel.id)
+
+        # The registry row must exist before memory routing resolves partner
+        if self.user_cache:
+            await self.user_cache.set_dm_channel(str(user.id), channel_id)
+
+        if kind == "show":
+            profile_path = self.memory_manager.get_global_user_profile_path(str(user.id))
+            fs_path = self.memory_manager.resolve_path(profile_path)
+            if fs_path.exists():
+                content = fs_path.read_text(encoding="utf-8").strip()
+            else:
+                content = ""
+            if content:
+                await self._send_response_chunks(
+                    channel, f"here's everything I have on you, verbatim:\n```\n{content}\n```",
+                    [])
+            else:
+                await self._send_response_chunks(
+                    channel, "nothing written down about you yet - we're starting fresh.", [])
+            return
+
+        intent = memory_intent(kind, text, user.display_name)
+        synthetic = _SyntheticDMMessage(channel=channel, author=user, content=intent)
+
+        conversation_state = None
+        if self.conversation_state_manager:
+            try:
+                conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
+                if len(conversation_state.messages) == 0:
+                    await self._initialize_conversation_from_db(channel_id, conversation_state)
+            except Exception as e:
+                logger.error(f"Failed to load conversation state for /memory: {e}", exc_info=True)
+
+        self.conversation_logger.log_user_message(
+            author=user.display_name, channel="DM",
+            content=f"/memory {kind} {text}".strip(), is_mention=True)
+
+        try:
+            async with self._response_semaphore:
+                context = await self.context_builder.build_context(synthetic)
+
+                if conversation_state:
+                    # The consent moment survives in history
+                    conversation_state.add_message("user", intent)
+                    conversation_state.enforce_message_cap()
+
+                system_blocks = [{
+                    "type": "text",
+                    "text": context["system_prompt"],
+                    "cache_control": {"type": "ephemeral"}
+                }]
+                volatile_tail = await self._build_volatile_tail(
+                    context.get("time_context", ""), conversation_state, synthetic)
+
+                api_params = self._build_api_params(system_blocks, conversation_state, context)
+                seed_epoch = conversation_state.seed_epoch if conversation_state else 0
+
+                result = await self._run_tool_loop(
+                    api_params, synthetic, conversation_state,
+                    fallback_text="got it.",
+                    volatile_tail=volatile_tail,
+                    memory_write_grant=str(user.id),
+                )
+
+            await self._send_response_chunks(channel, result.response_text,
+                                             result.container_file_ids)
+
+            if result.thinking_text:
+                self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
+            self.conversation_logger.log_bot_response(result.response_text, len(result.response_text))
+
+            await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
+
+            await self._emit_turn_event(
+                "memory", synthetic, result,
+                [{"user": user.display_name,
+                  "text": f"/memory {kind} {text}"[:500], "addressed": True}],
+                provenance=f"consent write - /memory {kind}",
+            )
+
+        except Exception as e:
+            logger.error(f"Error handling /memory {kind}: {e}", exc_info=True)
+            self.conversation_logger.log_error(f"/memory error: {str(e)}")
+            await channel.send("something went sideways handling that - try again in a moment?")
 
     async def _track_engagement(
         self, message_id: int, channel: "discord.abc.Messageable", original_author_id: int, delay: int
