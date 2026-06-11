@@ -397,7 +397,7 @@ function renderGauges(s) {
     <div class="gauge g-prime">
       <div class="k">Agentic engine</div>
       <div class="v"><span class="dot ${s.agentic.state === "sleeping" ? "faint" : "amber"}"></span>${s.agentic.state}</div>
-      <div class="meta">next check ${clockTime(new Date(s.agentic.next_check))} · ${s.agentic.followups_pending} follow-ups pending</div>
+      <div class="meta">next check ${s.agentic.next_check ? clockTime(new Date(s.agentic.next_check)) : "—"} · ${s.agentic.followups_pending} follow-ups pending</div>
     </div>
     <div class="gauge g-ctx ${ctxCls}">
       <div class="k">Live context · ${esc(ctx.channel)}</div>
@@ -681,29 +681,72 @@ function setDirty(d) {
   document.getElementById("cfg-save").disabled = !d;
 }
 
-/* Mock validation: demonstrate the rejected-PUT state on an out-of-range
-   context_messages, mirroring Config.validate (5–100). */
+/* Collect the edited form back into a config object (chips stay read-only
+   and keep their loaded values). */
+function setNested(obj, path, value) {
+  const keys = path.split(".");
+  let cur = obj;
+  for (const k of keys.slice(0, -1)) cur = (cur[k] = cur[k] ?? {});
+  cur[keys.at(-1)] = value;
+}
+
+function collectFormValues() {
+  const out = structuredClone(cfg);
+  document.querySelectorAll(".field[data-path]").forEach((field) => {
+    const path = field.dataset.path;
+    const ctl = field.querySelector(".ctl");
+    const toggle = ctl.querySelector(".toggle input");
+    if (toggle) return setNested(out, path, toggle.checked);
+    const prompt = ctl.querySelector("textarea.prompt");
+    if (prompt) return setNested(out, path, prompt.value);
+    const select = ctl.querySelector("select");
+    if (select) return setNested(out, path, select.value);
+    const num = ctl.querySelector('input[type="number"]');
+    if (num) return setNested(out, path, Number(num.value));
+    const text = ctl.querySelector('input[type="text"]');
+    if (text) return setNested(out, path, text.value);
+    // chips and anything unrecognized: keep the loaded value
+  });
+  return out;
+}
+
+/* Save = collect edits, PUT, and surface the daemon's Config.validate()
+   verdict (a 400 carries the error list). */
 async function saveConfig() {
   const banner = document.getElementById("cfg-banner");
   banner.className = "cfg-banner";
   document.querySelectorAll(".field .err").forEach((e) => (e.style.display = "none"));
   document.querySelectorAll(".field input").forEach((i) => i.classList.remove("invalid"));
 
-  const cm = document.querySelector('[data-path="api.context_messages"] input');
-  const n = Number(cm.value);
-  if (n < 5 || n > 100) {
-    cm.classList.add("invalid");
-    const err = cm.parentElement.querySelector(".err");
-    err.textContent = `context_messages must be 5–100 (got ${cm.value}) — rejected by Config.validate()`;
-    err.style.display = "block";
+  const candidate = collectFormValues();
+  document.getElementById("cfg-save").disabled = true;
+  const r = await fetch(A("/config"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(candidate),
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    const errors = body.errors || ["validation failed"];
+    for (const msg of errors) {
+      // light the field whose key appears in the error, when findable
+      const field = [...document.querySelectorAll(".field[data-path]")].find(
+        (f) => msg.includes(f.dataset.path.split(".").at(-1)));
+      const input = field?.querySelector("input, textarea, select");
+      if (input) {
+        input.classList.add("invalid");
+        const err = field.querySelector(".err");
+        if (err) { err.textContent = msg; err.style.display = "block"; }
+      }
+    }
     banner.className = "cfg-banner err";
-    banner.textContent = "Validation failed — nothing was written.";
+    banner.textContent = `Validation failed — nothing was written. ${errors[0]}`;
+    document.getElementById("cfg-save").disabled = false;
     return;
   }
-  document.getElementById("cfg-save").disabled = true;
-  await apiSend("PUT", A("/config"), cfg);
+  cfg = candidate;
   banner.className = "cfg-banner ok";
-  banner.textContent = "Saved — config validated and written. The bot reloads it on next turn.";
+  banner.textContent = "Saved — config validated and written. Restart the bot to apply it.";
   setDirty(false);
 }
 
@@ -754,7 +797,7 @@ function nodeHTML(node, depth) {
 
 const TEXT_KINDS = ["md", "txt", "json"];
 const isTextFile = (node) =>
-  TEXT_KINDS.includes(node.kind) || /\.(md|txt|json)$/.test(node.name);
+  TEXT_KINDS.includes(node.kind) || /\.(md|txt|json)(\.|$)/.test(node.name);
 
 function fileMeta(node) {
   const size = node.size >= 1048576 ? (node.size / 1048576).toFixed(1) + " MB"
@@ -762,9 +805,26 @@ function fileMeta(node) {
   return `${size}${node.modified ? " · " + agoInWords(node.modified) : ""}`;
 }
 
-function showFile(paneEl, node, kind) {
+async function showFile(paneEl, node, kind) {
   // memories are hand-editable; repository files (often binary) are read-only here
   const editable = kind === "memory" && isTextFile(node);
+  if (node.content == null) {
+    if (!isTextFile(node)) {
+      paneEl.innerHTML = `<div class="crumb"><span class="path">${esc(node.path)}</span>
+        <span class="meta figs">${fileMeta(node)}</span></div>
+        <div class="empty">Binary file — view it on disk.</div>`;
+      return;
+    }
+    paneEl.innerHTML = `<div class="empty">Loading…</div>`;
+    try {
+      const route = kind === "memory" ? "/memory/file" : "/repository/file";
+      const resp = await apiGet(A(`${route}?path=${encodeURIComponent(node.path)}`));
+      node.content = resp.content;
+    } catch (e) {
+      paneEl.innerHTML = `<div class="empty">Couldn't load ${esc(node.path)}.</div>`;
+      return;
+    }
+  }
   renderView(paneEl, node, kind, editable);
 }
 

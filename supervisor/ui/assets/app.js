@@ -46,6 +46,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"];
 
 function clockTime(d) {
+  if (!d || isNaN(d.getTime?.() ?? NaN)) return "—";
   let h = d.getHours();
   const ampm = h >= 12 ? "p.m." : "a.m.";
   h = h % 12 || 12;
@@ -57,6 +58,7 @@ function longDate(d) {
 }
 
 function agoInWords(iso) {
+  if (!iso) return "—";
   const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
   if (s < 90) return "moments ago";
   const m = Math.round(s / 60);
@@ -83,7 +85,9 @@ function tokens(n) {
 
 const modelShort = (m) => m.replace(/^claude-/, "");
 
-const esc = (s) => s.replace(/[&<>"]/g,
+// Live data has honest nulls (a bot that never spoke has no last_channel);
+// render them as nothing instead of crashing the tab.
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 export {

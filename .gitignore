@@ -69,3 +69,6 @@ MANUAL_TEST_SUITE.md
 V050_TEST_REPORT.md
 
 CLAUDE.md
+
+app/node_modules/
+app/dist/

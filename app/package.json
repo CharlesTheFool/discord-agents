@@ -1,0 +1,33 @@
+{
+  "name": "discord-agents",
+  "productName": "Discord Agents",
+  "version": "0.9.0",
+  "description": "Control panel for Discord Agents - persistent AI minds on Discord",
+  "main": "main.js",
+  "author": "Charles Belanger",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "dev.discordagents.supervisor",
+    "files": [
+      "main.js",
+      "preload.js",
+      "placeholder.html"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
