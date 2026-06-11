@@ -301,7 +301,7 @@ Built with:
 
 See [ROADMAP.md](ROADMAP.md) — next up: **0.7.0** (one continuous identity
 across servers, with vaults and discretion; memory reconsolidation), then
-induction, new surfaces, fleet coordination, voice, and a desktop app on the
+induction, new surfaces, the Prime, DM support, and a desktop app on the
 road to 0.9.
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.

@@ -66,36 +66,38 @@ and present on every conversation surface.
   chat like any other channel: meeting notes relayed there become memory,
   documents, reminders.
 
-## 0.9.0 — Coordination, voice, and the application
+## 0.9.0 — The Prime, DMs, and the application
 
-The ensemble becomes an organism, the bot gains ears, and the framework
+The bot gains a self above its servers, a private surface, and the framework
 becomes a product.
 
-- **Supervisor daemon** — the shared backbone: process management for bot
-  instances, a local message bus, and a status/config/log API. Built once,
-  consumed by the Master bot, the dashboard, and the desktop app.
-- **Master bot** — a coordinator with no channel-posting surface of its own:
-  talk to it in DMs, it manages the fleet, and it relays **cross-agent
-  requests** — one bot asks it to have another instance pose a question or
-  make an announcement in Server X / Channel Y, optionally with a
-  **standing watch** that monitors for the response and feeds it back into
-  the requesting conversation. Vault containment and provenance tagging
-  extend across the bus (relayed knowledge is labeled as relayed).
-- **DM support** — bots gain a DM surface (prerequisite for the Master,
-  useful everywhere).
-- **Voice transcription** — the bot joins occupied voice channels and treats
-  transcribed speech as flagged ordinary messages (full pipeline reuse — no
-  multimodality), replying in the voice channel's text chat with
-  conversation-aware pacing. Local Whisper (faster-whisper) as the free
-  default; paid APIs (Deepgram, OpenAI) as optional plug-ins.
-  Known dependency bet to validate early: voice *receive* requires the
-  community `discord-ext-voice-recv` extension.
-- **/record** — start/stop (or 5-minute silence) meeting capture →
-  Claude-organized transcript document → posted to a chosen channel and
-  saved to the repository.
-- **Desktop application** — Electron app on the supervisor API: bot
-  instantiation, configuration, monitoring, and control without touching a
-  terminal; download-site distribution for non-developer operators.
+- **The Prime** — a bot is already one mind across all its servers; 0.9
+  gives that mind a surface of its own. DM the bot and you're talking to
+  the Prime: it knows everything global — people, places it inhabits, its
+  own state — but stands in no particular server. The Prime also moderates
+  **cross-server coordination**: the bot's presence in one server can ask
+  the Prime to have its presence in another server pose a question or make
+  an announcement, optionally with a **standing watch** that monitors for
+  the response and feeds it back into the requesting conversation. The
+  Prime applies judgment, hard rate caps, and vault boundaries — it can
+  refuse. All in-process: no second token, no extra infrastructure.
+  Knowledge that crosses servers this way is labeled ("relayed via Prime").
+  Bots never talk to *other* bots — separate tokens exist precisely to keep
+  minds apart.
+- **DM support** — each DM is a private room (an implicit per-user vault):
+  the bot knows its DMs exist and says so, but nothing said there leaks
+  out. Slash commands (`/memory show | remember | forget | feedback`) let a
+  user deliberately cross that boundary — teach the bot something
+  privately, correct what it remembers about you, tell it what you didn't
+  like — integrated into how it treats you everywhere, cited nowhere.
+- **Supervisor daemon** — process management for bot instances (start,
+  stop, restart-on-crash) plus a local API for status, configuration,
+  logs, and memory/repository browsing. Built once, consumed by the
+  dashboard and the desktop app. Bots never communicate through it.
+- **Desktop application** — Electron app on the supervisor API: create,
+  configure, and monitor bots (memories, repositories, stats, activity,
+  thinking traces) without touching a terminal; download-site distribution
+  for non-developer operators.
 
 ## 1.0
 
@@ -105,7 +107,14 @@ v0.6.0 pre-release sweep, config freeze.
 
 ## Later / unscheduled
 
-- **Bot speech** in voice channels (talking back, not just listening)
+- **Voice listening and speech** — researched and deliberately shelved.
+  Discord's mandatory voice E2EE (March 2026) broke every community
+  voice-receive library, and the platform has never officially supported
+  bots listening; building on an unmaintained, patched dependency is
+  incompatible with a stability-first 1.0. Revisit only if Discord or a
+  maintained library makes voice receive a supported surface. (The design
+  is archived and ready: local faster-whisper + VAD, per-utterance
+  transcription over Discord's per-user streams.)
 - **Richer presence** — events, polls, scheduled activities
 - **Daily web-search quota** — dormant; revisit only if per-request caps
   prove insufficient
