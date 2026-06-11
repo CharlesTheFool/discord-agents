@@ -156,6 +156,7 @@ class BotManager:
             memory_manager=memory_manager,
             anthropic_api_key=anthropic_key,
             conversation_logger=conversation_logger,
+            user_cache=user_cache,
         )
         logger.info("Reactive engine initialized")
 

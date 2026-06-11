@@ -53,12 +53,22 @@ class UserCache:
 
     CREATE INDEX IF NOT EXISTS idx_username ON users(username);
     CREATE INDEX IF NOT EXISTS idx_last_seen ON users(last_seen DESC);
+
+    CREATE TABLE IF NOT EXISTS dm_channels (
+        user_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_dm_channel ON dm_channels(channel_id);
     """
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db: Optional[aiosqlite.Connection] = None
+        # dm_channels: channel_id -> user_id reverse lookup (v0.9).
+        # Populated from db on initialize(); kept hot by set_dm_channel().
+        self._dm_by_channel: dict[str, str] = {}
 
     async def initialize(self):
         """Initialize database connection and create tables"""
@@ -70,6 +80,13 @@ class UserCache:
 
         await self._db.executescript(self.SCHEMA)
         await self._db.commit()
+
+        # Rehydrate the DM reverse-lookup cache from persisted rows
+        async with self._db.execute(
+            "SELECT user_id, channel_id FROM dm_channels"
+        ) as cur:
+            async for row in cur:
+                self._dm_by_channel[row["channel_id"]] = row["user_id"]
 
         logger.info(f"User cache initialized: {self.db_path}")
 
@@ -234,6 +251,40 @@ class UserCache:
         )
         rows = await cursor.fetchall()
         return rows[0]["user_id"] if len(rows) == 1 else None
+
+    # ── DM channel registry (v0.9) ────────────────────────────────────────────
+    # Discord cannot enumerate a bot's DM channels after restart; this table
+    # is the bot's own memory of every human it talks to privately.
+
+    async def set_dm_channel(self, user_id: str, channel_id: str) -> None:
+        await self._db.execute(
+            """INSERT INTO dm_channels (user_id, channel_id, last_message_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 channel_id = excluded.channel_id,
+                 last_message_at = CURRENT_TIMESTAMP""",
+            (str(user_id), str(channel_id)),
+        )
+        await self._db.commit()
+        self._dm_by_channel[str(channel_id)] = str(user_id)
+
+    async def get_dm_channel(self, user_id: str) -> Optional[str]:
+        async with self._db.execute(
+            "SELECT channel_id FROM dm_channels WHERE user_id = ?", (str(user_id),)
+        ) as cur:
+            row = await cur.fetchone()
+        return row["channel_id"] if row else None
+
+    async def all_dm_channels(self) -> list[dict]:
+        async with self._db.execute(
+            "SELECT user_id, channel_id, last_message_at FROM dm_channels"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    def dm_partner(self, channel_id: str) -> Optional[str]:
+        """Sync resolver: DM channel id -> partner user id (memory routing)."""
+        return self._dm_by_channel.get(str(channel_id))
 
     async def get_stats(self) -> Dict:
         """Get cache statistics"""

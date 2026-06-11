@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
     from .conversation_logger import ConversationLogger
+    from .user_cache import UserCache
 
 from .memory_tool_executor import MemoryToolExecutor
 from .context_builder import ContextBuilder
@@ -196,6 +197,7 @@ class ReactiveEngine:
         memory_manager: "MemoryManager",
         anthropic_api_key: str,
         conversation_logger: "ConversationLogger",
+        user_cache: Optional["UserCache"] = None,
     ):
         """
         Initialize reactive engine.
@@ -207,12 +209,14 @@ class ReactiveEngine:
             memory_manager: Memory tool manager
             anthropic_api_key: Anthropic API key
             conversation_logger: Conversation logger
+            user_cache: User cache for DM channel registry (v0.9)
         """
         self.config = config
         self.rate_limiter = rate_limiter
         self.message_memory = message_memory
         self.memory_manager = memory_manager
         self.conversation_logger = conversation_logger
+        self.user_cache = user_cache
 
         # Initialize Anthropic client
         self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
@@ -1245,6 +1249,12 @@ class ReactiveEngine:
                     )
                 else:
                     sent_message = await channel.send(chunk)
+                # Register the DM surface on the first successful outbound send (v0.9).
+                # channel.recipient is only populated on DMChannel; None on all other types.
+                if i == 0 and isinstance(channel, discord.DMChannel) and channel.recipient is not None and self.user_cache is not None:
+                    await self.user_cache.set_dm_channel(
+                        str(channel.recipient.id), str(channel.id)
+                    )
             except discord.HTTPException as e:
                 if i == 0 and reference is not None:
                     # Reply target may have been deleted - retry standalone

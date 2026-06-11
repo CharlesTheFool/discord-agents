@@ -461,6 +461,12 @@ class DiscordClient(discord.Client):
             else:
                 logger.debug(f"Processing message from bot: {message.author.name} (allow_bot_interactions=True)")
 
+        # Register DM channel so the bot remembers this surface across restarts (v0.9)
+        if message.guild is None and message.author.id != self.user.id:
+            await self.user_cache.set_dm_channel(
+                str(message.author.id), str(message.channel.id)
+            )
+
         # Urgent = @mention, or any DM (a DM is inherently addressed to the bot)
         is_urgent = self.user in message.mentions or message.guild is None
 
