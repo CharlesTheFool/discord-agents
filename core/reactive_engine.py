@@ -1382,6 +1382,26 @@ class ReactiveEngine:
 
         return result
 
+    async def _register_dm_surface(self, channel) -> None:
+        """
+        Remember an outbound DM surface in the dm_channels registry (v0.9).
+
+        channel.recipient is only populated on DMChannel (None on all other
+        types), and on interaction-sourced channels it can resolve to the BOT
+        itself - never register the bot as its own DM partner (a self row
+        poisons dm_partner() and routes DM memory to the wrong tree).
+        """
+        if not (isinstance(channel, discord.DMChannel)
+                and channel.recipient is not None
+                and self.user_cache is not None):
+            return
+        bot_user = self.discord_client.user if self.discord_client else None
+        if bot_user is not None and channel.recipient.id == bot_user.id:
+            return
+        await self.user_cache.set_dm_channel(
+            str(channel.recipient.id), str(channel.id)
+        )
+
     async def _send_response_chunks(
         self,
         channel,
@@ -1409,12 +1429,9 @@ class ReactiveEngine:
                     )
                 else:
                     sent_message = await channel.send(chunk)
-                # Register the DM surface on the first successful outbound send (v0.9).
-                # channel.recipient is only populated on DMChannel; None on all other types.
-                if i == 0 and isinstance(channel, discord.DMChannel) and channel.recipient is not None and self.user_cache is not None:
-                    await self.user_cache.set_dm_channel(
-                        str(channel.recipient.id), str(channel.id)
-                    )
+                # Register the DM surface on the first successful outbound send (v0.9)
+                if i == 0:
+                    await self._register_dm_surface(channel)
             except discord.HTTPException as e:
                 if i == 0 and reference is not None:
                     # Reply target may have been deleted - retry standalone
