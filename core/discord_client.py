@@ -712,50 +712,49 @@ class DiscordClient(discord.Client):
                 )
                 return True
 
-        # Write to user's memory profile
-        if message.guild:
-            user_id = str(message.author.id)
-            memory_path = self.reactive_engine.memory_manager.get_global_user_profile_path(user_id)
+        # Write to user's memory profile (global path — works in DMs and guilds)
+        user_id = str(message.author.id)
+        memory_path = self.reactive_engine.memory_manager.get_global_user_profile_path(user_id)
 
-            file_path = self.reactive_engine.memory_manager.resolve_path(memory_path)
+        file_path = self.reactive_engine.memory_manager.resolve_path(memory_path)
 
-            # Ensure directory exists
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Read existing profile or create new
-            try:
-                if file_path.exists():
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        profile_content = f.read()
-                else:
-                    profile_content = ""
+        # Read existing profile or create new
+        try:
+            if file_path.exists():
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    profile_content = f.read()
+            else:
+                profile_content = ""
 
-                # Update or add timezone
-                import re
-                if "**Timezone:**" in profile_content:
-                    # Replace existing timezone
-                    profile_content = re.sub(
-                        r'\*\*Timezone:\*\* .*\n',
-                        f'**Timezone:** {normalized_tz}\n',
-                        profile_content
-                    )
-                else:
-                    # Add timezone at top
-                    profile_content = f"**Timezone:** {normalized_tz}\n\n" + profile_content
-
-                # Write back
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(profile_content)
-
-                logger.info(f"Set timezone for user {message.author.name} to {normalized_tz}")
-
-            except Exception as e:
-                logger.error(f"Error writing timezone to user profile: {e}", exc_info=True)
-                await message.channel.send(
-                    f"{message.author.mention} Error saving timezone. Please try again.",
-                    delete_after=10
+            # Update or add timezone
+            import re
+            if "**Timezone:**" in profile_content:
+                # Replace existing timezone
+                profile_content = re.sub(
+                    r'\*\*Timezone:\*\* .*\n',
+                    f'**Timezone:** {normalized_tz}\n',
+                    profile_content
                 )
-                return True
+            else:
+                # Add timezone at top
+                profile_content = f"**Timezone:** {normalized_tz}\n\n" + profile_content
+
+            # Write back
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(profile_content)
+
+            logger.info(f"Set timezone for user {message.author.name} to {normalized_tz}")
+
+        except Exception as e:
+            logger.error(f"Error writing timezone to user profile: {e}", exc_info=True)
+            await message.channel.send(
+                f"{message.author.mention} Error saving timezone. Please try again.",
+                delete_after=10
+            )
+            return True
 
         # Send confirmation
         await message.channel.send(
