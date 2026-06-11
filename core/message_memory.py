@@ -110,6 +110,7 @@ class MessageMemory:
         self._db: Optional[aiosqlite.Connection] = None
         self._thread_parents: dict = {}
         self._threads_by_parent: dict = {}
+        self._thread_meta: dict = {}  # tid -> (parent, name, archived); upsert no-op guard
 
     async def initialize(self):
         """Initialize database connection and create tables"""
@@ -128,10 +129,13 @@ class MessageMemory:
         # Hydrate thread->parent sync caches
         self._thread_parents = {}
         self._threads_by_parent = {}
-        cursor = await self._db.execute("SELECT thread_id, parent_id FROM threads")
+        self._thread_meta = {}
+        cursor = await self._db.execute("SELECT thread_id, parent_id, name, archived FROM threads")
         for row in await cursor.fetchall():
             self._thread_parents[row["thread_id"]] = row["parent_id"]
             self._threads_by_parent.setdefault(row["parent_id"], set()).add(row["thread_id"])
+            self._thread_meta[row["thread_id"]] = (
+                row["parent_id"], row["name"], bool(row["archived"]))
 
         logger.info(f"Message memory initialized: {self.db_path}")
 
@@ -583,6 +587,10 @@ class MessageMemory:
 
     async def upsert_thread(self, thread_id: str, parent_id: str,
                             name: str = None, archived: bool = False) -> None:
+        tid = str(thread_id)
+        meta = (str(parent_id), name, bool(archived))
+        if self._thread_meta.get(tid) == meta:
+            return  # every thread message lands here - skip the no-op write
         await self._db.execute(
             """
             INSERT INTO threads (thread_id, parent_id, name, archived, updated_at)
@@ -593,11 +601,23 @@ class MessageMemory:
                 archived = excluded.archived,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (str(thread_id), str(parent_id), name, archived),
+            (tid, str(parent_id), name, archived),
         )
         await self._db.commit()
-        self._thread_parents[str(thread_id)] = str(parent_id)
-        self._threads_by_parent.setdefault(str(parent_id), set()).add(str(thread_id))
+        self._thread_parents[tid] = str(parent_id)
+        self._threads_by_parent.setdefault(str(parent_id), set()).add(tid)
+        self._thread_meta[tid] = meta
+
+    async def remove_thread(self, thread_id: str) -> None:
+        """Drop a deleted thread's registry row + caches (its messages are
+        purged separately; leftover memory files stay gated by the parent)."""
+        tid = str(thread_id)
+        await self._db.execute("DELETE FROM threads WHERE thread_id = ?", (tid,))
+        await self._db.commit()
+        self._thread_meta.pop(tid, None)
+        parent = self._thread_parents.pop(tid, None)
+        if parent:
+            self._threads_by_parent.get(parent, set()).discard(tid)
 
     async def get_threads_for_parent(self, parent_id: str) -> List[str]:
         cursor = await self._db.execute(

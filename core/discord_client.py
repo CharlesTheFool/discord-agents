@@ -580,6 +580,10 @@ class DiscordClient(discord.Client):
                     await self._purge_deleted_message(int(mid))
         except Exception as e:
             logger.warning(f"Thread {thread_id} purge incomplete: {e}")
+        try:
+            await self.message_memory.remove_thread(thread_id)
+        except Exception as e:
+            logger.warning(f"Thread {thread_id} registry removal failed: {e}")
 
     async def _purge_deleted_message(self, message_id: int):
         """Remove a deleted message from storage and the attachment pipeline."""
