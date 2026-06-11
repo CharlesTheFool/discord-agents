@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discord Agents — Supervisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="sheet">
+
+  <header class="page">
+    <div class="masthead">
+      <h1><a href="index.html">Discord Agents</a></h1>
+      <div class="mark">Supervisor · v0.9.0</div>
+    </div>
+  </header>
+
+  <div class="globalbar" id="globalbar"></div>
+
+  <div class="board-head">
+    <h2>Fleet</h2>
+    <span class="n" id="fleet-count"></span>
+  </div>
+  <div class="board" id="board"></div>
+
+  <div class="add"><a id="add-bot">+ Commission a new bot</a></div>
+
+  <footer class="page">
+    <span>LOCALHOST:8642</span>
+    <span>supervisor v0.9.0-dev</span>
+  </footer>
+
+</div>
+
+<dialog id="dlg-create">
+  <h2>A new bot</h2>
+  <p>It starts from a template config; personality, servers, and the rest
+     are yours to edit once it exists. It will not start until you say so.</p>
+  <form method="dialog" novalidate>
+    <label for="new-id">Bot id</label>
+    <input type="text" id="new-id" placeholder="e.g. slh-02" autocomplete="off">
+    <div class="field-error"></div>
+    <label for="new-template">Template</label>
+    <select id="new-template">
+      <option value="default">default — sonnet-4-6, moderate everything</option>
+      <option value="minimal">minimal — reactive only, no proactive engine</option>
+    </select>
+    <div class="actions">
+      <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn primary">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-delete">
+  <h2>Retire <span id="del-name"></span>?</h2>
+  <p>Its memories, episodes, and repository move to <b>trash/</b> —
+     nothing is hard-deleted. A retired bot can be restored by hand.</p>
+  <div class="actions">
+    <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Keep it</button>
+    <button type="button" class="btn danger confirm">Retire</button>
+  </div>
+</dialog>
+
+<script type="module" src="assets/fleet.js?v=6"></script>
+</body>
+</html>

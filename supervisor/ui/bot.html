@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discord Agents — Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="sheet wide">
+
+  <div class="topbar">
+    <span><a href="index.html">← Discord Agents</a> &nbsp;/&nbsp; Supervisor</span>
+    <span>v0.9.0 · localhost:8642</span>
+  </div>
+
+  <div class="nameplate" id="nameplate">
+    <div class="who">
+      <h1 id="bot-name">…</h1>
+      <span id="np-state"></span>
+      <span class="meta" id="np-meta"></span>
+    </div>
+    <div class="ops" id="np-ops"></div>
+  </div>
+
+  <nav class="tabs">
+    <a data-tab="monitor" class="active">Monitor</a>
+    <a data-tab="configure">Configure</a>
+    <a data-tab="integrations">Integrations</a>
+    <a data-tab="memories">Memories</a>
+    <a data-tab="repository">Repository</a>
+  </nav>
+
+  <!-- MONITOR -->
+  <section class="tabpanel active" id="tab-monitor">
+    <div class="gauges" id="gauges"></div>
+    <div class="statband" id="statband"></div>
+    <div class="commitments" id="commitments"></div>
+
+    <div class="activity">
+      <div class="activity-head">
+        <h2>Activity</h2>
+        <div class="subtoggle">
+          <a data-view="channels" class="active">Channels</a>
+          <a data-view="raw">Raw log</a>
+        </div>
+        <label class="follow"><input type="checkbox" id="raw-follow" checked>auto-follow</label>
+      </div>
+      <div id="activity-body"></div>
+    </div>
+  </section>
+
+  <!-- CONFIGURE -->
+  <section class="tabpanel" id="tab-configure">
+    <p class="cfg-intro">The bot's YAML config, rendered as a form. Saving validates
+       through <code>Config.validate()</code> before anything is written — an
+       invalid value is rejected and nothing changes. Secrets and tokens never
+       appear here.</p>
+    <div class="cfg-banner" id="cfg-banner"></div>
+    <div id="cfg-form"></div>
+    <div class="cfg-actions">
+      <button class="btn primary" id="cfg-save" disabled>Save config</button>
+      <button class="btn quiet" id="cfg-reset">Discard changes</button>
+      <span class="dirty" id="cfg-dirty"></span>
+    </div>
+  </section>
+
+  <!-- INTEGRATIONS -->
+  <section class="tabpanel" id="tab-integrations">
+    <p class="intro">Skills and MCP servers extend what this bot can do.
+       Changes here take effect on the next start — <b>saving restarts the
+       bot</b> so it loads them cleanly.</p>
+
+    <div class="int-sec">
+      <div class="sechead">
+        <h3>Skills</h3>
+        <span class="count" id="skills-count"></span>
+        <span class="spacer"></span>
+        <button class="addbtn" id="skill-add">+ Add skill</button>
+      </div>
+      <div id="skills-list"></div>
+    </div>
+
+    <div class="int-sec">
+      <div class="sechead">
+        <h3>MCP Servers</h3>
+        <span class="count" id="mcp-count"></span>
+        <span class="spacer"></span>
+        <button class="addbtn" id="mcp-add">+ Add server</button>
+      </div>
+      <div id="mcp-list"></div>
+    </div>
+
+    <div class="restart-bar" id="restart-bar">
+      <span class="msg" id="restart-msg"></span>
+      <span class="spacer"></span>
+      <button class="btn quiet" id="restart-discard">Discard</button>
+      <button class="btn primary" id="restart-save">Save &amp; restart bot</button>
+    </div>
+  </section>
+
+  <!-- MEMORIES -->
+  <section class="tabpanel" id="tab-memories"></section>
+
+  <!-- REPOSITORY -->
+  <section class="tabpanel" id="tab-repository"></section>
+
+  <footer class="page">
+    <span>SUPERVISOR v0.9.0-dev</span>
+    <span>read-only mirror · writes go through Config.validate()</span>
+  </footer>
+
+</div>
+
+<dialog id="dlg-skill">
+  <h2>Add a skill</h2>
+  <p>Pick a skill from your computer — a folder containing <b>SKILL.md</b>,
+     or a <b>.zip</b> of one. It's copied into this bot's skills and loaded
+     on the next start.</p>
+  <form method="dialog" novalidate>
+    <label for="skill-file">Skill file or folder</label>
+    <input type="file" id="skill-file" accept=".zip,.skill">
+    <div class="field-error" id="skill-err"></div>
+    <div class="actions">
+      <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn primary">Add skill</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-mcp">
+  <h2>Add MCP server</h2>
+  <p>Connect a Model Context Protocol server. Its tools become available to
+     the bot on the next start.</p>
+  <form method="dialog" novalidate>
+    <label for="mcp-name">Name</label>
+    <input type="text" id="mcp-name" placeholder="e.g. weather" autocomplete="off">
+    <div class="field-error" id="mcp-name-err"></div>
+    <label for="mcp-transport">Transport</label>
+    <select id="mcp-transport">
+      <option value="stdio">stdio — local command</option>
+      <option value="sse">SSE — server-sent events URL</option>
+      <option value="http">HTTP — streamable URL</option>
+    </select>
+    <label for="mcp-target" id="mcp-target-label">Command</label>
+    <input type="text" id="mcp-target" placeholder="python -m my_mcp_server" autocomplete="off">
+    <label for="mcp-env">Environment (KEY=value, one per line)</label>
+    <input type="text" id="mcp-env" placeholder="API_KEY=…" autocomplete="off">
+    <div class="actions">
+      <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn primary">Add server</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="assets/bot.js?v=10"></script>
+</body>
+</html>

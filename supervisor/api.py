@@ -57,6 +57,7 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     health = health or MCPHealthPoller(lambda: load_mcp_servers(root))
     app = web.Application()
     app["health"] = health
+    app["started"] = datetime.now(timezone.utc).isoformat()
 
     def known(bot_id: str) -> bool:
         return bot_id in root.bot_ids()
@@ -94,7 +95,12 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             for k in tokens:
                 tokens[k] += s["tokens_today"].get(k, 0)
         return json_response({
+            "online": True,
             "status": "running",
+            "version": "0.9.0",
+            "port": request.transport.get_extra_info("sockname")[1]
+            if request.transport else None,
+            "started": app["started"],
             "bots": len(bots),
             "running": sum(1 for b in bots if b["running"]),
             "tokens_today": tokens,
@@ -179,12 +185,29 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             before=request.query.get("before")))
 
     async def get_logs(request):
+        """file=conversations serves the structured trace (events table) in
+        the UI's shape; file=main serves parsed log entries; raw=1 falls back
+        to plain lines; follow=1 streams (SSE, raw lines)."""
         bot_id = bot_or_404(request)
         which = request.query.get("file", "main")
         tail = min(int(request.query.get("tail", "200")), 2000)
         if request.query.get("follow") == "1":
             return await _follow_log(request, bot_id, which)
-        return json_response({"lines": data.log_tail(bot_id, which, tail)})
+        if request.query.get("raw") == "1":
+            return json_response({"lines": data.log_tail(bot_id, which, tail)})
+        if which == "conversations":
+            return json_response(await data.trace(bot_id, tail))
+        return json_response(data.main_log_entries(bot_id, tail))
+
+    async def get_episodes(request):
+        bot_id = bot_or_404(request)
+        return json_response(await data.episodes_list(
+            bot_id, min(int(request.query.get("tail", "50")), 500)))
+
+    async def get_skills(request):
+        bot_id = bot_or_404(request)
+        return json_response(await data.skills_list(
+            bot_id, min(int(request.query.get("tail", "50")), 500)))
 
     async def _follow_log(request, bot_id, which):
         """SSE tail: replay the last lines, then stream appended ones."""
@@ -255,12 +278,17 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
 
     async def get_memory_file(request):
         bot_id = bot_or_404(request)
-        return web.Response(text=data.memory_file(
-            bot_id, request.query.get("path", "")), content_type="text/plain")
+        rel = request.query.get("path", "")
+        return json_response({"path": rel,
+                              "content": data.memory_file(bot_id, rel)})
 
     async def put_memory_file(request):
         bot_id = bot_or_404(request)
-        content = (await request.read()).decode("utf-8")
+        raw = await request.read()
+        try:
+            content = json.loads(raw.decode("utf-8")).get("content", "")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            content = raw.decode("utf-8")  # plain-text body also accepted
         data.write_memory_file(bot_id, request.query.get("path", ""), content)
         return json_response({"saved": True})
 
@@ -270,44 +298,79 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
 
     async def get_repo_file(request):
         bot_id = bot_or_404(request)
-        blob = data.repository_file(bot_id, request.query.get("path", ""))
-        return web.Response(body=blob, content_type="application/octet-stream")
+        rel = request.query.get("path", "")
+        blob = data.repository_file(bot_id, rel)
+        try:
+            return json_response({"path": rel,
+                                  "content": blob.decode("utf-8")})
+        except UnicodeDecodeError:
+            return web.Response(body=blob,
+                                content_type="application/octet-stream")
 
     # --- integrations -------------------------------------------------------------------
 
     async def get_integrations(request):
+        """The PROTOTYPE's shape: flat skills array + mcp_servers array."""
         bot_id = bot_or_404(request)
         config = data.load_config(bot_id)
-        servers = []
+        catalog = skills_catalog(root, config)
+        used = await data.skills_list(bot_id, tail=500)
+        week_ago = datetime.now(timezone.utc).date().toordinal() - 7
+        skills = [{
+            "id": s["name"],
+            "name": s["name"],
+            "source": s["source"],
+            "enabled": s["enabled"],
+            "description": s["description"],
+            "used_7d": sum(
+                1 for u in used if u["name"] == s["name"]
+                and datetime.fromisoformat(u["ts"]).date().toordinal() > week_ago),
+        } for s in catalog["items"]]
+        mcp_servers = []
         for s in load_mcp_servers(root):
-            entry = dict(s)
-            entry.update(health.status_for(s.get("name", "?")))
-            servers.append(entry)
+            st = health.status_for(s.get("name", "?"))
+            mcp_servers.append({
+                "name": s.get("name", "?"),
+                "transport": s.get("transport", "http"),
+                "target": s.get("url", ""),
+                "enabled": s.get("enabled", True),
+                "status": st["status"],
+                "latency_ms": st["latency_ms"],
+                "last_check": st["last_check"],
+                "tools": st["tools"],
+                "error": st.get("error"),
+            })
         return json_response({
-            "skills": skills_catalog(root, config),
-            "mcp": {
-                "enabled": (config.get("mcp") or {}).get("enabled", False),
-                "servers": servers,
-            },
+            "skills": skills,
+            "include_anthropic_skills": catalog["include_anthropic_skills"],
+            "mcp_servers": mcp_servers,
         })
 
     async def put_integrations(request):
+        """Accepts the UI's whole-object PUT: skills (with toggled enabled)
+        + mcp_servers (status fields stripped on save)."""
         bot_id = bot_or_404(request)
         body = await request.json()
         if "skills" in body:
-            apply_skills(
-                root, bot_id,
-                body["skills"].get("default_skills", []),
-                body["skills"].get("include_anthropic_skills", True))
-        if "mcp" in body and "servers" in body["mcp"]:
-            save_mcp_servers(root, body["mcp"]["servers"])
+            enabled = [s["name"] for s in body["skills"] if s.get("enabled")]
+            apply_skills(root, bot_id, enabled,
+                         body.get("include_anthropic_skills", True))
+        if "mcp_servers" in body:
+            cleaned = [{
+                "name": s.get("name"),
+                "transport": s.get("transport", "http"),
+                "url": s.get("target") or s.get("url", ""),
+                "headers": s.get("headers") or {},
+                "enabled": s.get("enabled", True),
+                "timeout_seconds": s.get("timeout_seconds", 10),
+            } for s in body["mcp_servers"]]
+            save_mcp_servers(root, cleaned)
             await health.check_all()
         restarted = False
-        if request.query.get("restart") == "1" and pm.is_running(bot_id):
+        if pm.is_running(bot_id):
             await pm.restart(bot_id)
             restarted = True
-        return json_response({"saved": True, "restarted": restarted,
-                              "restart_required": pm.is_running(bot_id) and not restarted})
+        return json_response({"saved": True, "restarted": restarted})
 
     async def post_skill(request):
         bot_or_404(request)
@@ -342,6 +405,8 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     app.router.add_get("/api/bots/{bot_id}/channels", get_channels)
     app.router.add_get("/api/bots/{bot_id}/stream", get_stream)
     app.router.add_get("/api/bots/{bot_id}/logs", get_logs)
+    app.router.add_get("/api/bots/{bot_id}/episodes", get_episodes)
+    app.router.add_get("/api/bots/{bot_id}/skills", get_skills)
     app.router.add_get("/api/bots/{bot_id}/config", get_config)
     app.router.add_put("/api/bots/{bot_id}/config", put_config)
     app.router.add_get("/api/bots/{bot_id}/memory/tree", get_memory_tree)
