@@ -10,6 +10,7 @@ crashed and wait for the operator).
 import asyncio
 import json
 import logging
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -21,6 +22,58 @@ logger = logging.getLogger(__name__)
 
 CRASH_RETRY_CAP_PER_HOUR = 5
 BACKOFF_BASE_SECONDS = 60  # 1, 2, 4, 8, 16 minutes
+
+
+def find_orphan_pids(bot_id: str, owned: Optional[List[int]] = None) -> List[int]:
+    """Best-effort process-table scan for `bot_manager.py spawn <bot_id>`
+    processes this daemon doesn't own (e.g. a previous daemon was killed
+    without shutting its bots down). A venv shim spawns the real interpreter
+    as a child with an identical command line, so exclusion covers owned pids
+    AND their direct children. Returns [] on any platform hiccup."""
+    needle = f"bot_manager.py spawn {bot_id}"
+    owned_set = set(owned or [])
+    found = []  # (pid, ppid)
+    try:
+        if sys.platform == "win32":
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\""
+                 " | Select-Object ProcessId,ParentProcessId,CommandLine"
+                 " | ConvertTo-Json -Compress"],
+                capture_output=True, text=True, timeout=15).stdout
+            rows = json.loads(out) if out.strip() else []
+            if isinstance(rows, dict):
+                rows = [rows]
+            for r in rows:
+                if needle in (r.get("CommandLine") or ""):
+                    found.append((int(r["ProcessId"]),
+                                  int(r.get("ParentProcessId") or 0)))
+        else:
+            out = subprocess.run(["ps", "-eo", "pid,ppid,args"],
+                                 capture_output=True, text=True, timeout=15).stdout
+            for line in out.splitlines():
+                if needle in line:
+                    parts = line.split(None, 2)
+                    found.append((int(parts[0]), int(parts[1])))
+    except Exception as e:
+        logger.debug(f"Orphan scan failed: {e}")
+        return []
+    return [pid for pid, ppid in found
+            if pid not in owned_set and ppid not in owned_set]
+
+
+def kill_pids(pids: List[int]) -> None:
+    for pid in pids:
+        try:
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True, timeout=15)
+            else:
+                import os
+                import signal
+                os.kill(pid, signal.SIGTERM)
+        except Exception as e:
+            logger.warning(f"Could not kill orphan pid {pid}: {e}")
 
 
 class ProcessManager:
@@ -38,10 +91,16 @@ class ProcessManager:
     # --- spawning ---------------------------------------------------------
 
     async def _real_spawner(self, bot_id: str):
+        # Absolute script path: with a code_root/data_root split the script
+        # lives in the install while cwd stays the data root. In the git
+        # model both are the same directory - identical to the old behavior.
         return await asyncio.create_subprocess_exec(
-            sys.executable, "bot_manager.py", "spawn", bot_id,
+            sys.executable, str(self.root.bot_manager_script()), "spawn", bot_id,
             cwd=str(self.root.root),
         )
+
+    def _owned_pids(self) -> List[int]:
+        return [p.pid for p in self._procs.values() if p.returncode is None]
 
     # --- desired state ------------------------------------------------------
 
@@ -85,6 +144,15 @@ class ProcessManager:
             raise ValueError(f"unknown bot: {bot_id}")
         if self.is_running(bot_id):
             return self.status(bot_id)
+        # Orphan guard: a bot process left over from a killed daemon would
+        # double-login on the same token. Reclaim it before spawning.
+        orphans = find_orphan_pids(bot_id, owned=self._owned_pids())
+        if orphans:
+            logger.warning(f"{bot_id} already running unmanaged "
+                           f"(pids {orphans}) - reclaiming")
+            kill_pids(orphans)
+            self.root.running_flag(bot_id).unlink(missing_ok=True)
+            await asyncio.sleep(1.0)
         self._crashed.pop(bot_id, None)
         self._crash_times.pop(bot_id, None)
         self._next_retry.pop(bot_id, None)
@@ -117,6 +185,24 @@ class ProcessManager:
     async def restart(self, bot_id: str) -> dict:
         await self.stop(bot_id)
         return await self.start(bot_id)
+
+    async def start_desired(self) -> None:
+        """Boot-time restore: bring up every bot that SHOULD be running
+        (supervisor_state.json). This is the other half of shutdown()'s
+        promise - close the app, reopen it, your bots come back."""
+        for bot_id in list(self._desired):
+            if bot_id not in self.root.bot_ids():
+                logger.warning(f"Desired bot {bot_id} no longer exists - dropping")
+                self._desired.remove(bot_id)
+                self._save_desired()
+                continue
+            if self.is_running(bot_id):
+                continue
+            try:
+                await self.start(bot_id)
+                logger.info(f"Restored desired bot {bot_id}")
+            except Exception:
+                logger.exception(f"Could not restore {bot_id}")
 
     # --- crash watching ------------------------------------------------------
 

@@ -17,6 +17,8 @@ from typing import Callable, List, Optional
 
 import yaml
 
+from core.internal_constants import estimate_cost_usd
+
 from .paths import SupervisorRoot
 
 logger = logging.getLogger(__name__)
@@ -294,6 +296,8 @@ class BotData:
             },
             "context": context,
             "tokens_today": tokens,
+            "cost_today_usd": estimate_cost_usd(
+                tokens, (config.get("api") or {}).get("model", "")),
             "dms": {"open": len(dms), "active_today": dm_active_today},
             "followups": self._followups_pending(bot_id, names),
             "watches": self._active_watches(bot_id, names),

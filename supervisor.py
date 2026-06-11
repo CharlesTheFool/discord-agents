@@ -28,15 +28,32 @@ logger = logging.getLogger("supervisor")
 DEFAULT_PORT = 8642
 
 
-async def main(root_path: Path, port: int) -> None:
-    root = SupervisorRoot(root_path)
+def seed_data_root(root: SupervisorRoot) -> None:
+    """First-run scaffold for a data root: the directory tree, an empty
+    .env, a default mcp_servers.json. Idempotent - existing files are
+    never touched."""
+    for d in (root.bots_dir(), root.persistence_dir(), root.logs_dir(),
+              root.root / "memories", root.root / "repository"):
+        d.mkdir(parents=True, exist_ok=True)
+    if not root.env_file().exists():
+        root.env_file().write_text(
+            "# Discord Agents secrets - managed from the app (Settings)\n",
+            encoding="utf-8")
+    if not root.mcp_servers_json().exists():
+        root.mcp_servers_json().write_text('{"servers": []}\n', encoding="utf-8")
+
+
+async def main(root_path: Path, port: int, code_root: Path = None) -> None:
+    root = SupervisorRoot(root_path, code_root=code_root)
+    seed_data_root(root)
     # Validation parity needs the managed install's env (file-to-file only;
     # the API never serves these values)
-    load_dotenv(root.root / ".env")
+    load_dotenv(root.env_file())
 
     pm = ProcessManager(root)
     health = MCPHealthPoller(lambda: load_mcp_servers(root))
-    app = build_app(root, pm, health=health)
+    stop = asyncio.Event()
+    app = build_app(root, pm, health=health, stop_event=stop)
 
     # Dashboard static files (Plan C lands the real UI here)
     ui_dir = Path(__file__).parent / "supervisor" / "ui"
@@ -52,10 +69,13 @@ async def main(root_path: Path, port: int) -> None:
     await site.start()
     logger.info(f"Supervisor up: http://127.0.0.1:{port} (root: {root.root})")
 
+    await pm.start_desired()  # bots that were running come back
+
     watch = asyncio.create_task(pm.watch_loop())
     poll = asyncio.create_task(health.poll_loop())
     try:
-        await asyncio.Event().wait()  # run until interrupted
+        await stop.wait()  # until interrupted or POST /api/supervisor/shutdown
+        logger.info("Shutdown requested - stopping bots")
     finally:
         watch.cancel()
         poll.cancel()
@@ -66,7 +86,10 @@ async def main(root_path: Path, port: int) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Discord Agents supervisor")
     parser.add_argument("--root", type=Path, default=Path.cwd(),
-                        help="install to manage (default: cwd)")
+                        help="data root to manage (default: cwd)")
+    parser.add_argument("--code-root", type=Path,
+                        default=Path(__file__).parent,
+                        help="framework source root (default: beside this script)")
     parser.add_argument("--port", type=int,
                         default=int(os.getenv("SLH_SUPERVISOR_PORT", DEFAULT_PORT)))
     args = parser.parse_args()
@@ -76,6 +99,6 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     try:
-        asyncio.run(main(args.root, args.port))
+        asyncio.run(main(args.root, args.port, code_root=args.code_root))
     except KeyboardInterrupt:
         logger.info("Supervisor shut down")

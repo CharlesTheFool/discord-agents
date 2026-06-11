@@ -9,16 +9,20 @@ import json
 import logging
 import re
 import shutil
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import aiohttp
 import yaml
 from aiohttp import web
 
+from core import __version__
 from core.config import BotConfig
 
 from .data import BotData
+from .env_store import EnvStore
 from .integrations import (add_skill, apply_skills, load_mcp_servers,
                            save_mcp_servers, skills_catalog)
 from .mcp_health import MCPHealthPoller
@@ -28,6 +32,9 @@ from .process_manager import ProcessManager
 logger = logging.getLogger(__name__)
 
 BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
+
+DISCORD_API = "https://discord.com/api/v10"
+ANTHROPIC_API = "https://api.anthropic.com/v1"
 
 BOT_TEMPLATE = """\
 bot_id: {bot_id}
@@ -52,15 +59,35 @@ def json_response(data, status=200):
 
 
 def build_app(root: SupervisorRoot, pm: ProcessManager,
-              health: MCPHealthPoller = None) -> web.Application:
+              health: MCPHealthPoller = None,
+              stop_event: asyncio.Event = None) -> web.Application:
     data = BotData(root)
+    env = EnvStore(root.env_file())
     health = health or MCPHealthPoller(lambda: load_mcp_servers(root))
     app = web.Application()
     app["health"] = health
     app["started"] = datetime.now(timezone.utc).isoformat()
+    app["inducts"] = {}  # bot_id -> {proc, lines, dry_run, started, done}
 
     def known(bot_id: str) -> bool:
         return bot_id in root.bot_ids()
+
+    def token_env_var(bot_id: str) -> str:
+        """The env var holding this bot's Discord token - from its config,
+        with the conventional name as fallback."""
+        try:
+            cfg = data.load_config(bot_id)
+            name = (cfg.get("discord") or {}).get("token_env_var")
+            if name:
+                return name
+        except Exception:
+            pass
+        return f"{bot_id.upper().replace('-', '_')}_BOT_TOKEN"
+
+    def bot_token(bot_id: str) -> str:
+        import os
+        var = token_env_var(bot_id)
+        return env.get(var) or os.getenv(var, "")
 
     @web.middleware
     async def errors(request, handler):
@@ -90,20 +117,29 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     async def get_supervisor(request):
         bots = await data.list_bots(pm.status)
         tokens = {"uncached_in": 0, "cache_read": 0, "out": 0}
+        cost = 0.0
+        cost_complete = True
         for b in bots:
             s = await data.status(b["bot_id"], pm.status(b["bot_id"]))
             for k in tokens:
                 tokens[k] += s["tokens_today"].get(k, 0)
+            if s.get("cost_today_usd") is None:
+                if any(s["tokens_today"].values()):
+                    cost_complete = False
+            else:
+                cost += s["cost_today_usd"]
         return json_response({
             "online": True,
             "status": "running",
-            "version": "0.9.2",
+            "version": __version__,
             "port": request.transport.get_extra_info("sockname")[1]
             if request.transport else None,
             "started": app["started"],
             "bots": len(bots),
             "running": sum(1 for b in bots if b["running"]),
             "tokens_today": tokens,
+            "cost_today_usd": round(cost, 4),
+            "cost_complete": cost_complete,
             "time": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -391,6 +427,213 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             return json_response({"error": f"no MCP server {name}"}, status=404)
         return json_response(await health.check_server(server))
 
+    # --- secrets (write-only: booleans out, values in, never echoed) -----------
+
+    async def get_setup(request):
+        return json_response({
+            "anthropic_key_set": env.is_set("ANTHROPIC_API_KEY"),
+            "bots": [{"bot_id": b, "token_set": env.is_set(token_env_var(b))}
+                     for b in root.bot_ids()],
+        })
+
+    async def put_anthropic_key(request):
+        key = ((await request.json()).get("key") or "").strip()
+        if not key:
+            return json_response({"error": "key is required"}, status=400)
+        async with aiohttp.ClientSession() as s:
+            try:
+                async with s.get(f"{ANTHROPIC_API}/models", headers={
+                        "x-api-key": key, "anthropic-version": "2023-06-01"},
+                        timeout=aiohttp.ClientTimeout(total=15)) as r:
+                    if r.status == 401:
+                        return json_response(
+                            {"error": "Anthropic rejected that key - check it "
+                                      "and try again"}, status=400)
+                    if r.status != 200:
+                        return json_response(
+                            {"error": f"could not validate key "
+                                      f"(Anthropic returned {r.status})"}, status=502)
+            except aiohttp.ClientError as e:
+                return json_response(
+                    {"error": f"could not reach Anthropic: {e}"}, status=502)
+        env.set("ANTHROPIC_API_KEY", key)
+        logger.info("Anthropic API key set via UI (validated)")
+        return json_response({"saved": True})
+
+    async def put_bot_token(request):
+        bot_id = bot_or_404(request)
+        token = ((await request.json()).get("token") or "").strip()
+        if not token:
+            return json_response({"error": "token is required"}, status=400)
+        async with aiohttp.ClientSession() as s:
+            try:
+                async with s.get(f"{DISCORD_API}/users/@me", headers={
+                        "Authorization": f"Bot {token}"},
+                        timeout=aiohttp.ClientTimeout(total=15)) as r:
+                    if r.status == 401:
+                        return json_response(
+                            {"error": "Discord rejected that token - copy the "
+                                      "Bot token from the Developer Portal"},
+                            status=400)
+                    if r.status != 200:
+                        return json_response(
+                            {"error": f"could not validate token "
+                                      f"(Discord returned {r.status})"}, status=502)
+                    me = await r.json()
+            except aiohttp.ClientError as e:
+                return json_response(
+                    {"error": f"could not reach Discord: {e}"}, status=502)
+        env.set(token_env_var(bot_id), token)
+        logger.info(f"Discord token set for {bot_id} via UI "
+                    f"(bot account: {me.get('username')})")
+        return json_response({"saved": True,
+                              "bot_user": me.get("username"),
+                              "bot_user_id": me.get("id"),
+                              "restart_required": pm.is_running(bot_id)})
+
+    # --- Discord discovery (which servers is this bot actually in?) ------------
+
+    async def get_guilds(request):
+        bot_id = bot_or_404(request)
+        token = bot_token(bot_id)
+        if not token:
+            return json_response(
+                {"error": "no Discord token set for this bot yet"}, status=409)
+        configured = set(str(s) for s in
+                         (data.load_config(bot_id).get("discord") or {})
+                         .get("servers", []))
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{DISCORD_API}/users/@me/guilds", headers={
+                    "Authorization": f"Bot {token}"},
+                    timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status != 200:
+                    return json_response(
+                        {"error": f"Discord returned {r.status}"}, status=502)
+                guilds = await r.json()
+        return json_response([{
+            "id": g["id"], "name": g["name"],
+            "configured": g["id"] in configured,
+        } for g in guilds])
+
+    async def get_guild_channels(request):
+        bot_id = bot_or_404(request)
+        guild_id = request.match_info["guild_id"]
+        if not guild_id.isdigit():
+            return json_response({"error": "bad guild id"}, status=400)
+        token = bot_token(bot_id)
+        if not token:
+            return json_response(
+                {"error": "no Discord token set for this bot yet"}, status=409)
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{DISCORD_API}/guilds/{guild_id}/channels",
+                             headers={"Authorization": f"Bot {token}"},
+                             timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status != 200:
+                    return json_response(
+                        {"error": f"Discord returned {r.status}"}, status=502)
+                channels = await r.json()
+        # text (0), voice (2), announcement (5) - the surfaces the bot lives on
+        return json_response(sorted([{
+            "id": c["id"], "name": c["name"], "type": c["type"],
+        } for c in channels if c.get("type") in (0, 2, 5)],
+            key=lambda c: (c["type"], c["name"])))
+
+    # --- repository writes (the bot reconciles disk on its side) ---------------
+
+    async def put_repo_file(request):
+        bot_id = bot_or_404(request)
+        rel = request.query.get("path", "")
+        if not rel:
+            return json_response({"error": "path parameter required"}, status=400)
+        blob = await request.read()
+        p = root.jailed(root.repository_dir(bot_id), rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(blob)
+        logger.info(f"Repository file saved for {bot_id}: {rel} ({len(blob)} B)")
+        return json_response({"saved": True, "path": rel, "size": len(blob)})
+
+    async def delete_repo_file(request):
+        bot_id = bot_or_404(request)
+        rel = request.query.get("path", "")
+        p = root.jailed(root.repository_dir(bot_id), rel)
+        if not p.is_file():
+            return json_response({"error": f"no such file: {rel}"}, status=404)
+        p.unlink()
+        logger.info(f"Repository file deleted for {bot_id}: {rel}")
+        return json_response({"deleted": True, "path": rel})
+
+    # --- induction (memory pre-population from stored backlog) -----------------
+
+    async def _pump_induct(bot_id: str, proc):
+        rec = app["inducts"][bot_id]
+        async for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                rec["lines"].append(line)
+                del rec["lines"][:-400]  # keep a bounded tail
+        await proc.wait()
+        rec["done"] = True
+        rec["returncode"] = proc.returncode
+
+    async def post_induct(request):
+        bot_id = bot_or_404(request)
+        body = await request.json()
+        server = str(body.get("server") or "").strip()
+        dry_run = bool(body.get("dry_run", True))
+        if not server.isdigit():
+            return json_response({"error": "server id required"}, status=400)
+        rec = app["inducts"].get(bot_id)
+        if rec and not rec["done"]:
+            return json_response({"error": "an induction is already running"},
+                                 status=409)
+        if pm.is_running(bot_id):
+            return json_response(
+                {"error": "stop the bot first - induction rebuilds its "
+                          "starting memory"}, status=409)
+        args = [sys.executable, str(root.bot_manager_script()),
+                "induct", bot_id, "--server", server]
+        if dry_run:
+            args.append("--dry-run")
+        if body.get("channels"):
+            args += ["--channels", ",".join(str(c) for c in body["channels"])]
+        proc = await asyncio.create_subprocess_exec(
+            *args, cwd=str(root.root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT)
+        app["inducts"][bot_id] = {
+            "proc": proc, "lines": [], "dry_run": dry_run, "done": False,
+            "returncode": None,
+            "started": datetime.now(timezone.utc).isoformat(),
+        }
+        asyncio.create_task(_pump_induct(bot_id, proc))
+        logger.info(f"Induction started for {bot_id} (server {server}, "
+                    f"dry_run={dry_run})")
+        return json_response({"started": True, "dry_run": dry_run}, status=202)
+
+    async def get_induct(request):
+        bot_id = bot_or_404(request)
+        rec = app["inducts"].get(bot_id)
+        if not rec:
+            return json_response({"running": False, "lines": []})
+        return json_response({
+            "running": not rec["done"],
+            "dry_run": rec["dry_run"],
+            "started": rec["started"],
+            "returncode": rec["returncode"],
+            "lines": rec["lines"],
+        })
+
+    # --- daemon lifecycle -------------------------------------------------------
+
+    async def post_shutdown(request):
+        """Graceful stop: every managed bot is stopped (desired state kept),
+        then the daemon exits. The app calls this on window close."""
+        if stop_event is None:
+            return json_response({"error": "shutdown not wired"}, status=501)
+        logger.info("Shutdown requested via API")
+        asyncio.get_running_loop().call_later(0.1, stop_event.set)
+        return json_response({"stopping": True})
+
     # --- routes ------------------------------------------------------------------------
 
     app.router.add_get("/api/supervisor", get_supervisor)
@@ -418,5 +661,16 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     app.router.add_put("/api/bots/{bot_id}/integrations", put_integrations)
     app.router.add_post("/api/bots/{bot_id}/skills", post_skill)
     app.router.add_post("/api/bots/{bot_id}/mcp/{name}/reconnect", reconnect_mcp)
+    app.router.add_get("/api/setup", get_setup)
+    app.router.add_put("/api/setup/anthropic", put_anthropic_key)
+    app.router.add_put("/api/bots/{bot_id}/token", put_bot_token)
+    app.router.add_get("/api/bots/{bot_id}/guilds", get_guilds)
+    app.router.add_get("/api/bots/{bot_id}/guilds/{guild_id}/channels",
+                       get_guild_channels)
+    app.router.add_put("/api/bots/{bot_id}/repository/file", put_repo_file)
+    app.router.add_delete("/api/bots/{bot_id}/repository/file", delete_repo_file)
+    app.router.add_post("/api/bots/{bot_id}/induct", post_induct)
+    app.router.add_get("/api/bots/{bot_id}/induct", get_induct)
+    app.router.add_post("/api/supervisor/shutdown", post_shutdown)
 
     return app

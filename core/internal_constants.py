@@ -183,13 +183,39 @@ INDUCTION_CHUNK_TOKENS = 100_000   # target input tokens per distillation call (
 INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
 
 # Batch-rate $/MTok (50% of live) for the dry-run cost table; unknown models
-# print "n/a" rather than a guess
+# print "n/a" rather than a guess. Substring match - specific keys FIRST
+# (opus-4-5+ repriced below the opus-4.0/4.1 tier).
 MODEL_BATCH_PRICES = {
     "haiku-4-5": (0.50, 2.50),
     "sonnet-4-5": (1.50, 7.50),
     "sonnet-4-6": (1.50, 7.50),
+    "opus-4-5": (2.50, 12.50),
+    "opus-4-6": (2.50, 12.50),
+    "opus-4-7": (2.50, 12.50),
+    "opus-4-8": (2.50, 12.50),
     "opus-4": (7.50, 37.50),
 }
+
+
+def model_live_prices(model: str):
+    """Live $/MTok (input, output) for a model, or None when unknown.
+    Cache reads bill at 0.1x input."""
+    for marker, (batch_in, batch_out) in MODEL_BATCH_PRICES.items():
+        if marker in model:
+            return (batch_in * 2, batch_out * 2)
+    return None
+
+
+def estimate_cost_usd(tokens: dict, model: str):
+    """Dollar estimate for a {uncached_in, cache_read, out} token bundle.
+    None when the model's prices aren't known - honesty over a guess."""
+    prices = model_live_prices(model or "")
+    if not prices:
+        return None
+    p_in, p_out = prices
+    return ((tokens.get("uncached_in", 0) or 0) * p_in
+            + (tokens.get("cache_read", 0) or 0) * p_in * 0.1
+            + (tokens.get("out", 0) or 0) * p_out) / 1_000_000
 
 
 def format_size(size_bytes: int) -> str:

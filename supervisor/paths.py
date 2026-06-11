@@ -2,10 +2,15 @@
 SupervisorRoot - every filesystem path the daemon touches derives from one
 root (the install it manages, --root), and every user-influenced path goes
 through the jail. There is no second way to build a path.
+
+v0.10: code_root separates the framework source (read-only, replaced by the
+installer's updater) from the data root (bots/, persistence/, memories/...).
+In the git-checkout model both are the same directory and behavior is
+byte-identical to before.
 """
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 class PathJailError(Exception):
@@ -13,8 +18,9 @@ class PathJailError(Exception):
 
 
 class SupervisorRoot:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, code_root: Optional[Path] = None):
         self.root = Path(root).resolve()
+        self.code_root = Path(code_root).resolve() if code_root else self.root
 
     # --- derivations -----------------------------------------------------
 
@@ -65,7 +71,13 @@ class SupervisorRoot:
         return self.logs_dir() / f"{bot_id}{suffix}"
 
     def skills_dir(self) -> Path:
-        return self.root / "skills"
+        return self.code_root / "skills"
+
+    def bot_manager_script(self) -> Path:
+        return self.code_root / "bot_manager.py"
+
+    def env_file(self) -> Path:
+        return self.root / ".env"
 
     def mcp_servers_json(self) -> Path:
         return self.root / "mcp_servers.json"
