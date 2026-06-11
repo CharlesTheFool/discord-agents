@@ -246,12 +246,14 @@ class EpisodeManager:
             self._locks[channel_id] = asyncio.Lock()
         return self._locks[channel_id]
 
-    async def episodize_channel(self, channel_id: str, force: bool = False) -> int:
+    async def episodize_channel(self, channel_id: str, force: bool = False,
+                                reason: str = "idle") -> int:
         """
         Episodize the channel's open span. Returns number of episodes created.
 
         force=True closes the live tail too (usage-threshold trigger); otherwise
         the tail closes only when stale (idle trigger / catch-up).
+        reason ("ceiling" | "idle") rides the reseed turn-event (v0.9).
         """
         async with self._lock_for(channel_id):
             retry_after = self._retry_after.get(channel_id)
@@ -283,9 +285,10 @@ class EpisodeManager:
             tail_closed = not tail  # the live conversation itself got episodized
 
             distilled = 0
+            last_episode = None
             for segment in segments:
                 try:
-                    await self._distill_segment(channel_id, segment)
+                    last_episode = await self._distill_segment(channel_id, segment)
                 except Exception as e:
                     logger.error(
                         f"Distillation failed for channel {channel_id} "
@@ -312,6 +315,25 @@ class EpisodeManager:
                 state.reseed(EPISODE_SEED_TAIL_MESSAGES)
                 await self.conversation_state_manager.save(state)
 
+                # Reseed turn-event (v0.9): the channel monitor's inline marker
+                try:
+                    server_id = await self.message_memory.get_server_for_channel(channel_id)
+                    await self.message_memory.add_event(
+                        "reseed", server_id, channel_id,
+                        {
+                            "triggers": [], "thinking": "", "tool_calls": [],
+                            "response": None,
+                            "reason": reason,
+                            "episode_title": (last_episode or {}).get("title", ""),
+                            "episode_summary": (last_episode or {}).get("index_hook", ""),
+                            "retained": EPISODE_SEED_TAIL_MESSAGES,
+                            "episodes_dir": self.memory_manager.get_episodes_dir_path(
+                                server_id, channel_id),
+                        },
+                    )
+                except Exception:
+                    logger.exception("Reseed event emit failed")
+
             if distilled:
                 logger.info(
                     f"Episodized channel {channel_id}: {distilled} episode(s)"
@@ -335,8 +357,9 @@ class EpisodeManager:
             )
         return last_old
 
-    async def _distill_segment(self, channel_id: str, segment: list) -> None:
-        """One Haiku call -> episode file + updated channel state file."""
+    async def _distill_segment(self, channel_id: str, segment: list) -> dict:
+        """One Haiku call -> episode file + updated channel state file.
+        Returns the distilled episode data (the reseed event reads title)."""
         server_id = await self.message_memory.get_server_for_channel(channel_id)
         if not server_id:
             server_id = segment[0].guild_id
@@ -399,6 +422,7 @@ Distill this episode and return the updated channel state per the schema."""
         logger.info(
             f"Distilled episode '{data['title']}' for channel {channel_id} ({range_key})"
         )
+        return data
 
     async def check_idle_channels(self) -> None:
         """Idle-boundary sweep over live channels (called from the periodic loop)."""

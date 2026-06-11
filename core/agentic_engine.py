@@ -643,6 +643,18 @@ class AgenticEngine:
 
             logger.info(f"Sent follow-up message to channel {action.channel_id} ({len(message_chunks)} chunk{'s' if len(message_chunks) > 1 else ''})")
 
+            if self.message_memory:
+                await self.message_memory.add_event(
+                    "followup", action.server_id, action.channel_id,
+                    {
+                        "triggers": [{"user": "·",
+                                      "text": f"follow-up fired: {action.followup_event or action.context or ''}"[:500],
+                                      "addressed": False}],
+                        "thinking": "", "tool_calls": [],
+                        "response": message,
+                    },
+                )
+
             # Mark followup as complete and write back
             if action.followup_id:
                 await self._mark_followup_complete(action.server_id, action.followup_id)
@@ -918,6 +930,15 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                     f"Proactive message declined by model for channel {action.channel_id} "
                     f"(nothing worth saying)"
                 )
+                if self.message_memory:
+                    await self.message_memory.add_event(
+                        "proactive", action.server_id, action.channel_id,
+                        {
+                            "triggers": [], "thinking": thinking_text,
+                            "tool_calls": [], "response": None,
+                            "decision": "no opening taken",
+                        },
+                    )
                 return
 
             generated_message = decision["message"].strip()
@@ -940,6 +961,15 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 )
 
             logger.info(f"Sent proactive message to channel {action.channel_id} ({len(message_chunks)} chunk{'s' if len(message_chunks) > 1 else ''}): {generated_message[:50]}...")
+
+            if self.message_memory:
+                await self.message_memory.add_event(
+                    "proactive", action.server_id, action.channel_id,
+                    {
+                        "triggers": [], "thinking": thinking_text,
+                        "tool_calls": [], "response": generated_message,
+                    },
+                )
 
             # Increment rate limit counter
             self._increment_proactive_counter(action.channel_id)

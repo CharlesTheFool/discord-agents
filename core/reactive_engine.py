@@ -1077,6 +1077,16 @@ class ReactiveEngine:
             elif block.name == "request_skill":
                 logger.info(f"Executing request_skill tool: {block.input.get('skill_name', 'unknown')}")
                 note("skills", "request_skill", block.input.get("skill_name", ""))
+                if self.message_memory:
+                    await self.message_memory.add_event(
+                        "skill", server_id, channel_id,
+                        {
+                            "triggers": [], "thinking": "", "tool_calls": [],
+                            "response": None,
+                            "skill_name": block.input.get("skill_name", ""),
+                            "replace": block.input.get("replace"),
+                        },
+                    )
                 if conversation_state:
                     result = self.skill_request_executor.execute(block.input, conversation_state)
                     await self.conversation_state_manager.save(conversation_state)
@@ -1469,7 +1479,7 @@ class ReactiveEngine:
                     f"{self.config.api.context_tokens:,} - episodizing channel {channel_id}"
                 )
                 self._track_task(asyncio.create_task(
-                    self.episode_manager.episodize_channel(channel_id, force=True)
+                    self.episode_manager.episodize_channel(channel_id, force=True, reason="ceiling")
                 ))
 
         except Exception as e:
