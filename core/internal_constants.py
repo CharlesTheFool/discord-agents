@@ -256,3 +256,17 @@ WEB_SEARCH_DISABLED_PROMPT = """
 
 You cannot search the web. Work from your training knowledge and be clear about uncertainty.
 """
+
+
+# =============================================================================
+# MEMORY RECONSOLIDATION (v0.7.0, Internal)
+# =============================================================================
+CONSOLIDATION_INTERVAL_DAYS = 7        # weekly per-server pass
+CONSOLIDATION_CULTURE_EVERY_N_RUNS = 4 # channel/culture refresh cadence (monthly)
+CONSOLIDATION_ERA_AGE_DAYS = 30        # episodes older than this compact into era digests
+CONSOLIDATION_HISTORY_KEEP = 3         # .history versions kept per filename
+CONSOLIDATION_BATCH_POLL_SECONDS = 60
+CONSOLIDATION_BATCH_TIMEOUT_HOURS = 12
+CONSOLIDATION_EVIDENCE_MESSAGES = 80   # message sample per user for profile rewrites
+CONSOLIDATION_EVIDENCE_EPISODES = 3    # recent episode files folded into profile evidence
+CONSOLIDATION_MAX_TOKENS = 8000
