@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.2] - 2026-06-12
+
+**Status:** Pre-release (beta). Dashboard fix only - no bot runtime changes.
+
+### Fixed
+- **The dashboard Monitor tab refreshes itself.** Live status, stats, and
+  activity now auto-refresh every 5 seconds while the tab is active, with
+  scroll position preserved; refreshing pauses when the tab is hidden or
+  another tab is selected (no idle timers or SSE connections held open
+  off-tab).
+
+---
+
 ## [0.12.1] - 2026-06-12
 
 **Status:** Pre-release (beta). Phantom-attachment hardening, from a second
