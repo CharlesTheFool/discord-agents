@@ -993,9 +993,14 @@ class ReactiveEngine:
             try:
                 recent = await self.message_memory.get_recent(
                     str(message.channel.id), limit=10)
+                client = getattr(self, "discord_client", None)
+                own_id = str(client.user.id) if (client and client.user) else None
                 lines = []
                 for m in recent:
-                    if m.is_bot:
+                    # Anything anyone else said is a valid reply target -
+                    # including other bots (twins/Prime servers). Skip only
+                    # synthetic system rows and our own messages.
+                    if m.is_system or m.author_id == own_id:
                         continue
                     snippet = " ".join(m.content.split())[:60]
                     lines.append(f"{m.message_id} — {m.author_name}: {snippet}")
