@@ -86,6 +86,45 @@ class BotData:
                 "kind": "thread", "guild_id": None})
         return names
 
+    def _user_names(self, bot_id: str) -> dict:
+        """Discord user id -> human name. Author names from the message store are
+        the reliable base (backfill populates them even when the live username
+        cache is empty); the cache then refines with display names."""
+        out = {}
+        for r in _query(self.root.messages_db(bot_id),
+                        "SELECT author_id, author_name FROM messages "
+                        "WHERE author_id IS NOT NULL AND author_name IS NOT NULL "
+                        "GROUP BY author_id"):
+            out[r["author_id"]] = r["author_name"]
+        for r in _query(self.root.users_db(bot_id),
+                        "SELECT user_id, username, display_name FROM users"):
+            nm = r["display_name"] or r["username"]
+            if nm:
+                out[r["user_id"]] = nm
+        return out
+
+    def _memory_labeler(self, bot_id: str):
+        """Build a function that turns an ID-named memory file/folder into a human
+        label (channel/server/thread name, or a person's name) - so the browser
+        shows 'Charles' and '#general' instead of a wall of numeric IDs. Returns
+        None for names that aren't bare IDs (leave them as-is)."""
+        chan = self._names(bot_id)
+        users = self._user_names(bot_id)
+
+        def label(raw_name: str):
+            stem = raw_name.rsplit(".", 1)[0]
+            if not stem.isdigit():
+                return None
+            if stem in users:
+                return users[stem]
+            meta = chan.get(stem)
+            if meta:
+                nm, kind = meta.get("name") or stem, meta.get("kind")
+                return f"#{nm}" if kind == "channel" else \
+                       f"⤷ {nm}" if kind == "thread" else nm
+            return None
+        return label
+
     @staticmethod
     def _display(names: dict, channel_id: str) -> str:
         """UI-facing channel label: '#general', 'DM · mara', or the raw id.
@@ -432,31 +471,38 @@ class BotData:
     # --- trees + files ------------------------------------------------------------
 
     @staticmethod
-    def _tree(base: Path) -> list:
+    def _tree(base: Path, labeler=None) -> list:
         """Nested tree in the prototype's node shape (content NOT embedded -
-        files are fetched on click)."""
+        files are fetched on click). `labeler`, if given, resolves ID-named
+        entries to human labels."""
         def walk(d: Path, rel: str) -> list:
             entries = []
             for p in sorted(d.iterdir(), key=lambda x: (x.is_file(), x.name)):
                 child_rel = f"{rel}/{p.name}" if rel else p.name
+                node = {"name": p.name}
+                if labeler:
+                    lbl = labeler(p.name)
+                    if lbl:
+                        node["label"] = lbl
                 if p.is_dir():
-                    entries.append({"name": p.name, "type": "dir",
-                                    "children": walk(p, child_rel)})
+                    node.update({"type": "dir", "children": walk(p, child_rel)})
                 else:
                     stat = p.stat()
-                    entries.append({
-                        "name": p.name, "type": "file", "path": child_rel,
+                    node.update({
+                        "type": "file", "path": child_rel,
                         "size": stat.st_size,
                         "modified": datetime.fromtimestamp(
                             stat.st_mtime, tz=timezone.utc).isoformat(),
                         "kind": (p.suffix.lstrip(".") or "txt"),
                     })
+                entries.append(node)
             return entries
         return walk(base, "") if base.exists() else []
 
     def memory_tree(self, bot_id: str) -> dict:
         return {"root": f"memories/{bot_id}",
-                "tree": self._tree(self.root.memories_dir(bot_id))}
+                "tree": self._tree(self.root.memories_dir(bot_id),
+                                   labeler=self._memory_labeler(bot_id))}
 
     def repository_tree(self, bot_id: str) -> dict:
         return {"root": f"repository/{bot_id}",

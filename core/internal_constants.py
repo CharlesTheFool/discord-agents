@@ -47,6 +47,30 @@ def model_supports_effort(model: str) -> bool:
     return any(marker in model for marker in _EFFORT_CAPABLE_MARKERS)
 
 
+# Per-model OUTPUT-token ceilings (distinct from the 1M *input* context window).
+# max_tokens is derived as min(context_tokens, this) and never shown to users.
+# Conservative safe floors - the API 400s if max_tokens exceeds the real cap, so
+# these bias low (responses rarely approach them); raise if Anthropic docs confirm
+# higher per model. Substring match, longest/most-specific markers first.
+_MODEL_MAX_OUTPUT = (
+    ("fable", 32000),
+    ("opus-4-8", 32000),
+    ("opus", 32000),
+    ("sonnet-4-6", 32000),
+    ("sonnet", 32000),
+    ("haiku", 16000),
+)
+MODEL_MAX_OUTPUT_DEFAULT = 16000
+
+
+def model_max_output(model: str) -> int:
+    """The output-token ceiling for a model (safe floor; see _MODEL_MAX_OUTPUT)."""
+    for marker, cap in _MODEL_MAX_OUTPUT:
+        if marker in (model or ""):
+            return cap
+    return MODEL_MAX_OUTPUT_DEFAULT
+
+
 # =============================================================================
 # RATE LIMITING (Internal)
 # =============================================================================

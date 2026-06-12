@@ -597,7 +597,7 @@ const DEFAULTS = {
     context_tokens: 80000, effort: null, consolidation_model: "claude-sonnet-4-6",
     thinking: { enabled: true }, web_search: { enabled: false } },
   mcp: { enabled: false },
-  skills: { include_anthropic_skills: true, default_skills: ["pdf"] },
+  skills: { include_anthropic_skills: true, default_skills: [] },
   attachments: { enabled: false, backfill_enabled: true, backfill_days: 30,
     repository: { enabled: true } },
   logging: { level: "INFO" },
@@ -606,10 +606,14 @@ const DEFAULTS = {
 
 // description: a note-to-self the bot never sees — dropped from the UI.
 // discord.backfill_enabled: owned by the backfill slider, not shown on its own.
+// api.max_tokens: derived from context_tokens + model, never user-set.
 const HIDDEN = new Set([
   "bot_id", "discord.token_env_var", "logging.file",
-  "description", "discord.backfill_enabled",
+  "description", "discord.backfill_enabled", "api.max_tokens",
+  "attachments.backfill_enabled", "attachments.backfill_days",
 ]);
+// Whole sections that belong to the Integrations tab, not Configure.
+const HIDDEN_SECTIONS = new Set(["mcp", "skills"]);
 
 const HINTS = {
   "name": { label: "Name", help: "Display name in the dashboard." },
@@ -642,7 +646,7 @@ const HINTS = {
   "api.context_messages": { label: "Context messages", help: "Live messages kept before reseed (5–100).", min: 5, max: 100 },
   "api.context_tokens": { label: "Context ceiling", help: "Token budget before distill + reseed." },
   "api.effort": { label: "Effort", help: "Depth-of-thought dial. Only models with effort support show this.", widget: "effort" },
-  "api.consolidation_model": { label: "Memory model", options: ["claude-sonnet-4-6", "claude-haiku-4-5"], help: "Distills episodes, runs weekly reconsolidation, and powers induction." },
+  "api.consolidation_model": { label: "Memory model", options: ["claude-sonnet-4-6", "claude-fable-5", "claude-opus-4-8"], help: "Distills episodes, runs weekly reconsolidation, and powers induction. Uses medium thinking effort." },
   "api.thinking.enabled": { label: "Extended thinking", help: "Adaptive thinking; the model decides when." },
   "api.web_search.enabled": { label: "Web search", help: "Live web lookups when conversation calls for it." },
 
@@ -673,19 +677,26 @@ const CONFIG_TABS = [
     "api.model", "api.effort", "api.thinking.enabled",
     "api.web_search.enabled", "api.consolidation_model"] },
   { title: "Engagement", items: [
-    "reactive.enabled", "agentic.enabled", "agentic.proactive.enabled",
-    "agentic.proactive.intensity", "agentic.proactive.allowed_channels",
-    "agentic.proactive.quiet_hours", "agentic.followups.enabled"] },
+    "reactive.enabled", "reactive.rate_limit", "agentic.enabled",
+    "agentic.proactive.enabled", "agentic.proactive.intensity",
+    "agentic.proactive.allowed_channels", "agentic.proactive.quiet_hours",
+    "agentic.followups.enabled"] },
 ];
 
-/* Named tabs + an Advanced tab holding every config leaf not claimed above. */
+/* Named tabs + an Advanced tab. Advanced holds every leaf not claimed above
+   and not in a hidden section (mcp/skills live in Integrations), grouped by
+   section so it isn't one undifferentiated scroll. */
 function configTabs() {
   const claimed = new Set(
     CONFIG_TABS.flatMap((g) => g.items).filter((p) => p !== "__token__"));
-  const advanced = Object.keys(cfg)
-    .flatMap((section) => collectPaths(cfg[section], section))
-    .filter((p) => !claimed.has(p) && !HIDDEN.has(p));
-  return [...CONFIG_TABS, { title: "Advanced", items: advanced }];
+  const groups = [];
+  for (const section of Object.keys(cfg)) {
+    if (HIDDEN_SECTIONS.has(section)) continue;
+    const items = collectPaths(cfg[section], section)
+      .filter((p) => !claimed.has(p) && !HIDDEN.has(p));
+    if (items.length) groups.push({ section, items });
+  }
+  return [...CONFIG_TABS, { title: "Advanced", groups }];
 }
 
 let cfg = null, cfgDirty = false, setupInfo = null;
@@ -738,10 +749,13 @@ function buildForm() {
   const tabs = configTabs();
   const nav = tabs.map((t, i) =>
     `<a class="cfgtab ${i === 0 ? "active" : ""}" data-cfgtab="${i}">${esc(t.title)}</a>`).join("");
-  const panels = tabs.map((t, i) => `
-    <div class="cfgpanel ${i === 0 ? "active" : ""}" data-cfgpanel="${i}">
-      ${t.items.map((p) => p === "__token__" ? tokenFieldHTML() : fieldHTML(p)).join("")}
-    </div>`).join("");
+  const panels = tabs.map((t, i) => {
+    const body = t.groups
+      ? t.groups.map((g) =>
+          `<h4 class="cfg-section">${esc(g.section)}</h4>${g.items.map(fieldHTML).join("")}`).join("")
+      : t.items.map((p) => p === "__token__" ? tokenFieldHTML() : fieldHTML(p)).join("");
+    return `<div class="cfgpanel ${i === 0 ? "active" : ""}" data-cfgpanel="${i}">${body}</div>`;
+  }).join("");
   document.getElementById("cfg-form").innerHTML =
     `<nav class="cfgtabs">${nav}</nav><div class="cfgpanels">${panels}</div>`;
   renderEffortGate();
@@ -1051,14 +1065,15 @@ function fieldValue(field) {
 function collectFormValues() {
   const out = structuredClone(cfg);
   document.querySelectorAll("#cfg-form .field[data-path]").forEach((field) => {
-    // backfill slider drives two fields: enabled + days
+    // backfill slider drives message AND attachment backfill (enabled + days mirror)
     if (field.dataset.widget === "backfill") {
       const stop = fieldValue(field);
-      if (stop === "off") {
-        setNested(out, "discord.backfill_enabled", false);
-      } else {
-        setNested(out, "discord.backfill_enabled", true);
+      const on = stop !== "off";
+      setNested(out, "discord.backfill_enabled", on);
+      setNested(out, "attachments.backfill_enabled", on);
+      if (on) {
         setNested(out, "discord.backfill_days", Number(stop));
+        setNested(out, "attachments.backfill_days", Number(stop));
       }
       return;
     }
@@ -1142,14 +1157,17 @@ function makeBrowser(rootEl, treeData, kind) {
 }
 
 function nodeHTML(node, depth) {
-  const label = node.label ? `<span class="label">${esc(node.label)}</span>` : "";
+  // ID-named entries resolve to a human label (channel/person/server); show that
+  // as the name and keep the raw id as a muted subtitle. Non-ID names show as-is.
+  const primary = esc(node.label || node.name);
+  const sub = node.label ? `<span class="nid">${esc(node.name)}</span>` : "";
   if (node.type === "dir") {
     const kids = (node.children || []).map((c) => nodeHTML(c, depth + 1)).join("");
-    return `<div class="node dir"><span class="ic">▸</span>${esc(node.name)}${label}</div>
+    return `<div class="node dir"><span class="ic">▸</span>${primary}${sub}</div>
             <div class="children">${kids}</div>`;
   }
   return `<div class="node file" data-file='${esc(JSON.stringify(node)).replace(/'/g, "&#39;")}'>
-            <span class="ic">·</span>${esc(node.name)}${label}</div>`;
+            <span class="ic">·</span>${primary}${sub}</div>`;
 }
 
 const TEXT_KINDS = ["md", "txt", "json"];

@@ -137,9 +137,10 @@ class SkillsConfig:
     # Note: enabled field removed in v0.5.1 (Bug #14 fix)
     # Skills are now always enabled; code_execution is automatically enabled with them
     include_anthropic_skills: bool = True  # Include built-in xlsx, pptx, docx, pdf
-    # Default skills to load initially (v0.5.0 Progressive Disclosure)
-    # Claude can request different skills via request_skill tool
-    default_skills: List[str] = field(default_factory=lambda: ["pdf"])
+    # Skills preloaded at conversation start (v0.5.0 Progressive Disclosure).
+    # Empty by default - Claude requests any skill (pdf, xlsx, …) on demand via
+    # request_skill the moment it's needed, so nothing has to be preloaded.
+    default_skills: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -414,7 +415,7 @@ class BotConfig:
         skills_data = data.get("skills", {})
         skills = SkillsConfig(
             include_anthropic_skills=skills_data.get("include_anthropic_skills", True),
-            default_skills=skills_data.get("default_skills", ["pdf"]),
+            default_skills=skills_data.get("default_skills", []),
         )
 
         # Parse attachments config

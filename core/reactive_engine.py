@@ -39,7 +39,9 @@ from .unified_attachment_manager import UnifiedAttachmentManager
 from .files_api_client import FilesAPIClient
 from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
-from .internal_constants import TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size
+from .internal_constants import (
+    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size, model_max_output,
+)
 from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
 from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
@@ -781,16 +783,48 @@ class ReactiveEngine:
                 logger.error(f"Failed to process attachment {attachment.filename}: {e}", exc_info=True)
         return processed
 
-    def _build_user_content(self, message: discord.Message, processed_attachments: list):
+    async def _reply_quote_prefix(self, message: discord.Message) -> str:
+        """If this message replies to another, a short quote of the original so
+        the model always knows what it's answering - however old the original is
+        (pulled durably from message memory, falling back to Discord's cache)."""
+        ref = getattr(message, "reference", None)
+        if not ref or not getattr(ref, "message_id", None):
+            return ""
+        author, text = None, None
+        try:
+            orig = await self.message_memory.get_stored_message(
+                str(ref.message_id), str(message.channel.id))
+        except Exception:
+            orig = None
+        if orig is not None:
+            author, text = orig.author_name, orig.content
+        else:
+            resolved = getattr(ref, "resolved", None)
+            if resolved is not None and not isinstance(
+                    resolved, discord.DeletedReferencedMessage):
+                author = getattr(resolved.author, "display_name", None)
+                text = resolved.content
+        if not text:
+            return ""
+        text = " ".join(text.split())
+        if len(text) > 280:
+            text = text[:279] + "…"
+        return f"[↩ replying to {author or 'someone'}: \"{text}\"]\n"
+
+    async def _build_user_content(self, message: discord.Message, processed_attachments: list):
         """
         Discord message -> (content, attachment_ids) for conversation state.
         Attachment blocks follow the text block in processing order.
         """
+        reply_prefix = await self._reply_quote_prefix(message)
+
         if not processed_attachments:
-            return message.content, None
+            text = reply_prefix + message.content
+            return (text if reply_prefix else message.content), None
 
         # Empty text alongside attachments would be rejected by the API
-        text_content = message.content if message.content.strip() else "[Attachment]"
+        base = message.content if message.content.strip() else "[Attachment]"
+        text_content = reply_prefix + base
         content = [{"type": "text", "text": text_content}]
         attachment_ids = []
         for att in processed_attachments:
@@ -919,7 +953,10 @@ class ReactiveEngine:
 
         api_params = {
             "model": self.config.api.model,
-            "max_tokens": self.config.api.max_tokens,
+            # Derived, never user-set: as much output room as the input budget
+            # allows, clamped to the model's real output ceiling.
+            "max_tokens": min(self.config.api.context_tokens,
+                              model_max_output(self.config.api.model)),
             "system": system_blocks,
             "messages": messages,
             "tools": tools,
@@ -930,7 +967,7 @@ class ReactiveEngine:
         if self.skills_manager:
             active_skill_names = conversation_state.get_active_skills() if conversation_state else []
             if not active_skill_names:
-                active_skill_names = self.config.skills.default_skills or ["pdf"]
+                active_skill_names = self.config.skills.default_skills
                 if conversation_state:
                     conversation_state.set_active_skills(
                         active_skill_names, self.skills_manager.MAX_SKILLS_PER_REQUEST
@@ -1588,7 +1625,7 @@ class ReactiveEngine:
                 # Add current user message to conversation state BEFORE API call
                 if conversation_state:
                     try:
-                        user_content, attachment_ids = self._build_user_content(message, processed_attachments)
+                        user_content, attachment_ids = await self._build_user_content(message, processed_attachments)
                         conversation_state.add_message("user", user_content, attachment_ids)
                         conversation_state.enforce_message_cap()
                     except Exception as e:
@@ -2020,7 +2057,7 @@ class ReactiveEngine:
                 )
 
             processed_attachments = await self._process_message_attachments(message)
-            user_content, attachment_ids = self._build_user_content(message, processed_attachments)
+            user_content, attachment_ids = await self._build_user_content(message, processed_attachments)
 
             # Sticker-only and pin/system messages carry no usable content -
             # an empty text block would 400 every later request on this channel

@@ -788,6 +788,17 @@ class MessageMemory:
         row = await cursor.fetchone()
         return self._row_to_message(row) if row else None
 
+    async def get_stored_message(self, message_id: str,
+                                 channel_id: str) -> Optional[StoredMessage]:
+        """One stored message by id (durable - survives the live context window).
+        Used to quote a replied-to message however old it is."""
+        cursor = await self._db.execute(
+            "SELECT * FROM messages WHERE message_id = ? AND channel_id = ?",
+            (str(message_id), str(channel_id)),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_message(row) if row else None
+
     async def get_messages_since(self, channel_id: str,
                                  after_message_id: Optional[str] = None,
                                  after_timestamp: Optional[str] = None,

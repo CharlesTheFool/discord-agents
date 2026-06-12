@@ -884,3 +884,28 @@ footer.page {
 .activity-head .follow input[type="checkbox"] {
   width: 18px; height: 18px; accent-color: var(--green);
 }
+
+/* ============== 0.10.2: advanced grouping + overflow containment ============== */
+
+/* section headers inside the Advanced sub-tab */
+.cfg-section {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-soft);
+  margin: 26px 0 2px; padding-bottom: 6px; border-bottom: 1px solid var(--rule);
+}
+.cfgpanel > .cfg-section:first-child { margin-top: 8px; }
+
+/* keep long labels/paths/help from spilling out of the 200px label column and
+   overlapping the controls (e.g. agentic.proactive.allowed_channels) */
+.field > .lab { min-width: 0; }
+.field > .lab .name,
+.field > .lab .path,
+.field > .lab .help { overflow-wrap: anywhere; }
+.field > .ctl { min-width: 0; }
+.field > .ctl .scale { max-width: 100%; flex-wrap: wrap; }
+
+/* memory browser: resolved human name is the label, raw id rides muted beside it */
+.node .nid {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-faint);
+  margin-left: 8px; letter-spacing: .02em;
+}

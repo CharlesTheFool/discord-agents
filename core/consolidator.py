@@ -24,6 +24,7 @@ from typing import Optional
 
 from core.batch_client import BatchClient
 from core.internal_constants import (
+    model_supports_effort,
     CONSOLIDATION_INTERVAL_DAYS,
     CONSOLIDATION_CULTURE_EVERY_N_RUNS,
     CONSOLIDATION_ERA_AGE_DAYS,
@@ -63,6 +64,16 @@ def with_character(base_prompt: str, character: Optional[str]) -> str:
             "register, and let it steer what is worth keeping:\n" + character)
 
 
+def memory_output_config(schema: dict, model: str) -> dict:
+    """Structured-output config for a distillation request, with medium thinking
+    effort on models that support it (the memory model reasons harder than the
+    API default of none)."""
+    cfg = {"format": {"type": "json_schema", "schema": schema}}
+    if model_supports_effort(model):
+        cfg["effort"] = "medium"
+    return cfg
+
+
 # =============================================================================
 # Task 12: Era digest compaction (Pass 1)
 # =============================================================================
@@ -93,7 +104,8 @@ ERA_SYSTEM_PROMPT = (
     "relationships, its humor, and who's who with each other - let that steer "
     "what survives. Keep standing facts, decisions, attributed lines worth "
     "remembering, the jokes and dynamics that stuck, and the register of the "
-    "room. Drop the play-by-play and one-off logistics. Plain, tight markdown."
+    "room. Drop the play-by-play and one-off logistics. Refer to people by name, "
+    "not raw numeric IDs. Plain, tight markdown."
 )
 
 # =============================================================================
@@ -176,8 +188,8 @@ CULTURE_SYSTEM_PROMPT = (
     "notes - what kind of place this is (a workplace, a project team, a friend "
     "group, a gaming hangout), its rhythms, its social register, and how its "
     "people are with each other, anchored in what actually happens there. Name "
-    "the register honestly - if it's dark, casual, in-jokey, say so. Lean "
-    "markdown, no fluff."
+    "the register honestly - if it's dark, casual, in-jokey, say so. Refer to "
+    "people by name, not raw numeric IDs. Lean markdown, no fluff."
 )
 
 
@@ -441,8 +453,8 @@ class MemoryConsolidator:
                         "messages": [{"role": "user", "content":
                             f"<episodes channel_id=\"{ch_dir.name}\" month=\"{month}\">\n"
                             f"{corpus}\n</episodes>"}],
-                        "output_config": {"format": {"type": "json_schema",
-                                                     "schema": ERA_DIGEST_SCHEMA}},
+                        "output_config": memory_output_config(
+                            ERA_DIGEST_SCHEMA, self.config.api.consolidation_model),
                     },
                 })
         return requests
@@ -542,8 +554,8 @@ class MemoryConsolidator:
                         f"<current_profile>\n{current}\n</current_profile>\n\n"
                         f"<recent_episodes>\n{episodes_blurb}\n</recent_episodes>\n\n"
                         f"<recent_messages user_id=\"{uid}\">\n{transcript}\n</recent_messages>"}],
-                    "output_config": {"format": {"type": "json_schema",
-                                                 "schema": PROFILE_SCHEMA}},
+                    "output_config": memory_output_config(
+                        PROFILE_SCHEMA, self.config.api.consolidation_model),
                 },
             })
         return requests
@@ -633,8 +645,8 @@ class MemoryConsolidator:
                         "messages": [{"role": "user", "content":
                             f"<channel_state channel_id=\"{cid}\">\n{body}\n</channel_state>\n\n"
                             f"<recent_episodes>\n{episodes_text}\n</recent_episodes>"}],
-                        "output_config": {"format": {"type": "json_schema",
-                                                     "schema": CHANNEL_BODY_SCHEMA}},
+                        "output_config": memory_output_config(
+                            CHANNEL_BODY_SCHEMA, self.config.api.consolidation_model),
                     },
                 })
         # Culture request: current culture.md + all channel bodies
@@ -652,8 +664,8 @@ class MemoryConsolidator:
                 "messages": [{"role": "user", "content":
                     f"<culture>\n{culture_text}\n</culture>\n\n"
                     f"<channels>\n{channels_summary}\n</channels>"}],
-                "output_config": {"format": {"type": "json_schema",
-                                             "schema": CULTURE_SCHEMA}},
+                "output_config": memory_output_config(
+                    CULTURE_SCHEMA, self.config.api.consolidation_model),
             },
         })
         return requests

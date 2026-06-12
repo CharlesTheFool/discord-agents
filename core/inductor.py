@@ -22,6 +22,7 @@ from core.consolidator import (
     archive_to_history,
     read_server_character,
     with_character,
+    memory_output_config,
 )
 from core.internal_constants import (
     CONSOLIDATION_MAX_TOKENS,
@@ -45,7 +46,9 @@ ARCHAEOLOGY_SYSTEM = (
     "dynamics, and per-person observations (lean, third person, objective - you "
     "have no relationship with these people yet). Match the register of the "
     "room - if it's dark, casual, in-jokey, capture that texture instead of "
-    "sanding it into corporate minutes. Never write as if you were there."
+    "sanding it into corporate minutes. Refer to people and channels by name, "
+    "not raw numeric IDs (the transcript gives you both - use the name). Never "
+    "write as if you were there."
 )
 
 INDUCT_PROFILE_SYSTEM = (
@@ -169,8 +172,7 @@ class ServerInductor:
                         "messages": [{"role": "user", "content":
                             f"<backlog channel_id=\"{cid}\" chunk=\"{idx + 1}/{len(chunks)}\">\n"
                             f"{transcript}\n</backlog>"}],
-                        "output_config": {"format": {"type": "json_schema",
-                                                     "schema": CHUNK_DIGEST_SCHEMA}},
+                        "output_config": memory_output_config(CHUNK_DIGEST_SCHEMA, model),
                     },
                 })
 
@@ -344,8 +346,7 @@ class ServerInductor:
                         f"<current_profile>\n{current}\n</current_profile>\n\n"
                         f"<backlog_observations user_id=\"{uid}\">\n{obs_text}\n"
                         f"</backlog_observations>"}],
-                    "output_config": {"format": {"type": "json_schema",
-                                                 "schema": PROFILE_SCHEMA}},
+                    "output_config": memory_output_config(PROFILE_SCHEMA, model),
                 },
             })
         if state_bodies:
@@ -360,8 +361,7 @@ class ServerInductor:
                     "system": with_character(CULTURE_SYSTEM_PROMPT, character),
                     "messages": [{"role": "user", "content":
                         f"<channels>\n{channels_summary}\n</channels>"}],
-                    "output_config": {"format": {"type": "json_schema",
-                                                 "schema": CULTURE_SCHEMA}},
+                    "output_config": memory_output_config(CULTURE_SCHEMA, model),
                 },
             })
         return requests
