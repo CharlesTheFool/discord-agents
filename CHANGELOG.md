@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.2] - 2026-06-11
+
+**Status:** Pre-release (beta). Configuration clarity, memory readability, and a
+handful of behavior fixes that came out of reviewing what 0.10.x actually does.
+
+### Added
+
+- **Memory browser resolves IDs to names.** The Memories tab now shows
+  "Group No.5", "#general", and people's names with the raw Discord ID as a muted
+  subtitle, instead of a wall of numbers — resolved from the channel-name cache
+  and message authors. Files stay ID-keyed on disk (stable identity); only the
+  display changes.
+- **Always quotes the message it's replying to.** When someone replies to an
+  earlier message, the bot now sees a short quote of that original — however old
+  it is — pulled durably from message memory, so it always knows what it's
+  answering.
+- **Memory model thinks harder.** Induction and consolidation now run at medium
+  thinking effort on capable models.
+
+### Changed
+
+- **Configuration declutter.** MCP and skill settings now live only in the
+  Integrations tab (removed from Configure); the Advanced sub-tab is grouped
+  under section headers instead of one flat scroll; `rate_limit` moved to
+  Engagement (it's a response-frequency throttle, not a personality dial); the
+  memory-model picker drops Haiku (it's still on the older thinking API) and adds
+  Fable 5 and Opus 4.8.
+- **`max_tokens` is gone from the UI and now derived.** Users only set
+  `context_tokens`; output is `min(context_tokens, the model's output ceiling)`,
+  clamped per-model so it can never exceed what the API allows. Generous enough
+  that extended thinking never truncates, with no knob to misconfigure.
+- **Backfill covers attachments by default.** The backfill slider now drives both
+  message and attachment backfill, with matching depth.
+- **No skill is preloaded by default.** The PDF skill (a testing residue) is no
+  longer forced into every conversation; the bot requests any skill on demand
+  when it's actually needed.
+- Distillation prompts now write people and channels by name, not raw IDs.
+
+### Fixed
+
+- Long config labels/paths no longer overflow their column and overlap the
+  controls (e.g. `agentic.proactive.allowed_channels`).
+
+---
+
 ## [0.10.1] - 2026-06-11
 
 **Status:** Pre-release (beta). A polish pass over 0.10.0: memory that adapts to
