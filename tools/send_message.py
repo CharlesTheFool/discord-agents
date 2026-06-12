@@ -13,17 +13,21 @@ channel, the turn's container outputs, and the Files API client).
 SEND_MESSAGE_TOOL = {
     "name": "send_message",
     "description": (
-        "Send one Discord message to the current channel, immediately, "
-        "mid-turn. Use it when you want to anchor your reply to a specific "
-        "message (reply_to_message_id - ids are listed in <recent_messages> "
-        "in the context update), attach files you created with code "
-        "execution this turn (attach_outputs), or pace out a multi-message "
-        "response. Each call is exactly one message - keep it texting-sized, "
-        "no blank lines. Plain text you output at the end of your turn is "
-        "still sent as ordinary messages too, so for a simple reply you "
-        "don't need this tool; never send the same content both ways. The "
-        "result tells you the sent message's id and exactly which files "
-        "actually attached."
+        "This is how you talk in Discord - not just another tool, but your "
+        "messaging interface to the channel. Each call posts exactly one "
+        "message, immediately, mid-turn. Call it several times in one turn "
+        "to send several messages; they arrive in the order you call them, "
+        "so you can compose like a real person texting: reply to one "
+        "specific message (reply_to_message_id - ids are listed in "
+        "<recent_messages> in the context update), then follow with a "
+        "separate general message for the rest of the conversation, for "
+        "example. Attach files you created with code execution this turn "
+        "via attach_outputs. Keep each message texting-sized, no blank "
+        "lines. The result reports the sent message's id and exactly which "
+        "files actually attached - trust it over your own intentions. Plain "
+        "text you output at the end of your turn still gets posted as "
+        "ordinary messages too, so once you've said everything through this "
+        "tool, end your turn without restating it."
     ),
     "input_schema": {
         "type": "object",

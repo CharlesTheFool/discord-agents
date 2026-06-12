@@ -82,13 +82,19 @@ re-ride the final text).
 Phase 2 starts only after phase 1 has soaked in the field and we've watched
 how the model actually uses the tool.
 
-## Open questions for the operator
+## Operator decisions (settled 2026-06-12)
 
-1. Should the scan path's decision criteria *push* toward the tool
-   ("anchor your answer when responding to one specific message in a
-   batch"), or let the tool description carry it? (Current: one light line
-   in the criteria.)
-2. Tool sends bypass the staleness guard by definition. Acceptable, or
-   should the volatile tail warn the model when the conversation is moving
-   fast ("re-read the latest messages before sending")?
-3. Phase 2 timing: after how much field time?
+1. **Prompting**: frame the tool as the model's *primary messaging
+   interface*, not just another tool, and explicitly teach multi-call
+   chaining — several sends per turn, guaranteed ordering, e.g. an anchored
+   reply to one person plus a separate general message for the rest. The
+   tool description carries the full picture; the scan criteria add two
+   light lines. Ordering is structural (tool blocks execute sequentially);
+   pacing matches the legacy fragment path (back-to-back).
+2. **Staleness bypass**: accepted as-is for phase 1. Add a "re-read before
+   sending" tail warning only if a stale tool-send is actually observed in
+   the field.
+3. **Phase 2 timing**: no longitudinal gate — the project is too small for
+   slow soak. Validate phase 1 live on the test server (dev build), ship,
+   and accept minor behavioral side effects; the architecture move is the
+   point.

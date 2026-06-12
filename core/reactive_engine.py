@@ -805,6 +805,9 @@ class ReactiveEngine:
         if sent is None:
             return "Error: nothing was sent (empty after fragmentation)."
 
+        # Same registration the legacy text path does on first outbound (v0.9)
+        await self._register_dm_surface(channel)
+
         loop_result.sent_message_ids.append(str(sent.id))
         loop_result.last_sent_message = sent
 
@@ -2597,6 +2600,7 @@ Your personality and base prompt guide whether to participate. Consider relevanc
 - If you decide to respond: Output ONLY your message to the channel (no meta-commentary, no explanation of your decision)
 - If you decide NOT to respond: Output ABSOLUTELY NOTHING (not even an explanation - complete silence)
 - When your response answers ONE specific message in a batch of several, prefer the send_message tool with reply_to_message_id so it lands anchored to that message
+- send_message can be called more than once in a turn (messages arrive in order) - e.g. an anchored reply to one person, then a separate message for the others. If you've sent everything that way, output nothing afterward
 
 DO NOT explain your reasoning for responding or not responding. DO NOT output meta-commentary about the conversation. Either respond naturally or output nothing.
 """
