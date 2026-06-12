@@ -99,6 +99,19 @@ becomes a product.
   thinking traces) without touching a terminal; download-site distribution
   for non-developer operators.
 
+## 0.12.0 — Native messaging
+
+Sending stops being "whatever text the model ends its turn with" and becomes
+a deliberate act: the model talks to Discord through a `send_message` tool.
+
+- **Tool-based send** — each tool call is one Discord message, with explicit
+  parameters for reply-targeting (answer a specific message mid-batch),
+  attachments (a file is either in the call or it isn't — the
+  phantom-attachment failure mode becomes unrepresentable), and natural
+  multi-message pacing. Staying silent is simply not calling the tool, not
+  emitting empty output. Replaces the capture-final-text pipeline tail
+  (send, persist, engagement tracking, must-reply semantics all re-seam).
+
 ## 1.0
 
 Declared by the operator once every feature above has been tested in real
@@ -118,3 +131,16 @@ v0.6.0 pre-release sweep, config freeze.
 - **Richer presence** — events, polls, scheduled activities
 - **Daily web-search quota** — dormant; revisit only if per-request caps
   prove insufficient
+- **Long-work concurrency** — when a turn enters long tool work (skill
+  containers, deck generation), a parallel chat path keeps handling incoming
+  messages with an injected "you're already mid-response to X" notice, so
+  fast conversations don't fly past a busy bot. Scoped to long-work turns
+  only — ordinary chat turns stay serial per channel (ordering and
+  state-write hazards aren't worth it there). Not yet properly discussed;
+  design with care after 0.12.0's tool-based send (discrete, observable
+  sends make the concurrency story much cleaner).
+- **Cheap scan pre-gate** — a small classifier model deciding respond/stay
+  silent before the big model writes. Only worth designing if dashboard cost
+  data shows silent scans are a real expense (the prompt-cache layout already
+  makes them ~330 uncached tokens), and only if the gate provably doesn't
+  degrade the social judgment that makes the bot fun.

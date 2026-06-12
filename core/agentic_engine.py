@@ -626,8 +626,8 @@ class AgenticEngine:
             message = await self._generate_followup_message(action)
 
             # Split message if it exceeds Discord's limit
-            from .discord_client import split_message
-            message_chunks = split_message(message)
+            from .discord_client import fragment_message
+            message_chunks = fragment_message(message)
 
             sent_message = None
             for i, chunk in enumerate(message_chunks):
@@ -944,8 +944,8 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             generated_message = decision["message"].strip()
 
             # Split message if it exceeds Discord's limit
-            from .discord_client import split_message
-            message_chunks = split_message(generated_message)
+            from .discord_client import fragment_message
+            message_chunks = fragment_message(generated_message)
 
             # Send the message(s)
             sent_message = None
@@ -1209,8 +1209,8 @@ this room talks - brief, natural, and honest about where it comes from."""
 
             generated = json.loads(response_text)["message"].strip()
 
-            from .discord_client import split_message
-            for chunk in split_message(generated):
+            from .discord_client import fragment_message
+            for chunk in fragment_message(generated):
                 await channel.send(chunk)
 
             self._increment_proactive_counter(action.channel_id)

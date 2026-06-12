@@ -157,6 +157,30 @@ def _split_text_intelligently(text: str, max_length: int) -> list[str]:
     return chunks
 
 
+def fragment_message(text: str, max_length: int = 2000) -> list[str]:
+    """
+    Split a response into texting-style outgoing messages.
+
+    People text in fragments, not essays: every blank line becomes a message
+    boundary, so no sent message ever contains an empty line (v0.11.3 - the
+    prompt asks the model for this, fragment_message enforces it). Code
+    blocks stay intact as their own fragment; single newlines (lists, soft
+    wraps) stay inside a fragment. Each fragment is then length-split for
+    Discord's character limit.
+    """
+    import re
+    fragments = []
+    for part in re.split(r'(```[\s\S]*?```)', text):
+        if part.startswith('```') and part.endswith('```'):
+            fragments.append(part.strip())
+        else:
+            fragments.extend(p.strip() for p in re.split(r'\n\s*\n', part))
+
+    return [chunk
+            for fragment in fragments if fragment
+            for chunk in split_message(fragment, max_length)]
+
+
 class DiscordClient(discord.Client):
     """
     Discord client with framework integration.
@@ -585,8 +609,29 @@ class DiscordClient(discord.Client):
                 str(message.author.id), str(message.channel.id)
             )
 
-        # Urgent = @mention, or any DM (a DM is inherently addressed to the bot)
-        is_urgent = self.user in message.mentions or message.guild is None
+        # A reply to one of the bot's messages is engagement (real-time signal
+        # for the silence guardrail) and earns a soft, prompt scan - but only
+        # an explicit @mention in the text forces a response. discord.py puts
+        # the replied-to author in message.mentions when the reply pings, so
+        # mentions-membership alone can't distinguish the two.
+        resolved_ref = message.reference.resolved if message.reference else None
+        is_reply_to_bot = (
+            getattr(resolved_ref, "author", None) is not None
+            and resolved_ref.author == self.user
+        )
+        if is_reply_to_bot:
+            self.reactive_engine.rate_limiter.record_engagement(str(message.channel.id))
+
+        has_explicit_mention = (
+            f"<@{self.user.id}>" in message.content
+            or f"<@!{self.user.id}>" in message.content
+        )
+
+        # Urgent = explicit @mention, or any DM (inherently addressed to the
+        # bot), or a non-reply mention event (e.g. role mention resolution)
+        is_urgent = message.guild is None or has_explicit_mention or (
+            self.user in message.mentions and not is_reply_to_bot
+        )
 
         if is_urgent:
             logger.info(
@@ -635,6 +680,12 @@ class DiscordClient(discord.Client):
             channel_id = str(message.channel.id)
             message_id = message.id
             self.reactive_engine.add_pending_message(channel_id, message_id)
+
+            # Soft mention: a reply to the bot gets considered within ~10s
+            # instead of waiting out the periodic interval
+            if is_reply_to_bot:
+                self.reactive_engine.schedule_expedited_scan(channel_id)
+
             logger.debug(
                 f"Message {message_id} from {message.author.name} in "
                 f"#{getattr(message.channel, 'name', 'DM')} (stored, added to pending)"

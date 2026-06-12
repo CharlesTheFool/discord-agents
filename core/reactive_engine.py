@@ -9,8 +9,10 @@ their system prompt, trigger semantics, and silence policy.
 
 import discord
 import asyncio
+import hashlib
 import io
 import logging
+import re
 from anthropic import Anthropic, AsyncAnthropic, NotFoundError
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -348,6 +350,7 @@ class ReactiveEngine:
         # Bug #7 fix: Track individual messages, not just channels
         # List of (channel_id, message_id) tuples to prevent message loss
         self.pending_messages = []
+        self._expedited_scans = set()  # channels with a soft-reply scan queued
         self._periodic_task = None
         self._running = False
         self.discord_client = None  # Set by DiscordClient on_ready
@@ -688,7 +691,6 @@ class ReactiveEngine:
     @staticmethod
     def _stale_file_id_from_error(error: Exception) -> Optional[str]:
         """Extract the file id from a 'File `file_xxx` not found.' API error."""
-        import re
         match = re.search(r"File `(file_[A-Za-z0-9]+)` not found", str(error))
         return match.group(1) if match else None
 
@@ -701,13 +703,19 @@ class ReactiveEngine:
             return []
 
         files = []
-        for file_id in dict.fromkeys(file_ids):  # dedupe, keep order
+        seen_digests = set()  # the same output can surface under two file_ids
+        for file_id in dict.fromkeys(file_ids):  # dedupe by id, keep order
             meta = await self.files_api_client.retrieve(file_id)
             data = await self.files_api_client.content(file_id)
             if not data:
                 logger.warning(f"Could not download container output {file_id}, skipping")
                 continue
             filename = (meta or {}).get("filename") or f"{file_id}.bin"
+            digest = hashlib.sha256(data).digest()
+            if digest in seen_digests:
+                logger.info(f"Skipping duplicate container output {filename} ({file_id}: identical bytes)")
+                continue
+            seen_digests.add(digest)
             files.append(discord.File(io.BytesIO(data), filename=filename))
             logger.info(f"Container output ready for Discord: {filename} ({len(data)} bytes)")
         return files[:10]  # Discord cap per message
@@ -1263,6 +1271,7 @@ class ReactiveEngine:
         container_id = None
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
+        attachment_nudged = False  # phantom-attachment guard fires once per turn
         tail_messages = (
             [{"role": "user", "content": [{"type": "text", "text": volatile_tail}]}]
             if volatile_tail else []
@@ -1413,6 +1422,32 @@ class ReactiveEngine:
                     })
                     continue
 
+                # Phantom-attachment guard (v0.11.3): the model sometimes
+                # announces a file it never produced, then trusts its own
+                # claim next turn. If the reply mentions an attachment but
+                # no files are queued for Discord, bounce once for a fix.
+                if (result.response_text and not result.container_file_ids
+                        and not attachment_nudged
+                        and loop_iteration < MAX_TOOL_LOOP_ITERATIONS
+                        and re.search(r"\battach(?:ed|ment|ments|ing)?\b",
+                                      result.response_text, re.IGNORECASE)):
+                    attachment_nudged = True
+                    logger.warning(f"Response claims an attachment but no files are queued{log_suffix} - bouncing back")
+                    api_params["messages"].append({"role": "assistant", "content": response.content})
+                    api_params["messages"].append({
+                        "role": "user",
+                        "content": [{"type": "text", "text": (
+                            "<system_note>Your reply mentions an attached file, but no "
+                            "files are queued to send with this message - nothing will "
+                            "be attached. Files only reach Discord when created by code "
+                            "execution during this turn. Either actually produce the "
+                            "file now, or reword your reply so it doesn't claim an "
+                            "attachment.</system_note>"
+                        )}]
+                    })
+                    result.response_text = ""
+                    continue
+
                 if not result.response_text and fallback_text:
                     result.response_text = fallback_text
                 break
@@ -1459,8 +1494,8 @@ class ReactiveEngine:
         Returns the last successfully sent message, or None if the first
         chunk could not be delivered at all.
         """
-        from .discord_client import split_message
-        message_chunks = split_message(response_text)
+        from .discord_client import fragment_message
+        message_chunks = fragment_message(response_text)
         outgoing_files = await self._container_files_for_discord(container_file_ids)
 
         sent_message = None
@@ -1547,7 +1582,7 @@ class ReactiveEngine:
         except Exception as e:
             logger.error(f"Failed to update conversation state: {e}", exc_info=True)
 
-    def _start_engagement_tracking(self, sent_message, channel, original_author_id: int) -> None:
+    def _start_engagement_tracking(self, sent_message, channel) -> None:
         """Record the response for rate limiting and schedule the engagement check."""
         self.rate_limiter.record_response(str(channel.id))
 
@@ -1556,12 +1591,7 @@ class ReactiveEngine:
         self.conversation_logger.log_separator()
 
         self._track_task(asyncio.create_task(
-            self._track_engagement(
-                sent_message.id,
-                channel,
-                original_author_id=original_author_id,
-                delay=delay,
-            )
+            self._track_engagement(sent_message.id, channel, delay=delay)
         ))
 
     # ========== URGENT PATH (@mentions) ==========
@@ -1660,11 +1690,22 @@ class ReactiveEngine:
                     # Usage recorded later must match the session we measured
                     seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
-                    result = await self._run_tool_loop(
-                        api_params, message, conversation_state,
-                        fallback_text="I'm not sure how to respond to that.",
-                        volatile_tail=volatile_tail,
-                    )
+                    try:
+                        result = await self._run_tool_loop(
+                            api_params, message, conversation_state,
+                            fallback_text="I'm not sure how to respond to that.",
+                            volatile_tail=volatile_tail,
+                        )
+                    except Exception as e:
+                        # Must-reply path: one retry covers transient API
+                        # failures (overload, dropped stream) before giving up
+                        logger.warning(f"Tool loop failed for @mention, retrying once: {e}")
+                        await asyncio.sleep(3)
+                        result = await self._run_tool_loop(
+                            api_params, message, conversation_state,
+                            fallback_text="I'm not sure how to respond to that.",
+                            volatile_tail=volatile_tail,
+                        )
 
             # Send response (outside semaphore to allow concurrent API calls while sending)
             sent_message = await self._send_response_chunks(
@@ -1687,7 +1728,7 @@ class ReactiveEngine:
                 message, result, [self._trigger_from(message, addressed=True)],
             )
 
-            self._start_engagement_tracking(sent_message, message.channel, message.author.id)
+            self._start_engagement_tracking(sent_message, message.channel)
 
             logger.info(
                 f"Response sent to {message.author.name} ({len(result.response_text)} chars)"
@@ -1798,89 +1839,87 @@ class ReactiveEngine:
             await channel.send("something went sideways handling that - try again in a moment?")
 
     async def _track_engagement(
-        self, message_id: int, channel: "discord.abc.Messageable", original_author_id: int, delay: int
+        self, message_id: int, channel: "discord.abc.Messageable", delay: int
     ):
         """
         Track engagement on bot message.
 
-        Waits for delay, then checks if message got reactions or replies.
+        Checks for reactions or follow-up messages at escalating intervals
+        (delay, 4x, 10x - e.g. 30s/2min/5min) so long-form posts get human
+        reading time before being judged ignored. ENGAGED records at the
+        first check that finds anything; IGNORED only after the last.
 
         Args:
             message_id: Discord message ID to track
             channel: Channel where message was sent
-            original_author_id: User ID who originally triggered the bot
-            delay: Seconds to wait before checking
+            delay: Seconds to wait before the first check
         """
-        await asyncio.sleep(delay)
-
         channel_id = str(channel.id)
+        check_at = [delay, delay * 4, delay * 10]
 
-        try:
-            # Fetch fresh message to see current state
-            message = await channel.fetch_message(message_id)
+        elapsed = 0
+        for checkpoint in check_at:
+            await asyncio.sleep(checkpoint - elapsed)
+            elapsed = checkpoint
 
-        except discord.NotFound:
-            # Message was deleted
-            logger.debug(f"Message {message_id} was deleted")
-            return
+            try:
+                # Fetch fresh message to see current state
+                message = await channel.fetch_message(message_id)
+            except discord.NotFound:
+                # Message was deleted
+                logger.debug(f"Message {message_id} was deleted")
+                return
+            except discord.HTTPException as e:
+                logger.error(f"Error fetching message {message_id}: {e}")
+                return
 
-        except discord.HTTPException as e:
-            logger.error(f"Error fetching message {message_id}: {e}")
-            return
+            # Check for reactions
+            reaction_details = [
+                f"{reaction.emoji}×{reaction.count}" for reaction in message.reactions
+            ]
+            has_reactions = bool(reaction_details)
 
-        # Check for reactions
-        has_reactions = len(message.reactions) > 0
-        reaction_details = []
-        total_reaction_count = 0
+            # Check for follow-up activity after the bot's message
+            has_replies = await self._check_for_replies(message, channel)
 
-        if has_reactions:
-            for reaction in message.reactions:
-                emoji_str = str(reaction.emoji)
-                count = reaction.count
-                total_reaction_count += count
-                reaction_details.append(f"{emoji_str}×{count}")
+            if has_reactions or has_replies:
+                self.rate_limiter.record_engagement(channel_id)
 
-        # Check for replies or any messages from original user
-        has_replies = await self._check_for_replies(message, channel, original_author_id)
+                # Build detailed method string
+                if has_reactions and has_replies:
+                    method = f"reactions ({', '.join(reaction_details)}) + replies"
+                elif has_reactions:
+                    method = f"reactions ({', '.join(reaction_details)})"
+                else:
+                    method = "replies"
 
-        # Record result
-        engaged = has_reactions or has_replies
+                self.conversation_logger.log_engagement_result(engaged=True, method=method)
+                logger.debug(f"Message {message_id}: ENGAGED - {method} (at {checkpoint}s)")
+                return
 
-        if engaged:
-            self.rate_limiter.record_engagement(channel_id)
-
-            # Build detailed method string
-            if has_reactions and has_replies:
-                method = f"reactions ({', '.join(reaction_details)}) + replies"
-            elif has_reactions:
-                method = f"reactions ({', '.join(reaction_details)})"
-            else:
-                method = "replies"
-
-            self.conversation_logger.log_engagement_result(engaged=True, method=method)
-            logger.debug(f"Message {message_id}: ENGAGED - {method}")
-        else:
-            self.rate_limiter.record_ignored(channel_id)
-            self.conversation_logger.log_engagement_result(engaged=False)
-            logger.debug(f"Message {message_id}: IGNORED (no reactions or replies)")
+        self.rate_limiter.record_ignored(channel_id)
+        self.conversation_logger.log_engagement_result(engaged=False)
+        logger.debug(f"Message {message_id}: IGNORED (no reactions or replies)")
 
     async def _check_for_replies(
-        self, message: discord.Message, channel: "discord.abc.Messageable", original_author_id: int
+        self, message: discord.Message, channel: "discord.abc.Messageable"
     ) -> bool:
         """
-        Check if user engaged after bot's message.
+        Check if anyone engaged after bot's message.
 
         Detects engagement via:
         - Formal Discord replies to bot's message
-        - ANY message from original user in channel (loose engagement)
+        - ANY human message in the channel afterwards (loose engagement -
+          in the small servers this bot lives in, follow-up chatter after a
+          bot message is response, not coincidence; the model's own scan
+          judgment handles being talked past)
 
         Args:
             message: Bot's message to check engagement for
             channel: Channel to search
-            original_author_id: User ID who originally triggered the bot
 
         Returns:
-            True if engagement detected (reply or any message from user)
+            True if engagement detected (reply or any human message)
         """
         try:
             # Get messages after bot's message
@@ -1894,8 +1933,8 @@ class ReactiveEngine:
                 if msg.reference and msg.reference.message_id == message.id:
                     return True
 
-                # Any message from original user (loose engagement)
-                if msg.author.id == original_author_id:
+                # Any human message after the bot's (loose engagement)
+                if not msg.author.bot:
                     return True
 
             return False
@@ -2314,7 +2353,7 @@ class ReactiveEngine:
                 await self._emit_turn_event(
                     "scan", message, result, triggers, scan_count=len(triggers))
 
-                self._start_engagement_tracking(sent_message, message.channel, message.author.id)
+                self._start_engagement_tracking(sent_message, message.channel)
 
                 # Mark message as responded to prevent duplicate responses
                 self._responded_messages.append(message.id)
@@ -2417,3 +2456,42 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
         """
         self.pending_messages.append((channel_id, message_id))
         logger.debug(f"Added message {message_id} to pending queue (channel {channel_id})")
+
+    def schedule_expedited_scan(self, channel_id: str, delay: float = 10.0):
+        """
+        Schedule a soft-reply scan: a reply to the bot deserves prompt
+        consideration (not the full periodic-check wait) without forcing a
+        response the way an explicit @mention does. One in flight per channel.
+        """
+        if channel_id in self._expedited_scans:
+            return
+        self._expedited_scans.add(channel_id)
+        self._track_task(asyncio.create_task(self._expedited_scan(channel_id, delay)))
+
+    async def _expedited_scan(self, channel_id: str, delay: float):
+        """Drain this channel's pending messages early and run one scan decision."""
+        try:
+            await asyncio.sleep(delay)
+
+            # Claim this channel's pending entries (no await between the two
+            # list operations - atomic on the event loop)
+            mine = [p for p in self.pending_messages if p[0] == channel_id]
+            if not mine:
+                return  # periodic loop already handled them
+            self.pending_messages = [p for p in self.pending_messages if p[0] != channel_id]
+
+            triggers = []
+            for cid, message_id in mine:
+                try:
+                    trigger = await self._process_message_to_state(cid, message_id)
+                    if trigger:
+                        triggers.append(trigger)
+                except Exception as e:
+                    logger.error(f"Expedited scan: error processing message {message_id}: {e}", exc_info=True)
+
+            if triggers:
+                await self._decide_channel_response(channel_id, triggers)
+        except Exception as e:
+            logger.error(f"Expedited scan failed for channel {channel_id}: {e}", exc_info=True)
+        finally:
+            self._expedited_scans.discard(channel_id)

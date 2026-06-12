@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.3] - 2026-06-12
+
+**Status:** Pre-release (beta). Social-cadence and attachment fixes from the
+first live 0.11.x field test.
+
+### Fixed
+- **The silence guardrail no longer benches an engaged bot.** Three changes
+  to the ignored-streak silencer that sidelined SLH mid-conversation:
+  engagement checks now run at escalating intervals (30s/2min/5min) so
+  long-form posts get human reading time before being judged ignored; any
+  human follow-up message counts as engagement, not just the triggering
+  user's; and silence auto-expires after 30 minutes into a single trial
+  message instead of muting the channel until the next @mention.
+- **Replies to the bot are real-time engagement.** A formal reply to a bot
+  message immediately decrements the ignored streak (reactions already did
+  this), so explicit engagement can actually un-silence a channel.
+- **Phantom attachments bounce back.** When a reply claims an attachment but
+  no files are queued for Discord, the turn is returned to the model once
+  with a system note - produce the file or reword - instead of shipping a
+  false claim it will later trust as truth.
+- **Duplicate container outputs deduplicate by content.** The same generated
+  file surfacing under two Files API ids (e.g. via save_output plus the
+  container sweep) no longer attaches twice to one Discord message.
+- **No more empty lines inside messages.** Responses fragment on blank
+  lines into separate texting-style Discord messages, mechanically (code
+  blocks stay intact; single newlines and lists stay together). Applies to
+  reactive replies and proactive/agentic sends.
+- **@mention turns retry once on API failure.** A transient API error on the
+  must-reply path (like the streaming-timeout error that ate a mention on
+  June 11) gets one retry after 3s before apologizing.
+
+### Changed
+- **Replies are soft mentions now.** Replying to a bot message no longer
+  forces an immediate, rate-limit-bypassing response like a true @mention.
+  Instead the reply gets prompt consideration: a scan fires ~10 seconds
+  later that may answer or stay silent. Explicit `@bot` text in the reply
+  still forces a response.
+
 ## [0.11.2] - 2026-06-12
 
 **Status:** Pre-release (beta).

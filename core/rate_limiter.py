@@ -1,8 +1,9 @@
 """
 Rate Limiter - Two-window rate limiting with engagement adaptation
 
-Ported from original bot implementation (slh.py lines 119-164).
-DO NOT MODIFY: Battle-tested algorithm tuned for small servers.
+Ported from original bot implementation (slh.py lines 119-164), tuned for
+small servers. v0.11.3: silence auto-expires so an ignored streak backs the
+bot off instead of muting it until the next @mention.
 """
 
 from collections import defaultdict
@@ -31,6 +32,9 @@ class RateLimiter:
         # Track consecutive ignores per channel
         self.ignored_count: Dict[str, int] = defaultdict(int)
 
+        # When each channel crossed the silence threshold (None = not silenced)
+        self.silence_started: Dict[str, Optional[datetime]] = defaultdict(lambda: None)
+
         # Configuration with defaults
         config = config or {}
         self.short_window_minutes = config.get("short_window_minutes", 5)
@@ -38,6 +42,7 @@ class RateLimiter:
         self.long_window_minutes = config.get("long_window_minutes", 60)
         self.long_window_max = config.get("long_window_max", 200)
         self.ignore_threshold = config.get("ignore_threshold", 5)
+        self.silence_expiry_minutes = config.get("silence_expiry_minutes", 30)
 
     def can_respond(self, channel_id: str, is_mention: bool = False) -> Tuple[bool, Optional[str]]:
         """
@@ -86,6 +91,17 @@ class RateLimiter:
                 )
                 # Reset ignore count on mention - someone is explicitly engaging
                 self.ignored_count[channel_id] = 0
+                self.silence_started[channel_id] = None
+            elif self._silence_expired(channel_id, now):
+                # Back-off served: allow one trial message. Set the counter to
+                # threshold-1 so another ignore re-silences immediately while
+                # any engagement starts a real recovery.
+                logger.info(
+                    f"Channel {channel_id}: Silence expired after "
+                    f"{self.silence_expiry_minutes}min - allowing trial message"
+                )
+                self.ignored_count[channel_id] = self.ignore_threshold - 1
+                self.silence_started[channel_id] = None
             else:
                 logger.debug(
                     f"Channel {channel_id}: Silenced - "
@@ -104,7 +120,7 @@ class RateLimiter:
         )
 
     def record_ignored(self, channel_id: str):
-        """Record that bot was ignored (no engagement within 30s)"""
+        """Record that bot was ignored (no engagement within tracking window)"""
         self.ignored_count[channel_id] += 1
 
         count = self.ignored_count[channel_id]
@@ -113,6 +129,8 @@ class RateLimiter:
         )
 
         if count >= self.ignore_threshold:
+            if self.silence_started[channel_id] is None:
+                self.silence_started[channel_id] = datetime.now()
             logger.info(f"Channel {channel_id}: Silence threshold reached")
 
     def record_engagement(self, channel_id: str):
@@ -120,10 +138,19 @@ class RateLimiter:
         # Don't go negative
         self.ignored_count[channel_id] = max(0, self.ignored_count[channel_id] - 1)
 
+        if self.ignored_count[channel_id] < self.ignore_threshold:
+            self.silence_started[channel_id] = None
+
         logger.debug(
             f"Channel {channel_id}: Engagement! "
             f"Ignore count now {self.ignored_count[channel_id]}"
         )
+
+    def _silence_expired(self, channel_id: str, now: datetime) -> bool:
+        """True when the channel's silence back-off period has elapsed."""
+        started = self.silence_started[channel_id]
+        return (started is not None
+                and now - started > timedelta(minutes=self.silence_expiry_minutes))
 
     def get_stats(self, channel_id: str) -> Dict:
         """Get current rate limit stats for debugging/monitoring"""
@@ -152,4 +179,5 @@ class RateLimiter:
         """Reset all limits for channel (testing/manual intervention)"""
         self.response_times[channel_id].clear()
         self.ignored_count[channel_id] = 0
+        self.silence_started[channel_id] = None
         logger.info(f"Channel {channel_id}: Rate limits reset")
