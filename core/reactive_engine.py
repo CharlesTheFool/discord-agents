@@ -214,6 +214,21 @@ class ToolLoopResult:
     usage: Any = None  # usage of the final response in the loop
     container_file_ids: List[str] = field(default_factory=list)
     tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
+    # Native messaging (v0.12.0): messages the model sent via send_message
+    sent_message_ids: List[str] = field(default_factory=list)
+    last_sent_message: Any = None  # discord.Message, for engagement tracking
+    consumed_file_ids: set = field(default_factory=set)  # tool-attached, don't re-send
+
+    @property
+    def did_send(self) -> bool:
+        """True when the model already delivered messages via send_message."""
+        return bool(self.sent_message_ids)
+
+    @property
+    def pending_file_ids(self) -> List[str]:
+        """Container outputs not yet delivered via a tool send."""
+        return [fid for fid in self.container_file_ids
+                if fid not in self.consumed_file_ids]
 
 
 class ReactiveEngine:
@@ -720,6 +735,87 @@ class ReactiveEngine:
             logger.info(f"Container output ready for Discord: {filename} ({len(data)} bytes)")
         return files[:10]  # Discord cap per message
 
+    async def _execute_send_message(self, tool_input: dict,
+                                    message: discord.Message,
+                                    loop_result: ToolLoopResult) -> str:
+        """
+        Execute a send_message tool call (v0.12.0): deliver one message to
+        the current channel mid-turn and return ground truth - the sent
+        message id and exactly which files attached - so the model can never
+        sustain a false belief about its own output.
+        """
+        content = (tool_input.get("content") or "").strip()
+        if not content:
+            return "Error: content is required - nothing was sent."
+
+        channel = message.channel
+        notes = []
+
+        # Resolve the reply anchor, degrading to a standalone send
+        reference = None
+        reply_to = tool_input.get("reply_to_message_id")
+        if reply_to:
+            try:
+                reference = await channel.fetch_message(int(reply_to))
+            except (ValueError, discord.NotFound, discord.HTTPException):
+                notes.append(f"reply target {reply_to} not found - sent standalone")
+
+        # Resolve requested attachments against THIS turn's container outputs
+        outgoing_files = []
+        requested = tool_input.get("attach_outputs") or []
+        if requested:
+            available = {}  # filename -> file_id, first occurrence wins
+            for file_id in dict.fromkeys(loop_result.container_file_ids):
+                if file_id in loop_result.consumed_file_ids:
+                    continue
+                meta = await self.files_api_client.retrieve(file_id)
+                filename = (meta or {}).get("filename")
+                if filename and filename not in available:
+                    available[filename] = file_id
+
+            matched_ids = []
+            for name in requested:
+                if name in available:
+                    matched_ids.append(available[name])
+                else:
+                    notes.append(
+                        f"'{name}' was NOT found among this turn's "
+                        f"code-execution outputs - it was not attached"
+                    )
+            outgoing_files = await self._container_files_for_discord(matched_ids)
+            loop_result.consumed_file_ids.update(matched_ids)
+
+        # Deliver, fragmented texting-style; files ride the first fragment
+        from .discord_client import fragment_message
+        sent = None
+        for i, chunk in enumerate(fragment_message(content)):
+            try:
+                sent = await channel.send(
+                    chunk,
+                    reference=reference if i == 0 else None,
+                    files=outgoing_files if i == 0 and outgoing_files else None,
+                )
+            except discord.HTTPException as e:
+                logger.error(f"send_message delivery failed: {e}")
+                if sent is None:
+                    return f"Error: Discord rejected the send ({e}) - nothing was sent."
+                notes.append(f"a later fragment failed to send ({e})")
+                break
+
+        if sent is None:
+            return "Error: nothing was sent (empty after fragmentation)."
+
+        loop_result.sent_message_ids.append(str(sent.id))
+        loop_result.last_sent_message = sent
+
+        attached = [f.filename for f in outgoing_files]
+        report = f"Sent (message id {sent.id})."
+        if attached:
+            report += f" Attached: {', '.join(attached)}."
+        if notes:
+            report += " Note: " + "; ".join(notes) + "."
+        return report
+
     def _build_attachment_tool_result(self, result, block_id, conversation_state):
         """
         Convert a structured get_attachment result into (tool_result, file_block).
@@ -887,6 +983,29 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Failed to generate repository manifest: {e}", exc_info=True)
 
+        # Recent message ids (v0.12.0): send_message reply_to targets. The
+        # model can't anchor a reply to a message it can't name; ids ride
+        # here because they're per-request noise everywhere else.
+        if message is not None and getattr(self, "message_memory", None):
+            try:
+                recent = await self.message_memory.get_recent(
+                    str(message.channel.id), limit=10)
+                lines = []
+                for m in recent:
+                    if m.is_bot:
+                        continue
+                    snippet = " ".join(m.content.split())[:60]
+                    lines.append(f"{m.message_id} — {m.author_name}: {snippet}")
+                if lines:
+                    parts.append(
+                        "<recent_messages>\n"
+                        "(message ids for send_message reply_to targeting, oldest first)\n"
+                        + "\n".join(lines)
+                        + "\n</recent_messages>"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to build recent-messages index: {e}")
+
         if not parts:
             return ""
         return (
@@ -929,6 +1048,10 @@ class ReactiveEngine:
         if self.ask_prime_executor and not is_dm:
             from tools.ask_prime import ASK_PRIME_TOOL
             tools.append(ASK_PRIME_TOOL)
+
+        # Native messaging (v0.12.0): deliberate mid-turn sends
+        from tools.send_message import SEND_MESSAGE_TOOL
+        tools.append(SEND_MESSAGE_TOOL)
 
         beta_headers = []
         if self.web_search_enabled:
@@ -1069,7 +1192,8 @@ class ReactiveEngine:
                                    conversation_state, api_params: dict,
                                    container_file_ids: list = None,
                                    tool_calls_log: list = None,
-                                   memory_write_grant: Optional[str] = None):
+                                   memory_write_grant: Optional[str] = None,
+                                   loop_result: Optional[ToolLoopResult] = None):
         """
         Execute the client-side tool_use blocks in a response.
 
@@ -1219,6 +1343,23 @@ class ReactiveEngine:
                     "content": result
                 })
 
+            # Native messaging (v0.12.0) - MUST precede the MCP "_" fallthrough
+            elif block.name == "send_message":
+                preview = (block.input.get("content") or "")[:80]
+                note("send_message",
+                     "reply" if block.input.get("reply_to_message_id") else "send",
+                     preview)
+                if loop_result is not None:
+                    result = await self._execute_send_message(
+                        block.input, message, loop_result)
+                else:
+                    result = "send_message isn't available in this context."
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result
+                })
+
             # MCP tools are prefixed with their server name (v0.5.0)
             elif "_" in block.name and self.mcp_manager:
                 logger.debug(f"Executing MCP tool: {block.name} with input: {block.input}")
@@ -1337,7 +1478,7 @@ class ReactiveEngine:
                 # Safety cap: a model that keeps requesting tools must not loop unbounded
                 if loop_iteration >= MAX_TOOL_LOOP_ITERATIONS:
                     logger.warning(f"Tool use loop exceeded {MAX_TOOL_LOOP_ITERATIONS} iterations{log_suffix}")
-                    if fallback_text:
+                    if fallback_text and not result.did_send:
                         result.response_text = result.response_text or "I got stuck in a tool loop - try asking again."
                     break
                 result.tools_were_used = True
@@ -1347,6 +1488,7 @@ class ReactiveEngine:
                     container_file_ids=result.container_file_ids,
                     tool_calls_log=result.tool_calls,
                     memory_write_grant=memory_write_grant,
+                    loop_result=result,
                 )
 
                 # Tool results ride in the next user message; fetched file
@@ -1411,8 +1553,10 @@ class ReactiveEngine:
                     result.response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
 
                 # Tools ran but the model went quiet: reprompt once for a
-                # brief confirmation
+                # brief confirmation (unless it already sent via send_message
+                # - sending WAS the response)
                 if (not result.response_text.strip() and result.tools_were_used
+                        and not result.did_send
                         and loop_iteration < MAX_TOOL_LOOP_ITERATIONS):
                     logger.warning(f"Tools used but no text response{log_suffix} - reprompting (iteration {loop_iteration})")
                     api_params["messages"].append({"role": "assistant", "content": response.content})
@@ -1427,6 +1571,7 @@ class ReactiveEngine:
                 # claim next turn. If the reply mentions an attachment but
                 # no files are queued for Discord, bounce once for a fix.
                 if (result.response_text and not result.container_file_ids
+                        and not result.did_send
                         and not attachment_nudged
                         and loop_iteration < MAX_TOOL_LOOP_ITERATIONS
                         and re.search(r"\battach(?:ed|ment|ments|ing)?\b",
@@ -1448,13 +1593,14 @@ class ReactiveEngine:
                     result.response_text = ""
                     continue
 
-                if not result.response_text and fallback_text:
+                # Must-reply is satisfied by tool sends too (v0.12.0)
+                if not result.response_text and fallback_text and not result.did_send:
                     result.response_text = fallback_text
                 break
 
             else:
                 logger.warning(f"Unexpected stop_reason{log_suffix}: {response.stop_reason}")
-                if fallback_text:
+                if fallback_text and not result.did_send:
                     result.response_text = fallback_text
                 break
 
@@ -1554,7 +1700,10 @@ class ReactiveEngine:
             if result.response_text:
                 assistant_content.append({"type": "text", "text": result.response_text})
 
-            conversation_state.add_message("assistant", assistant_content)
+            # All-tool-send turns (v0.12.0) may leave no final content; the
+            # sends themselves are already in state via tool_use/tool_result
+            if assistant_content:
+                conversation_state.add_message("assistant", assistant_content)
 
             removed_count = conversation_state.enforce_message_cap()
             if removed_count > 0:
@@ -1707,19 +1856,25 @@ class ReactiveEngine:
                             volatile_tail=volatile_tail,
                         )
 
-            # Send response (outside semaphore to allow concurrent API calls while sending)
-            sent_message = await self._send_response_chunks(
-                message.channel, result.response_text, result.container_file_ids,
-                reference=message,
-            )
-            if sent_message is None:
-                self.conversation_logger.log_separator()
-                return
+            # Send response (outside semaphore to allow concurrent API calls
+            # while sending). Final text may be empty when the model already
+            # delivered everything via send_message (v0.12.0).
+            sent_message = None
+            if result.response_text.strip():
+                sent_message = await self._send_response_chunks(
+                    message.channel, result.response_text, result.pending_file_ids,
+                    reference=message,
+                )
+                if sent_message is None and not result.did_send:
+                    self.conversation_logger.log_separator()
+                    return
 
             # Log thinking trace (if present) and bot response
             if result.thinking_text:
                 self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
-            self.conversation_logger.log_bot_response(result.response_text, len(result.response_text))
+            self.conversation_logger.log_bot_response(
+                result.response_text or f"[Sent {len(result.sent_message_ids)} message(s) via send_message]",
+                len(result.response_text))
 
             await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
 
@@ -1728,7 +1883,9 @@ class ReactiveEngine:
                 message, result, [self._trigger_from(message, addressed=True)],
             )
 
-            self._start_engagement_tracking(sent_message, message.channel)
+            last_sent = sent_message or result.last_sent_message
+            if last_sent:
+                self._start_engagement_tracking(last_sent, message.channel)
 
             logger.info(
                 f"Response sent to {message.author.name} ({len(result.response_text)} chars)"
@@ -1817,8 +1974,9 @@ class ReactiveEngine:
                     memory_write_grant=str(user.id),
                 )
 
-            await self._send_response_chunks(channel, result.response_text,
-                                             result.container_file_ids)
+            if result.response_text.strip():
+                await self._send_response_chunks(channel, result.response_text,
+                                                 result.pending_file_ids)
 
             if result.thinking_text:
                 self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
@@ -2303,8 +2461,8 @@ class ReactiveEngine:
                     volatile_tail=volatile_tail, log_suffix=" (periodic)",
                 )
 
-                # Empty text = Claude decided to stay silent
-                if not result.response_text.strip():
+                # Empty text and no tool sends = Claude decided to stay silent
+                if not result.response_text.strip() and not result.did_send:
                     if result.tools_were_used:
                         logger.warning(f"Claude used tools but returned no text response in channel {channel_id}")
                     else:
@@ -2321,31 +2479,38 @@ class ReactiveEngine:
                 # conversation may have moved on - a reply aimed at an old
                 # message lands as a non sequitur. Drop it (nothing sent,
                 # nothing persisted); the next tick re-evaluates fresh.
-                try:
-                    newest = None
-                    async for m in message.channel.history(limit=1):
-                        newest = m
-                    if (newest and newest.id != message.id
-                            and newest.author != self.discord_client.user):
-                        logger.info(
-                            f"Discarding stale periodic response in {channel_id}: "
-                            f"conversation moved past target {message.id}"
-                        )
-                        return
-                except discord.HTTPException:
-                    pass  # can't verify; send anyway
+                # Tool-sent messages are already out (and can anchor via
+                # reply_to), so a turn that sent skips the discard.
+                if not result.did_send:
+                    try:
+                        newest = None
+                        async for m in message.channel.history(limit=1):
+                            newest = m
+                        if (newest and newest.id != message.id
+                                and newest.author != self.discord_client.user):
+                            logger.info(
+                                f"Discarding stale periodic response in {channel_id}: "
+                                f"conversation moved past target {message.id}"
+                            )
+                            return
+                    except discord.HTTPException:
+                        pass  # can't verify; send anyway
 
                 # Log thinking trace (if present) and bot response
                 if result.thinking_text:
                     self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
-                self.conversation_logger.log_bot_response(result.response_text, len(result.response_text))
+                self.conversation_logger.log_bot_response(
+                    result.response_text or f"[Sent {len(result.sent_message_ids)} message(s) via send_message]",
+                    len(result.response_text))
 
-                # Send response as standalone (not a reply)
-                sent_message = await self._send_response_chunks(
-                    message.channel, result.response_text, result.container_file_ids,
-                )
-                if sent_message is None:
-                    return
+                # Send remaining final text as standalone (not a reply)
+                sent_message = None
+                if result.response_text.strip():
+                    sent_message = await self._send_response_chunks(
+                        message.channel, result.response_text, result.pending_file_ids,
+                    )
+                    if sent_message is None and not result.did_send:
+                        return
 
                 # Persist only what was actually delivered
                 await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
@@ -2353,7 +2518,9 @@ class ReactiveEngine:
                 await self._emit_turn_event(
                     "scan", message, result, triggers, scan_count=len(triggers))
 
-                self._start_engagement_tracking(sent_message, message.channel)
+                last_sent = sent_message or result.last_sent_message
+                if last_sent:
+                    self._start_engagement_tracking(last_sent, message.channel)
 
                 # Mark message as responded to prevent duplicate responses
                 self._responded_messages.append(message.id)
@@ -2429,6 +2596,7 @@ Your personality and base prompt guide whether to participate. Consider relevanc
 **RESPONSE FORMAT:**
 - If you decide to respond: Output ONLY your message to the channel (no meta-commentary, no explanation of your decision)
 - If you decide NOT to respond: Output ABSOLUTELY NOTHING (not even an explanation - complete silence)
+- When your response answers ONE specific message in a batch of several, prefer the send_message tool with reply_to_message_id so it lands anchored to that message
 
 DO NOT explain your reasoning for responding or not responding. DO NOT output meta-commentary about the conversation. Either respond naturally or output nothing.
 """
