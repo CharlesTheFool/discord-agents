@@ -48,8 +48,8 @@ def model_supports_effort(model: str) -> bool:
 
 
 # Per-model OUTPUT-token ceilings (distinct from the 1M *input* context window).
-# max_tokens is derived as min(context_tokens, this, NONSTREAMING_MAX_OUTPUT) and
-# never shown to users.
+# max_tokens is derived as min(context_tokens, this) and never shown to users.
+# Chat requests stream, so the SDK's 10-minute non-streaming guard doesn't cap this.
 # Conservative safe floors - the API 400s if max_tokens exceeds the real cap, so
 # these bias low (responses rarely approach them); raise if Anthropic docs confirm
 # higher per model. Substring match, longest/most-specific markers first.
@@ -70,14 +70,6 @@ def model_max_output(model: str) -> int:
         if marker in (model or ""):
             return cap
     return MODEL_MAX_OUTPUT_DEFAULT
-
-
-# The bot makes NON-streaming requests. The beta SDK refuses one whose max_tokens
-# implies it could run past ~10 minutes (3600*max/128000 > 600  =>  max > 21333),
-# raising "streaming is required". Several models' output ceiling (32000) sits
-# above that line, so every request cap is clamped here. 16000 keeps a wide
-# margin (~7.5 min est) and is far more than any Discord reply needs.
-NONSTREAMING_MAX_OUTPUT = 16000
 
 
 # =============================================================================

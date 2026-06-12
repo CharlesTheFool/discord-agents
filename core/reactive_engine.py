@@ -41,7 +41,6 @@ from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size, model_max_output,
-    NONSTREAMING_MAX_OUTPUT,
 )
 from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
@@ -955,12 +954,10 @@ class ReactiveEngine:
         api_params = {
             "model": self.config.api.model,
             # Derived, never user-set: as much output room as the input budget
-            # allows, clamped to the model's real output ceiling AND to what a
-            # non-streaming request may ask for (the SDK refuses > ~21k as a
-            # >10-min op, and several models' ceiling is 32k).
+            # allows, clamped to the model's real output ceiling. The request
+            # is streamed, so the SDK's 10-minute non-streaming guard is moot.
             "max_tokens": min(self.config.api.context_tokens,
-                              model_max_output(self.config.api.model),
-                              NONSTREAMING_MAX_OUTPUT),
+                              model_max_output(self.config.api.model)),
             "system": system_blocks,
             "messages": messages,
             "tools": tools,
@@ -1279,12 +1276,16 @@ class ReactiveEngine:
                 logger.debug(f"  Container/Skills: {api_params.get('container')}")
 
             try:
-                response = await self.anthropic.beta.messages.create(
+                # Streamed so large max_tokens are allowed (the SDK refuses a
+                # non-streaming request it estimates could exceed 10 minutes).
+                # Accumulated to the same Message object create() would return.
+                async with self.anthropic.beta.messages.stream(
                     **{
                         **api_params,
                         "messages": with_message_cache_breakpoint(api_params["messages"]) + tail_messages,
                     }
-                )
+                ) as api_stream:
+                    response = await api_stream.get_final_message()
             except NotFoundError as e:
                 # Stale file_id in persisted state 404s the whole request
                 stale_id = self._stale_file_id_from_error(e)

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.0] - 2026-06-12
+
+**Status:** Pre-release (beta). Streamed chat requests.
+
+### Changed
+- **Chat requests now stream from the API.** The reactive tool loop — every
+  mention, scan, DM, and `/memory` turn — uses `messages.stream()` and
+  collects the final message, instead of a blocking `create()`. Discord
+  delivery is unchanged (full messages, posted once); what changes is the
+  wire: the SDK no longer rejects large `max_tokens` as a potential >10-min
+  operation, so the v0.10.6 `NONSTREAMING_MAX_OUTPUT` clamp (16,000) is gone
+  and Fable/Opus/Sonnet get their full 32,000-token output ceiling back.
+  Background calls (agentic one-liners, episode distillation, the Prime)
+  request ≤4,000 tokens and stay non-streaming.
+
 ## [0.10.7] - 2026-06-11
 
 **Status:** Pre-release (beta). Live logs.
