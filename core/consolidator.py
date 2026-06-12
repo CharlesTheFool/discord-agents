@@ -35,6 +35,34 @@ from core.internal_constants import (
 
 logger = logging.getLogger(__name__)
 
+# Operator-authored "what this server is" note (servers/{id}/character.md):
+# read into every distillation prompt so a workplace and a friend group don't
+# get flattened into the same minutes. Capped to stay lean across many requests.
+CHARACTER_CAP = 1200
+
+
+def read_server_character(memory_manager, server_id: str) -> Optional[str]:
+    """The operator's character.md for this server, capped, or None if absent."""
+    try:
+        fs = memory_manager.resolve_path(
+            memory_manager.get_server_character_path(server_id))
+        if not fs.exists():
+            return None
+        text = fs.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text[:CHARACTER_CAP] or None
+
+
+def with_character(base_prompt: str, character: Optional[str]) -> str:
+    """Append the operator's server-character note to a distillation system prompt."""
+    if not character:
+        return base_prompt
+    return (base_prompt + "\n\nWhat this space actually is, from the operator who "
+            "runs it - treat it as ground truth about the server's nature and "
+            "register, and let it steer what is worth keeping:\n" + character)
+
+
 # =============================================================================
 # Task 12: Era digest compaction (Pass 1)
 # =============================================================================
@@ -59,9 +87,13 @@ ERA_DIGEST_SCHEMA = {
 
 ERA_SYSTEM_PROMPT = (
     "You are condensing a Discord channel's old episode files into one era "
-    "digest - what's still worth knowing months later. Keep standing facts, "
-    "decisions, attributed lines worth remembering, and the jokes that stuck. "
-    "Drop the play-by-play and one-off logistics. Plain, tight markdown."
+    "digest - what's still worth knowing months later. First read what kind of "
+    "space this is and how people are in it: a working channel turns on "
+    "decisions, specs, and ownership; a social or gaming one turns on its "
+    "relationships, its humor, and who's who with each other - let that steer "
+    "what survives. Keep standing facts, decisions, attributed lines worth "
+    "remembering, the jokes and dynamics that stuck, and the register of the "
+    "room. Drop the play-by-play and one-off logistics. Plain, tight markdown."
 )
 
 # =============================================================================
@@ -90,10 +122,12 @@ PROFILE_SYSTEM_PROMPT = (
     "You maintain one profile file per person - the same human across every "
     "server. Rewrite this profile from the evidence: recent messages outrank "
     "old claims when they conflict; date or drop anything stale; keep it lean, "
-    "third person, and matter-of-fact. No commentary about your relationship "
-    "with them. Every claim keeps the origin it was learned in - if an old "
-    "claim's origin tag exists, preserve it; new claims from this evidence "
-    "are origin-tagged with this server."
+    "third person, and matter-of-fact. Read the register of the space they're "
+    "in and let it inform what's worth noting - how someone shows up in a "
+    "workplace differs from how they are in a friend group. No commentary about "
+    "your relationship with them. Every claim keeps the origin it was learned "
+    "in - if an old claim's origin tag exists, preserve it; new claims from "
+    "this evidence are origin-tagged with this server."
 )
 
 
@@ -130,14 +164,20 @@ CHANNEL_BODY_SCHEMA = {
 
 REFRESH_SYSTEM_PROMPT = (
     "You are refreshing a Discord channel's standing notes from its recent "
-    "episode record. Keep what the evidence still supports, drop what went "
-    "stale, merge duplicates. Lean and concrete."
+    "episode record. Read what kind of channel this is - work, project, social, "
+    "play - and keep what matters for that: a working channel's decisions and "
+    "open threads, a social one's relationships, running bits, and dynamics. "
+    "Keep what the evidence still supports, drop what went stale, merge "
+    "duplicates. Lean and concrete."
 )
 
 CULTURE_SYSTEM_PROMPT = (
     "You are refreshing a server's culture file from its channels' standing "
-    "notes - what kind of place this is, its rhythms, its people, anchored in "
-    "what actually happens there. Lean markdown, no fluff."
+    "notes - what kind of place this is (a workplace, a project team, a friend "
+    "group, a gaming hangout), its rhythms, its social register, and how its "
+    "people are with each other, anchored in what actually happens there. Name "
+    "the register honestly - if it's dark, casual, in-jokey, say so. Lean "
+    "markdown, no fluff."
 )
 
 
@@ -382,6 +422,7 @@ class MemoryConsolidator:
     def _build_era_requests(self, server_id: str) -> list:
         self._pending_era_files.clear()
         requests = []
+        character = read_server_character(self.memory, server_id)
         channels_dir = self._servers_root() / server_id / "channels"
         if not channels_dir.exists():
             return requests
@@ -396,7 +437,7 @@ class MemoryConsolidator:
                     "params": {
                         "model": self.config.api.consolidation_model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": ERA_SYSTEM_PROMPT,
+                        "system": with_character(ERA_SYSTEM_PROMPT, character),
                         "messages": [{"role": "user", "content":
                             f"<episodes channel_id=\"{ch_dir.name}\" month=\"{month}\">\n"
                             f"{corpus}\n</episodes>"}],
@@ -474,6 +515,7 @@ class MemoryConsolidator:
         authors = await self.message_memory.get_active_authors(server_id, since)
         exclude = self._vaulted_channel_ids(server_id)
         episodes_blurb = self._recent_episode_blurb(server_id)
+        character = read_server_character(self.memory, server_id)
         requests = []
         for uid in authors:
             if uid == "SYSTEM" or not uid.isdigit():
@@ -494,7 +536,7 @@ class MemoryConsolidator:
                 "params": {
                     "model": self.config.api.consolidation_model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": PROFILE_SYSTEM_PROMPT,
+                    "system": with_character(PROFILE_SYSTEM_PROMPT, character),
                     "messages": [{"role": "user", "content":
                         f"This server's id: {server_id}\n\n"
                         f"<current_profile>\n{current}\n</current_profile>\n\n"
@@ -561,6 +603,7 @@ class MemoryConsolidator:
             return []
         from core.episode_manager import split_channel_state
         requests = []
+        character = read_server_character(self.memory, server_id)
         channels_dir = self._servers_root() / server_id / "channels"
         channel_bodies = {}  # cid -> body text for the culture request
         if channels_dir.exists():
@@ -586,7 +629,7 @@ class MemoryConsolidator:
                     "params": {
                         "model": self.config.api.consolidation_model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": REFRESH_SYSTEM_PROMPT,
+                        "system": with_character(REFRESH_SYSTEM_PROMPT, character),
                         "messages": [{"role": "user", "content":
                             f"<channel_state channel_id=\"{cid}\">\n{body}\n</channel_state>\n\n"
                             f"<recent_episodes>\n{episodes_text}\n</recent_episodes>"}],
@@ -605,7 +648,7 @@ class MemoryConsolidator:
             "params": {
                 "model": self.config.api.consolidation_model,
                 "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                "system": CULTURE_SYSTEM_PROMPT,
+                "system": with_character(CULTURE_SYSTEM_PROMPT, character),
                 "messages": [{"role": "user", "content":
                     f"<culture>\n{culture_text}\n</culture>\n\n"
                     f"<channels>\n{channels_summary}\n</channels>"}],

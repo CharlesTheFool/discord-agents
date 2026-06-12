@@ -76,6 +76,13 @@ class MemoryManager:
         """Standard path for server culture/overview memory file"""
         return f"/memories/{self.bot_id}/servers/{server_id}/culture.md"
 
+    def get_server_character_path(self, server_id: str) -> str:
+        """Operator-authored note declaring what this server IS — its nature and
+        social register. Optional, never auto-written (unlike culture.md, which
+        the consolidator rewrites). Read by induction and consolidation to steer
+        what's worth keeping."""
+        return f"/memories/{self.bot_id}/servers/{server_id}/character.md"
+
     def get_followups_path(self, server_id: str) -> str:
         """Standard path for follow-ups JSON"""
         return f"/memories/{self.bot_id}/servers/{server_id}/followups.json"

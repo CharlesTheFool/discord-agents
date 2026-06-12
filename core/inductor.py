@@ -20,6 +20,8 @@ from core.consolidator import (
     CULTURE_SCHEMA,
     CULTURE_SYSTEM_PROMPT,
     archive_to_history,
+    read_server_character,
+    with_character,
 )
 from core.internal_constants import (
     CONSOLIDATION_MAX_TOKENS,
@@ -34,15 +36,23 @@ ARCHAEOLOGY_HEADER = "*(from reading the backlog before I was here - observation
 
 ARCHAEOLOGY_SYSTEM = (
     "You are reading a Discord channel's backlog from before you were around - "
-    "homework, not memories. Distill what is still worth knowing: standing "
-    "facts, decisions, attributed lines worth keeping, jokes that stuck, and "
-    "per-person observations (lean, third person, objective - you have no "
-    "relationship with these people yet). Never write as if you were there."
+    "homework, not memories. First read what kind of space this is and how "
+    "people are in it: a workplace runs on decisions, specs, and ownership; a "
+    "tight social or gaming group runs on its relationships, its humor, and "
+    "who's who with each other - let that shape what you keep. Distill what is "
+    "still worth knowing: standing facts, decisions, attributed lines worth "
+    "keeping, the jokes and bits that actually landed, the recurring social "
+    "dynamics, and per-person observations (lean, third person, objective - you "
+    "have no relationship with these people yet). Match the register of the "
+    "room - if it's dark, casual, in-jokey, capture that texture instead of "
+    "sanding it into corporate minutes. Never write as if you were there."
 )
 
 INDUCT_PROFILE_SYSTEM = (
     "You are writing a first profile for someone from backlog observations "
     "alone - you have never spoken to them. Third person, objective, lean. "
+    "Read the register of the space they're in and let it inform what's worth "
+    "noting - how someone shows up in a workplace differs from a friend group. "
     "No claims about your relationship with them; there is none yet. Every "
     "claim is origin-tagged with this server."
 )
@@ -134,6 +144,7 @@ class ServerInductor:
 
         # Round 1: every channel's unprocessed span, chunked, one batch
         model = self.config.api.consolidation_model
+        character = read_server_character(self.memory, server_id)
         requests, spans, chunk_map, report_channels = [], {}, {}, {}
         for cid in channel_ids:
             if volumes[cid]["messages"] == 0:
@@ -154,7 +165,7 @@ class ServerInductor:
                     "params": {
                         "model": model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": ARCHAEOLOGY_SYSTEM,
+                        "system": with_character(ARCHAEOLOGY_SYSTEM, character),
                         "messages": [{"role": "user", "content":
                             f"<backlog channel_id=\"{cid}\" chunk=\"{idx + 1}/{len(chunks)}\">\n"
                             f"{transcript}\n</backlog>"}],
@@ -209,7 +220,7 @@ class ServerInductor:
         # Round 2: first profiles + culture (skipped wholesale for vaulted servers)
         profiles_written, culture_written = 0, False
         round2 = [] if server_vaulted else await self._build_round2(
-            server_id, observations, state_bodies)
+            server_id, observations, state_bodies, character)
         if round2:
             results2 = await self.batch.run(round2)
             for key, result in results2.items():
@@ -308,7 +319,8 @@ class ServerInductor:
     # ---------- Round 2 ----------
 
     async def _build_round2(self, server_id: str, observations: dict,
-                            state_bodies: dict) -> list:
+                            state_bodies: dict,
+                            character: Optional[str] = None) -> list:
         model = self.config.api.consolidation_model
         requests = []
         for uid, obs in observations.items():
@@ -326,7 +338,7 @@ class ServerInductor:
                 "params": {
                     "model": model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": INDUCT_PROFILE_SYSTEM,
+                    "system": with_character(INDUCT_PROFILE_SYSTEM, character),
                     "messages": [{"role": "user", "content":
                         f"This server's id: {server_id}\n\n"
                         f"<current_profile>\n{current}\n</current_profile>\n\n"
@@ -345,7 +357,7 @@ class ServerInductor:
                 "params": {
                     "model": model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": CULTURE_SYSTEM_PROMPT,
+                    "system": with_character(CULTURE_SYSTEM_PROMPT, character),
                     "messages": [{"role": "user", "content":
                         f"<channels>\n{channels_summary}\n</channels>"}],
                     "output_config": {"format": {"type": "json_schema",
