@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.0] - 2026-06-12
+
+**Status:** Pre-release (beta). Native messaging, phase 1 (compat mode).
+
+### Added
+- **`send_message` tool - the bot's native voice in Discord.** Instead of
+  only having its final text captured and posted, the model can now send
+  messages as deliberate tool calls, mid-turn. Each call is one message; the
+  tool result reports ground truth (sent message id, exactly which files
+  attached), which mechanically closes the phantom-attachment failure class -
+  the model can no longer sustain a false belief about its own output.
+- **Reply anchoring.** `reply_to_message_id` anchors a send as a real Discord
+  reply - when a batch of messages needs one specific answer, it lands
+  attached to the right message. Targets come from a new `<recent_messages>`
+  id map riding the volatile context tail (never cached, never persisted).
+  Other bots' messages are valid targets (twins/Prime servers); a deleted
+  target degrades to a standalone send and the tool result says so.
+- **Multi-message turns.** The tool can be called several times in one turn
+  with guaranteed ordering - e.g. an anchored reply to one person chained
+  with a separate general message for the rest of the conversation.
+- **Attachments by name.** `attach_outputs` attaches files created via code
+  execution this turn, resolved by filename against the turn's container
+  outputs; misses are reported, never silently invented.
+
+### Changed
+- **Compat mode:** plain final text still posts exactly as before - turns
+  that don't use the tool behave identically to 0.11.x. Tool-sent turns
+  satisfy the must-reply guarantee, count toward rate limits and engagement
+  tracking, and are never discarded as stale (they're already out). Strict
+  mode (final text stops auto-sending) is deferred to a later phase.
+
+---
+
 ## [0.11.3] - 2026-06-12
 
 **Status:** Pre-release (beta). Social-cadence and attachment fixes from the
