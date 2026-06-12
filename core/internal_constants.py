@@ -179,7 +179,10 @@ PRIME_CONTEXT_TEMPLATE = (
 # =============================================================================
 # SERVER INDUCTION (v0.8.0, Internal)
 # =============================================================================
-INDUCTION_CHUNK_TOKENS = 100_000   # target input tokens per distillation call (chars/4)
+# Input target per distillation call (chars/4). Kept well under the point where
+# a dense chunk's digest would overflow CONSOLIDATION_MAX_TOKENS (8k) output and
+# truncate into invalid JSON - empirically ~40k-token chunks overflowed, ~29k fit.
+INDUCTION_CHUNK_TOKENS = 25_000
 INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
 
 # Batch-rate $/MTok (50% of live) for the dry-run cost table; unknown models
