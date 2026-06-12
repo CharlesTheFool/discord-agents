@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.4] - 2026-06-11
+
+**Status:** Pre-release (beta). Skill management and a stray fixture.
+
+### Added
+- **Remove a skill from the Integrations tab.** Custom skills now carry a
+  **Remove** button that deletes the skill from disk (a new
+  `DELETE /skills/{name}` endpoint). Skills live in one shared folder, so the
+  UI is explicit that removal affects every bot and takes effect on each
+  bot's next start. (MCP servers already had a per-card Remove.)
+
+### Removed
+- **The bundled `test-skill` fixture.** A leftover skill used to verify the
+  discovery system was tracked in the repo and shipped to every install,
+  showing up in the skills list. It's gone.
+
 ## [0.10.3] - 2026-06-11
 
 **Status:** Pre-release (beta). Dashboard polish — the app reads more clearly

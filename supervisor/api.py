@@ -24,7 +24,7 @@ from core.config import BotConfig
 from .data import BotData
 from .env_store import EnvStore
 from .integrations import (add_skill, apply_skills, load_mcp_servers,
-                           save_mcp_servers, skills_catalog)
+                           remove_skill, save_mcp_servers, skills_catalog)
 from .mcp_health import MCPHealthPoller
 from .paths import PathJailError, SupervisorRoot
 from .process_manager import ProcessManager
@@ -418,6 +418,17 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             return json_response({"error": str(e)}, status=400)
         return json_response({"added": added}, status=201)
 
+    async def delete_skill(request):
+        bot_or_404(request)
+        name = request.match_info["name"]
+        try:
+            removed = remove_skill(root, name)
+        except (ValueError, PathJailError) as e:
+            return json_response({"error": str(e)}, status=400)
+        if not removed:
+            return json_response({"error": f"no such skill: {name}"}, status=404)
+        return json_response({"removed": name})
+
     async def reconnect_mcp(request):
         bot_or_404(request)
         name = request.match_info["name"]
@@ -689,6 +700,7 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     app.router.add_get("/api/bots/{bot_id}/integrations", get_integrations)
     app.router.add_put("/api/bots/{bot_id}/integrations", put_integrations)
     app.router.add_post("/api/bots/{bot_id}/skills", post_skill)
+    app.router.add_delete("/api/bots/{bot_id}/skills/{name}", delete_skill)
     app.router.add_post("/api/bots/{bot_id}/mcp/{name}/reconnect", reconnect_mcp)
     app.router.add_get("/api/setup", get_setup)
     app.router.add_put("/api/setup/anthropic", put_anthropic_key)

@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import re
+import shutil
 import zipfile
 from pathlib import Path
 from typing import List, Optional
@@ -84,6 +85,26 @@ def add_skill(root: SupervisorRoot, name: str, zip_bytes: bytes) -> str:
         zf.extractall(dest)
     logger.info(f"Skill added: {name}")
     return name
+
+
+def remove_skill(root: SupervisorRoot, name: str) -> bool:
+    """Delete a custom skill (folder or .zip) from the shared skills/ dir.
+    This is global — every bot's catalog draws from the same folder. Returns
+    False if no such skill exists."""
+    if not SKILL_NAME_RE.match(name or ""):
+        raise ValueError("invalid skill name")
+    base = root.skills_dir()
+    folder = root.jailed(base, name)
+    if folder.is_dir():
+        shutil.rmtree(folder)
+        logger.info(f"Skill removed: {name}")
+        return True
+    archive = root.jailed(base, f"{name}.zip")
+    if archive.is_file():
+        archive.unlink()
+        logger.info(f"Skill removed: {name}.zip")
+        return True
+    return False
 
 
 def load_mcp_servers(root: SupervisorRoot) -> List[dict]:

@@ -1,9 +1,0 @@
-This is a test skill file.
-It contains simple instructions for testing the skills system.
-
-When this skill is activated, you should:
-1. Acknowledge the skill is loaded
-2. Report that instructions were received
-3. Confirm the skills discovery system is working
-
-Test skill version: 1.0.0

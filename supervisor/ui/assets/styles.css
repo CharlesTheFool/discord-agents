@@ -657,7 +657,13 @@ footer.page {
 .int-sec .sechead .addbtn:hover { background: #38322a; }
 
 /* skills — toggle rows */
-.skill { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--rule); }
+.skill { display: grid; grid-template-columns: 44px 1fr auto auto; align-items: center; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--rule); }
+.skill .srm {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-faint); border: 1px solid var(--rule-strong); background: transparent;
+  padding: 5px 11px; cursor: pointer; white-space: nowrap;
+}
+.skill .srm:hover { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
 .skill .sw { width: 40px; height: 22px; border-radius: 22px; background: var(--off-bg); border: 1px solid var(--rule-strong); position: relative; cursor: pointer; transition: background .12s; }
 .skill .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink-faint); transition: transform .12s, background .12s; }
 .skill.on .sw { background: var(--ok-bg); border-color: var(--ok); }

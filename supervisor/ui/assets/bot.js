@@ -1670,6 +1670,7 @@ function renderSkills() {
         <div class="desc">${esc(s.description)}</div>
       </div>
       <div class="use">${s.enabled ? `${s.used_7d} uses · 7d` : "disabled"}</div>
+      ${s.source === "custom" ? `<button class="srm" data-act="remove" title="Delete this skill from disk">Remove</button>` : ""}
     </div>`).join("");
 }
 
@@ -1720,10 +1721,20 @@ let intWired = false;
 function wireIntegrations() {
   if (intWired) return; intWired = true;
 
-  document.getElementById("skills-list").addEventListener("click", (e) => {
+  document.getElementById("skills-list").addEventListener("click", async (e) => {
     const row = e.target.closest(".skill");
     if (!row) return;
     const s = intl.skills.find((x) => x.id === row.dataset.skill);
+    // Remove = delete the skill from disk (shared across bots), now — not staged.
+    if (e.target.closest('[data-act="remove"]')) {
+      if (!confirm(`Remove the skill “${s.name}” from disk?\n\nSkills live in one shared folder, so this removes it for every bot. It takes effect on each bot's next start.`)) return;
+      try {
+        await apiSend("DELETE", A(`/skills/${encodeURIComponent(s.name)}`));
+        intl.skills = intl.skills.filter((x) => x.id !== s.id);
+        renderSkills();
+      } catch (ex) { alert("Couldn't remove the skill — see the supervisor log."); }
+      return;
+    }
     s.enabled = !s.enabled;
     markPending(`${s.enabled ? "enable" : "disable"} skill “${s.name}”`);
     renderSkills();
