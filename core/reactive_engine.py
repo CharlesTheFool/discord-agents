@@ -992,22 +992,32 @@ class ReactiveEngine:
         if message is not None and getattr(self, "message_memory", None):
             try:
                 recent = await self.message_memory.get_recent(
-                    str(message.channel.id), limit=10)
+                    str(message.channel.id), limit=15)
                 client = getattr(self, "discord_client", None)
                 own_id = str(client.user.id) if (client and client.user) else None
                 lines = []
                 for m in recent:
-                    # Anything anyone else said is a valid reply target -
-                    # including other bots (twins/Prime servers). Skip only
-                    # synthetic system rows and our own messages.
-                    if m.is_system or m.author_id == own_id:
+                    # Anyone else's message is a valid reply target, other
+                    # bots included (twins/Prime servers). Own messages show
+                    # Discord's delivery record - ground truth against the
+                    # model trusting its own prior attachment claims.
+                    if m.is_system:
                         continue
                     snippet = " ".join(m.content.split())[:60]
-                    lines.append(f"{m.message_id} — {m.author_name}: {snippet}")
+                    if m.author_id == own_id:
+                        marker = (" [attached a file]" if m.has_attachments
+                                  else " [no file attached]")
+                        lines.append(f"{m.message_id} — {m.author_name} (you)"
+                                     f"{marker}: {snippet}")
+                    else:
+                        lines.append(f"{m.message_id} — {m.author_name}: {snippet}")
                 if lines:
                     parts.append(
                         "<recent_messages>\n"
-                        "(message ids for send_message reply_to targeting, oldest first)\n"
+                        "(recent channel messages: ids for send_message "
+                        "reply_to targeting, oldest first; your own messages "
+                        "show what ACTUALLY attached, which may differ from "
+                        "what they claim)\n"
                         + "\n".join(lines)
                         + "\n</recent_messages>"
                     )
@@ -1420,7 +1430,7 @@ class ReactiveEngine:
         container_id = None
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
-        attachment_nudged = False  # phantom-attachment guard fires once per turn
+        attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
         tail_messages = (
             [{"role": "user", "content": [{"type": "text", "text": volatile_tail}]}]
             if volatile_tail else []
@@ -1574,32 +1584,62 @@ class ReactiveEngine:
                     })
                     continue
 
-                # Phantom-attachment guard (v0.11.3): the model sometimes
-                # announces a file it never produced, then trusts its own
-                # claim next turn. If the reply mentions an attachment but
-                # no files are queued for Discord, bounce once for a fix.
+                # Phantom-attachment guard (v0.11.3, hardened 0.12.1): the
+                # model sometimes announces a file it never produced, then
+                # trusts its own claim next turn. Bounce up to twice with
+                # escalating notes; a third strike never ships the claim on
+                # the periodic path (silence beats a lie).
                 if (result.response_text and not result.container_file_ids
                         and not result.did_send
-                        and not attachment_nudged
-                        and loop_iteration < MAX_TOOL_LOOP_ITERATIONS
                         and re.search(r"\battach(?:ed|ment|ments|ing)?\b",
                                       result.response_text, re.IGNORECASE)):
-                    attachment_nudged = True
-                    logger.warning(f"Response claims an attachment but no files are queued{log_suffix} - bouncing back")
-                    api_params["messages"].append({"role": "assistant", "content": response.content})
-                    api_params["messages"].append({
-                        "role": "user",
-                        "content": [{"type": "text", "text": (
-                            "<system_note>Your reply mentions an attached file, but no "
-                            "files are queued to send with this message - nothing will "
-                            "be attached. Files only reach Discord when created by code "
-                            "execution during this turn. Either actually produce the "
-                            "file now, or reword your reply so it doesn't claim an "
-                            "attachment.</system_note>"
-                        )}]
-                    })
-                    result.response_text = ""
-                    continue
+                    if (attachment_nudges < 2
+                            and loop_iteration < MAX_TOOL_LOOP_ITERATIONS):
+                        if attachment_nudges == 0:
+                            note_text = (
+                                "<system_note>Your reply mentions an attached file, "
+                                "but no files are queued to send with this message - "
+                                "nothing will be attached. Files only exist if created "
+                                "by code execution during THIS turn, and the reliable "
+                                "way to deliver one is the send_message tool with "
+                                "attach_outputs. Either actually produce the file now, "
+                                "or reword your reply so it doesn't claim an "
+                                "attachment.</system_note>"
+                            )
+                        else:
+                            note_text = (
+                                "<system_note>Reality check: you have produced no "
+                                "files this turn, so zero files exist, and your reply "
+                                "still claims an attachment. Earlier messages of yours "
+                                "may also claim attachments that never happened - the "
+                                "<recent_messages> map shows what actually attached. "
+                                "Do not describe a file as attached. Either generate "
+                                "it now and deliver it via send_message attach_outputs, "
+                                "or say plainly that you don't have it.</system_note>"
+                            )
+                        attachment_nudges += 1
+                        logger.warning(
+                            f"Response claims an attachment but no files are queued"
+                            f"{log_suffix} - bounce {attachment_nudges}/2"
+                        )
+                        api_params["messages"].append({"role": "assistant", "content": response.content})
+                        api_params["messages"].append({
+                            "role": "user",
+                            "content": [{"type": "text", "text": note_text}]
+                        })
+                        result.response_text = ""
+                        continue
+                    if fallback_text is None:
+                        logger.warning(
+                            f"Attachment claim persisted after {attachment_nudges} "
+                            f"bounces{log_suffix} - suppressing response"
+                        )
+                        result.response_text = ""
+                        break
+                    logger.warning(
+                        f"Attachment claim persisted after {attachment_nudges} "
+                        f"bounces on the must-reply path{log_suffix} - shipping anyway"
+                    )
 
                 # Must-reply is satisfied by tool sends too (v0.12.0)
                 if not result.response_text and fallback_text and not result.did_send:
