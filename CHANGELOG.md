@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.1] - 2026-06-12
+
+**Status:** Pre-release (beta).
+
+### Fixed
+- **"Cost today" works for Fable bots.** The price table had no entry for
+  `claude-fable-5`, so the estimator honestly returned "unknown" and the
+  dashboard pinned at "$0.00 (partial)". Fable is now priced ($10/$50 per
+  MTok live, half that on Batches), and the gauge reflects real spend.
+
 ## [0.11.0] - 2026-06-12
 
 **Status:** Pre-release (beta). Streamed chat requests.

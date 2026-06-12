@@ -215,6 +215,7 @@ INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
 # print "n/a" rather than a guess. Substring match - specific keys FIRST
 # (opus-4-5+ repriced below the opus-4.0/4.1 tier).
 MODEL_BATCH_PRICES = {
+    "fable": (5.00, 25.00),
     "haiku-4-5": (0.50, 2.50),
     "sonnet-4-5": (1.50, 7.50),
     "sonnet-4-6": (1.50, 7.50),
