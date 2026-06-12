@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.7] - 2026-06-11
+
+**Status:** Pre-release (beta). Live logs.
+
+### Added
+- **The dashboard's log view is live.** The Monitor's log tab (renamed
+  **Channels / Logs**) now streams the bot's log in real time over the
+  backend's SSE endpoint — new lines appear the moment they're written,
+  including a bot restart. It auto-scrolls (unless you scroll up), has a
+  pulsing live indicator and a **Clear** button, and the **auto-follow**
+  toggle (which existed but did nothing) now actually pauses the stream for
+  reading. Previously the view fetched 50 lines once and never refreshed.
+
 ## [0.10.6] - 2026-06-11
 
 **Status:** Pre-release (beta). Three live-found fixes.

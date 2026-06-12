@@ -968,3 +968,30 @@ footer.page {
   border: 1px solid var(--ink); background: var(--paper); color: var(--ink);
 }
 .rename-in:focus { outline: none; }
+
+/* ===================== v0.10.7: live log tail ===================== */
+.rawlog-bar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 2px 10px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--rule);
+}
+.rawlog-bar .btn.small { margin-left: auto; }
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 0 0 rgba(47,125,68,.5); animation: livepulse 1.8s infinite;
+}
+@keyframes livepulse {
+  0% { box-shadow: 0 0 0 0 rgba(47,125,68,.5); }
+  70% { box-shadow: 0 0 0 6px rgba(47,125,68,0); }
+  100% { box-shadow: 0 0 0 0 rgba(47,125,68,0); }
+}
+.rawlog.live {
+  height: 560px; overflow-y: auto; padding: 10px 2px; margin-top: 4px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  background: rgba(33,29,22,.025); border: 1px solid var(--rule);
+}
+.rawlog.live .rawline {
+  white-space: pre-wrap; word-break: break-word; color: var(--ink-soft);
+  padding: 1px 8px; border-left: 2px solid transparent;
+}
+.rawlog.live .rawline:hover { background: rgba(33,29,22,.03); }

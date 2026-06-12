@@ -97,6 +97,7 @@ function showTab(tab) {
     a.classList.toggle("active", a.dataset.tab === tab));
   document.querySelectorAll(".tabpanel").forEach((p) =>
     p.classList.toggle("active", p.id === `tab-${tab}`));
+  if (tab !== "monitor") stopLogTail();   // don't hold the SSE open off-tab
   if (!loaded[tab]) { loaded[tab] = true; LOADERS[tab](); }
 }
 
@@ -208,9 +209,44 @@ function avatarColor(name) {
 }
 const initials = (name) => name.replace(/^@/, "").slice(0, 2).toUpperCase();
 
+// Live log tail over the backend's SSE endpoint (replays the last lines, then
+// streams appended ones). Closed whenever the raw view isn't showing.
+let logES = null;
+function stopLogTail() { if (logES) { logES.close(); logES = null; } }
+function startLogTail(pane) {
+  stopLogTail();
+  logES = new EventSource(A("/logs?file=main&follow=1"));
+  logES.onmessage = (e) => {
+    const nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
+    const line = document.createElement("div");
+    line.className = "rawline";
+    line.textContent = e.data;
+    pane.appendChild(line);
+    while (pane.childElementCount > 2000) pane.removeChild(pane.firstChild);  // bound memory
+    if (nearBottom) pane.scrollTop = pane.scrollHeight;   // stay pinned unless scrolled up
+  };
+}
+
 function renderActivity() {
   const body = document.getElementById("activity-body");
-  if (monView === "raw") { body.innerHTML = rawHTML(monMain); return; }
+  if (monView === "raw") {
+    // auto-follow on (default) = live tail; off = frozen snapshot to read/scroll
+    const follow = document.getElementById("raw-follow")?.checked ?? true;
+    if (follow) {
+      body.innerHTML =
+        `<div class="rawlog-bar"><span class="live-dot"></span>live · main log` +
+        `<button class="btn small" id="rawlog-clear">Clear</button></div>` +
+        `<div class="rawlog live" id="rawlog-live"></div>`;
+      document.getElementById("rawlog-clear").onclick =
+        () => { document.getElementById("rawlog-live").innerHTML = ""; };
+      startLogTail(document.getElementById("rawlog-live"));
+    } else {
+      stopLogTail();
+      body.innerHTML = rawHTML(monMain);
+    }
+    return;
+  }
+  stopLogTail();
   renderChannelMonitor(body);   // episodes + skills now live inside the channel streams
 }
 
@@ -558,6 +594,10 @@ function wireActivity() {
     const xl = e.target.closest(".xlabel.has");
     if (xl) { xl.closest(".xray").classList.toggle("open"); return; }
   });
+  document.getElementById("raw-follow")?.addEventListener("change", () => {
+    if (monView === "raw") renderActivity();   // toggle live tail ↔ frozen snapshot
+  });
+  window.addEventListener("beforeunload", stopLogTail);
   document.querySelectorAll(".subtoggle a").forEach((a) =>
     a.addEventListener("click", () => {
       monView = a.dataset.view;
