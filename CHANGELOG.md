@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.1] - 2026-06-11
+
+**Status:** Pre-release (beta). A polish pass over 0.10.0: memory that adapts to
+what a server actually *is*, an induction pipeline that no longer drops dense
+channels, and a configuration UI reorganized around how people actually read it.
+
+### Added
+
+- **Server-character awareness in memory.** Induction and the weekly
+  consolidator now read what kind of space a server is — a workplace runs on
+  decisions and ownership; a friend group runs on its relationships, humor, and
+  register — and let that steer what's kept, instead of flattening every server
+  into the same standing-facts-and-decisions minutes. Two layers: the
+  distillation prompts self-infer the register, and an optional operator-authored
+  `memories/<bot>/servers/<id>/character.md` (never auto-written, unlike
+  `culture.md`) anchors that judgment when present.
+- **Backfill slider** in the config UI — `Off · 30 · 90 · 180 days · Unlimited` —
+  replacing the raw day count and the separate enable toggle.
+- **Timezone dropdown** — a curated list, no more typing IANA strings.
+
+### Changed
+
+- **Configuration is now horizontal sub-tabs** (Identity · Connection · Brain ·
+  Engagement · Advanced) instead of one long scroll with a collapsed Advanced
+  section. Status moved into Identity; the unused Description field and the
+  Configure/Integrations intro blurbs are gone; the two skills toggles are
+  relabeled so "available on demand" vs "preloaded at start" reads clearly.
+- **Fleet board**: the whole bot card is clickable (not just the name); the name
+  is larger and sits above a smaller status pill; checkboxes are bigger.
+
+### Fixed
+
+- **Induction dropped the largest channels.** A 100k-token chunk asked to
+  summarize into an 8k output cap truncated into invalid JSON and silently
+  dropped the channel. Chunks are now bounded to 12k and the output cap raised to
+  12k, so even dense, high-traffic channels distill cleanly.
+
+---
+
 ## [0.10.0] - 2026-06-11
 
 **Status:** Pre-release (beta). The app becomes the product: a self-contained
