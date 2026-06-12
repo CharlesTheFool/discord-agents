@@ -561,6 +561,26 @@ const MODEL_OPTIONS = [
 const EFFORT_MARKERS = ["fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6"];
 const supportsEffort = (m) => EFFORT_MARKERS.some((x) => (m || "").includes(x));
 
+// Curated IANA timezones for the dropdown (no more typing); the current value
+// is preserved even if it's not in this list.
+const TIMEZONES = [
+  "UTC",
+  "America/Los_Angeles", "America/Denver", "America/Phoenix", "America/Chicago",
+  "America/New_York", "America/Toronto", "America/Sao_Paulo",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Madrid",
+  "Europe/Rome", "Europe/Athens", "Europe/Moscow",
+  "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos",
+  "Asia/Dubai", "Asia/Kolkata", "Asia/Bangkok", "Asia/Shanghai",
+  "Asia/Singapore", "Asia/Tokyo", "Asia/Seoul",
+  "Australia/Sydney", "Pacific/Auckland",
+];
+
+// Backfill slider stops. "off" disables backfill; "0" means unlimited (the
+// framework's backfill_days: 0). The slider maps to backfill_enabled + days.
+const BACKFILL_STOPS = [30, 90, 180];
+const nearestBackfillStop = (d) =>
+  BACKFILL_STOPS.reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a));
+
 /* config.py defaults - merged under the loaded YAML so every essential
    renders even in a minimal config */
 const DEFAULTS = {
@@ -584,17 +604,22 @@ const DEFAULTS = {
   vaults: [],
 };
 
-const HIDDEN = new Set(["bot_id", "discord.token_env_var", "logging.file"]);
+// description: a note-to-self the bot never sees — dropped from the UI.
+// discord.backfill_enabled: owned by the backfill slider, not shown on its own.
+const HIDDEN = new Set([
+  "bot_id", "discord.token_env_var", "logging.file",
+  "description", "discord.backfill_enabled",
+]);
 
 const HINTS = {
   "name": { label: "Name", help: "Display name in the dashboard." },
   "description": { label: "Description", help: "A note to yourself - the bot doesn't see it." },
   "discord.servers": { label: "Servers", help: "Which of its Discord servers this bot engages with. Inviting the bot to a server happens on Discord; this only selects among them.", widget: "guilds" },
   "discord.status": { label: "Status", help: "Activity line shown under the bot in Discord." },
-  "discord.timezone": { label: "Timezone", help: "IANA tz; drives quiet-hours and timestamps." },
+  "discord.timezone": { label: "Timezone", help: "Drives quiet-hours and timestamps.", options: TIMEZONES },
   "discord.allow_bot_interactions": { label: "Reply to other bots", help: "Whether other bots can trigger this one." },
   "discord.backfill_enabled": { label: "Backfill history", help: "Pull prior channel history on first join." },
-  "discord.backfill_days": { label: "Backfill days", help: "Days of history to pull. 0 = unlimited." },
+  "discord.backfill_days": { label: "Backfill history", help: "How much prior channel history to pull on first join. Off skips it entirely.", widget: "backfill" },
 
   "personality.base_prompt": { label: "Personality", help: "The standing prompt — who this bot is. The single most load-bearing field.", widget: "prompt" },
   "personality.reaction_usage": { label: "Reaction usage", options: ["never", "rare", "moderate", "frequent"], help: "How often it adds emoji reactions." },
@@ -622,8 +647,8 @@ const HINTS = {
   "api.web_search.enabled": { label: "Web search", help: "Live web lookups when conversation calls for it." },
 
   "mcp.enabled": { label: "MCP servers", help: "Load Model Context Protocol servers (see Integrations)." },
-  "skills.include_anthropic_skills": { label: "Built-in skills", help: "Include the Anthropic skill set (pdf, xlsx, …)." },
-  "skills.default_skills": { label: "Default skills", help: "Loaded at start; the bot can request others mid-turn.", widget: "chips" },
+  "skills.include_anthropic_skills": { label: "Anthropic skills", help: "Make the built-in pdf / xlsx / docx / pptx skills available for the bot to use on demand." },
+  "skills.default_skills": { label: "Preloaded skills", help: "Skills loaded at the start of every conversation; anything else is requested only when needed.", widget: "chips" },
 
   "attachments.enabled": { label: "Attachments", help: "Unified file/image handling." },
   "attachments.backfill_enabled": { label: "Backfill attachments", help: "Pull prior attachments on first join." },
@@ -635,16 +660,33 @@ const HINTS = {
   "vaults": { label: "Vaults", help: "Channel/server ids whose content never leaves them. Empty = none.", widget: "chips" },
 };
 
-const ESSENTIAL_GROUPS = [
-  { title: "Identity", items: ["name", "personality.base_prompt", "personality.reaction_usage"] },
-  { title: "Connection", items: ["__token__", "discord.servers"] },
-  { title: "Brain", items: ["api.model", "api.effort", "api.web_search.enabled"] },
+// Horizontal config sub-tabs. The named tabs claim their fields; an "Advanced"
+// tab is computed from everything left over. "__token__" is the Discord token
+// control (write-only, lives in .env).
+const CONFIG_TABS = [
+  { title: "Identity", items: [
+    "name", "discord.status", "personality.base_prompt", "personality.reaction_usage"] },
+  { title: "Connection", items: [
+    "__token__", "discord.servers", "discord.timezone",
+    "discord.backfill_days", "discord.allow_bot_interactions"] },
+  { title: "Brain", items: [
+    "api.model", "api.effort", "api.thinking.enabled",
+    "api.web_search.enabled", "api.consolidation_model"] },
   { title: "Engagement", items: [
     "reactive.enabled", "agentic.enabled", "agentic.proactive.enabled",
     "agentic.proactive.intensity", "agentic.proactive.allowed_channels",
     "agentic.proactive.quiet_hours", "agentic.followups.enabled"] },
 ];
-const ESSENTIAL_SET = new Set(ESSENTIAL_GROUPS.flatMap((g) => g.items));
+
+/* Named tabs + an Advanced tab holding every config leaf not claimed above. */
+function configTabs() {
+  const claimed = new Set(
+    CONFIG_TABS.flatMap((g) => g.items).filter((p) => p !== "__token__"));
+  const advanced = Object.keys(cfg)
+    .flatMap((section) => collectPaths(cfg[section], section))
+    .filter((p) => !claimed.has(p) && !HIDDEN.has(p));
+  return [...CONFIG_TABS, { title: "Advanced", items: advanced }];
+}
 
 let cfg = null, cfgDirty = false, setupInfo = null;
 
@@ -693,25 +735,15 @@ async function loadConfigure() {
 }
 
 function buildForm() {
-  const essentials = ESSENTIAL_GROUPS.map((g) => `
-    <div class="cfg-group">
-      <h3>${esc(g.title)}</h3>
-      ${g.items.map((p) => p === "__token__" ? tokenFieldHTML() : fieldHTML(p)).join("")}
+  const tabs = configTabs();
+  const nav = tabs.map((t, i) =>
+    `<a class="cfgtab ${i === 0 ? "active" : ""}" data-cfgtab="${i}">${esc(t.title)}</a>`).join("");
+  const panels = tabs.map((t, i) => `
+    <div class="cfgpanel ${i === 0 ? "active" : ""}" data-cfgpanel="${i}">
+      ${t.items.map((p) => p === "__token__" ? tokenFieldHTML() : fieldHTML(p)).join("")}
     </div>`).join("");
-
-  // Advanced: everything else in the merged config, grouped by section
-  const advanced = Object.keys(cfg).map((section) => {
-    const fields = collectPaths(cfg[section], section)
-      .filter((p) => !ESSENTIAL_SET.has(p) && !HIDDEN.has(p))
-      .map((p) => fieldHTML(p)).join("");
-    return fields ? `<div class="cfg-group"><h3>${esc(section)}</h3>${fields}</div>` : "";
-  }).join("");
-
-  document.getElementById("cfg-form").innerHTML = essentials + `
-    <details class="cfg-adv">
-      <summary>Advanced settings</summary>
-      <div class="adv-body">${advanced}</div>
-    </details>`;
+  document.getElementById("cfg-form").innerHTML =
+    `<nav class="cfgtabs">${nav}</nav><div class="cfgpanels">${panels}</div>`;
   renderEffortGate();
   refreshTokenStatus();
 }
@@ -790,9 +822,22 @@ function ctlHTML(widget, val, h) {
         `<option value="${o}" ${o === cur ? "selected" : ""}>${o || "default (high)"}</option>`).join("");
       return `<select>${opts}</select>`;
     }
-    case "select":
-      return `<select>${(h.options || []).map((o) =>
+    case "backfill": {
+      const enabled = getNested(cfg, "discord.backfill_enabled");
+      const days = Number(val) || 0;
+      const cur = !enabled ? "off" : (days === 0 ? "0" : String(nearestBackfillStop(days)));
+      const stops = [["off", "Off"], ["30", "30 days"], ["90", "90 days"],
+                     ["180", "180 days"], ["0", "Unlimited"]];
+      return `<div class="scale" data-sel="${cur}">${stops.map(([v, lab]) =>
+        `<button type="button" class="stop ${v === cur ? "on" : ""}" data-v="${v}">${lab}</button>`).join("")}</div>
+        <div class="scale-cap">left disables backfill; right pulls all history</div>`;
+    }
+    case "select": {
+      const opts = h.options || [];
+      const list = (val == null || opts.includes(val)) ? opts : [val, ...opts];
+      return `<select>${list.map((o) =>
         `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    }
     default:
       return `<input type="text" value="${esc(String(val ?? ""))}"><div class="err"></div>`;
   }
@@ -916,7 +961,21 @@ async function openChannelPicker(field) {
 /* --- shared form interaction --- */
 
 function onFormClick(e) {
+  if (e.target.matches(".cfgtab")) {
+    const i = e.target.dataset.cfgtab;
+    document.querySelectorAll(".cfgtab").forEach((t) =>
+      t.classList.toggle("active", t.dataset.cfgtab === i));
+    document.querySelectorAll(".cfgpanel").forEach((p) =>
+      p.classList.toggle("active", p.dataset.cfgpanel === i));
+    return;
+  }
   const field = e.target.closest(".field");
+  if (e.target.matches(".scale .stop")) {
+    const scale = e.target.closest(".scale");
+    scale.querySelectorAll(".stop").forEach((s) => s.classList.toggle("on", s === e.target));
+    scale.dataset.sel = e.target.dataset.v;
+    setDirty(true); return;
+  }
   if (e.target.matches(".hr")) {
     e.target.classList.toggle("sel"); setDirty(true); return;
   }
@@ -965,6 +1024,10 @@ function fieldValue(field) {
   const ctl = field.querySelector(".ctl");
   switch (widget) {
     case "toggle": return ctl.querySelector("input[type=checkbox]").checked;
+    case "backfill": {
+      const on = ctl.querySelector(".scale .stop.on");
+      return on ? on.dataset.v : "off";
+    }
     case "prompt": return ctl.querySelector("textarea.prompt").value;
     case "number": return Number(ctl.querySelector("input[type=number]").value);
     case "hours":
@@ -988,6 +1051,17 @@ function fieldValue(field) {
 function collectFormValues() {
   const out = structuredClone(cfg);
   document.querySelectorAll("#cfg-form .field[data-path]").forEach((field) => {
+    // backfill slider drives two fields: enabled + days
+    if (field.dataset.widget === "backfill") {
+      const stop = fieldValue(field);
+      if (stop === "off") {
+        setNested(out, "discord.backfill_enabled", false);
+      } else {
+        setNested(out, "discord.backfill_enabled", true);
+        setNested(out, "discord.backfill_days", Number(stop));
+      }
+      return;
+    }
     setNested(out, field.dataset.path, fieldValue(field));
   });
   return out;

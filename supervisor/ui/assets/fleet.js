@@ -74,10 +74,9 @@ function rowHTML(bot) {
   return `
     <div class="row ${cls}" data-bot="${esc(bot.bot_id)}">
       <div class="edge"></div>
-      <div class="status">${statusChip(bot)}</div>
       <div class="id">
-        <a href="bot.html?id=${encodeURIComponent(bot.bot_id)}">${esc(bot.bot_id)}</a>
-        <span class="pid">${bot.running ? "PID " + bot.pid : "—"}</span>
+        <a class="botname" href="bot.html?id=${encodeURIComponent(bot.bot_id)}">${esc(bot.bot_id)}</a>
+        <div class="substat">${statusChip(bot)}<span class="pid">${bot.running ? "PID " + bot.pid : "idle"}</span></div>
       </div>
       <div><span class="tag ${modelFamily(bot.model)}">${esc(modelShort(bot.model))}</span></div>
       <div class="num">${bot.servers} <span class="u">srv</span></div>
@@ -226,11 +225,16 @@ function createBot() {
 
 document.getElementById("board").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-act]");
-  if (!btn) return;
-  const id = btn.closest(".row").dataset.bot;
-  const action = btn.dataset.act;
-  if (action === "delete") deleteBot(id);
-  else act(id, action);
+  if (btn) {
+    const id = btn.closest(".row").dataset.bot;
+    const action = btn.dataset.act;
+    if (action === "delete") deleteBot(id);
+    else act(id, action);
+    return;
+  }
+  // anywhere else on the card opens that bot's dashboard
+  const row = e.target.closest(".row");
+  if (row) location.href = `bot.html?id=${encodeURIComponent(row.dataset.bot)}`;
 });
 
 document.getElementById("add-bot").addEventListener("click", (e) => {

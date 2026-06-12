@@ -91,22 +91,23 @@ header.page { padding: 34px 0 0; }
 
 .row {
   display: grid;
-  grid-template-columns: 4px 116px minmax(130px,0.85fr) 104px 50px minmax(130px,1fr) 92px minmax(150px,1fr) auto;
+  grid-template-columns: 4px minmax(150px,0.9fr) 104px 50px minmax(130px,1fr) 92px minmax(150px,1fr) auto;
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--rule-strong);
   min-height: 64px;
+  cursor: pointer;   /* whole card opens the bot's dashboard */
 }
 .row > * { min-width: 0; }   /* cells shrink instead of overflowing into neighbours */
 
 /* shed the least-critical columns on narrower windows; ops stays content-sized.
    `.board` prefix keeps these winning over the later `.row .vol/.signals` rules. */
 @media (max-width: 1140px) {
-  .board .row { grid-template-columns: 4px 116px minmax(126px,0.85fr) 100px 48px minmax(126px,1fr) minmax(140px,1fr) auto; }
+  .board .row { grid-template-columns: 4px minmax(150px,0.9fr) 100px 48px minmax(126px,1fr) minmax(140px,1fr) auto; }
   .board .row .vol { display: none; }
 }
 @media (max-width: 1000px) {
-  .board .row { grid-template-columns: 4px 112px minmax(120px,1fr) 96px 46px minmax(120px,1.2fr) auto; }
+  .board .row { grid-template-columns: 4px minmax(140px,1fr) 96px 46px minmax(120px,1.2fr) auto; }
   .board .row .signals { display: none; }
 }
 .row .edge { align-self: stretch; }
@@ -128,11 +129,13 @@ header.page { padding: 34px 0 0; }
 .chip.off { background: var(--off-bg); color: var(--off); }
 .chip.off .led { background: var(--off); }
 
-.row .id { padding: 0 8px; }
-.row .id a { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
-.row .id a:hover { text-decoration: underline; text-underline-offset: 4px; }
-.row .id .pid { display: block; font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .04em; margin-top: 2px; }
-.row.stopped .id a { color: var(--ink-soft); }
+.row .id { padding: 0 12px; }
+.row .id a.botname { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; display: inline-block; }
+.row .id a.botname:hover { text-decoration: underline; text-underline-offset: 4px; }
+.row .id .substat { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.row .id .substat .chip { font-size: 9px; padding: 3px 7px; }   /* status pill sits under the name, smaller */
+.row .id .substat .pid { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .04em; }
+.row.stopped .id a.botname { color: var(--ink-soft); }
 
 /* model tag — colored by family so models are distinguishable at a glance */
 .tag {
@@ -844,3 +847,40 @@ footer.page {
 /* fleet: claude key cell */
 .gb.key { cursor: pointer; }
 .gb.key.warn .gv { color: var(--red); }
+
+/* ============== config sub-tabs + slider + checkboxes ============== */
+
+/* horizontal config sub-tabs (Identity / Connection / Brain / ...) */
+.cfgtabs {
+  display: flex; gap: 22px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--rule); margin-bottom: 6px;
+}
+.cfgtab {
+  font-family: var(--mono); font-size: 12px; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-soft);
+  padding: 2px 0 11px; border-bottom: 2px solid transparent;
+  cursor: pointer; user-select: none;
+}
+.cfgtab:hover { color: var(--ink); }
+.cfgtab.active { color: var(--ink); border-bottom-color: var(--ink); }
+.cfgpanel { display: none; }
+.cfgpanel.active { display: block; }
+
+/* backfill slider — a segmented track of discrete stops */
+.scale { display: inline-flex; border: 1px solid var(--ink-faint); border-radius: 8px; overflow: hidden; }
+.scale .stop {
+  font-family: var(--mono); font-size: 12px; padding: 8px 15px;
+  background: none; border: 0; border-right: 1px solid var(--ink-faint);
+  color: var(--ink-soft); cursor: pointer; white-space: nowrap;
+}
+.scale .stop:last-child { border-right: 0; }
+.scale .stop:hover { background: var(--rule); color: var(--ink); }
+.scale .stop.on { background: var(--ink); color: var(--paper, #fff); }
+.scale-cap { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; }
+
+/* bigger, easier-to-hit checkboxes everywhere they appear */
+.field .toggle input[type="checkbox"],
+.picker .pick input[type="checkbox"],
+.activity-head .follow input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--green);
+}
