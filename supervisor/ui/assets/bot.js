@@ -41,6 +41,7 @@ async function boot() {
 
   const status = await apiGet(A("/status"));
   renderNameplate(status);
+  wireNameplate();
 
   wireTabs();
   // lazy-load each tab the first time it's shown
@@ -58,8 +59,26 @@ function renderNameplate(s) {
     ? `PID ${s.pid} · up ${uptimeInWords(s.uptime_s)}<span class="sub">${esc(modelShort(s.model))} · ${esc(serverNames || "no servers")}</span>`
     : `<span class="sub">${esc(modelShort(s.model))} · ${esc(serverNames || "no servers")}</span>`;
   document.getElementById("np-ops").innerHTML = s.running
-    ? `<button class="op">Restart</button><button class="op no">Stop</button>`
-    : `<button class="op go">Start</button>`;
+    ? `<button class="op" data-act="restart">Restart</button><button class="op no" data-act="stop">Stop</button>`
+    : `<button class="op go" data-act="start">Start</button>`;
+}
+
+// The nameplate Start/Stop/Restart buttons (same actions as the fleet board,
+// which were never wired on this page). Delegated once; #np-ops persists.
+let npWired = false;
+function wireNameplate() {
+  if (npWired) return; npWired = true;
+  document.getElementById("np-ops").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const action = btn.dataset.act;
+    btn.disabled = true; btn.textContent = "…";
+    try { await apiSend("POST", A(`/${action}`)); }
+    catch (ex) { /* status re-pull below reflects reality either way */ }
+    // re-pull a few times to catch the process coming up / going down
+    [600, 2500, 5000].forEach((ms) =>
+      setTimeout(() => apiGet(A("/status")).then(renderNameplate).catch(() => {}), ms));
+  });
 }
 
 const loaded = {};
@@ -1779,19 +1798,38 @@ function openSkillDialog() {
   const err = document.getElementById("skill-err");
   input.value = ""; err.style.display = "none";
   dlg.showModal();
-  dlg.querySelector("form").onsubmit = (e) => {
+  dlg.querySelector("form").onsubmit = async (e) => {
     e.preventDefault();
     const file = input.files && input.files[0];
-    if (!file) { err.textContent = "choose a skill file or folder first"; err.style.display = "block"; return; }
+    if (!file) { err.textContent = "choose a skill .zip first"; err.style.display = "block"; return; }
     const base = file.name.replace(/\.(zip|skill)$/i, "");
     const id = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     if (intl.skills.some((s) => s.id === id)) {
-      err.textContent = `a skill named “${base}” is already installed`; err.style.display = "block"; return;
+      err.textContent = `a skill named “${id}” is already installed`; err.style.display = "block"; return;
     }
+    // actually upload the file to disk (this was missing — the skill name was
+    // landing in default_skills with no file behind it, hence "not in catalog")
+    const sub = dlg.querySelector("button[type=submit], .btn.primary");
+    err.style.display = "none";
+    if (sub) { sub.disabled = true; sub.textContent = "Uploading…"; }
+    try {
+      const r = await fetch(A(`/skills?name=${encodeURIComponent(id)}`),
+                           { method: "POST", body: file });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        throw new Error(b.error || `upload failed (${r.status})`);
+      }
+    } catch (ex) {
+      err.textContent = ex.message; err.style.display = "block";
+      if (sub) { sub.disabled = false; sub.textContent = "Add skill"; }
+      return;
+    }
+    if (sub) { sub.disabled = false; sub.textContent = "Add skill"; }
     dlg.close();
-    intl.skills.push({ id, name: base, source: "custom", enabled: true,
-      description: `Added from ${file.name} — loads on next start.`, used_7d: 0 });
-    markPending(`add skill “${base}”`);
+    // on disk now; enable it (membership in default_skills, applied on save)
+    intl.skills.push({ id, name: id, source: "custom", enabled: true,
+      description: `Uploaded from ${file.name} — loads on next start.`, used_7d: 0 });
+    markPending(`add skill “${id}”`);
     renderSkills();
   };
 }

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.6] - 2026-06-11
+
+**Status:** Pre-release (beta). Three live-found fixes.
+
+### Fixed
+- **Bots on Fable/Opus/Sonnet no longer crash on every message.** The reactive
+  request derived `max_tokens` as `min(context_tokens, model_output_ceiling)`,
+  which lands at 32,000 for those models — and the non-streaming SDK refuses a
+  request that large (it estimates >10 min and demands streaming). The cap is
+  now also clamped to a non-streaming-safe ceiling (`NONSTREAMING_MAX_OUTPUT`,
+  16,000), ample for any reply. (Only surfaced once a Fable-configured bot went
+  live.)
+- **Start / Stop / Restart on a bot's own dashboard now work.** Those nameplate
+  buttons were rendered but never wired — only the fleet board's worked.
+- **Adding a skill now actually uploads the file.** The add-skill dialog was
+  registering the skill's name in `default_skills` without ever sending the
+  `.zip` to disk, so the bot was told to load a skill that wasn't there
+  ("not found in catalog"). It now uploads before enabling.
+
 ## [0.10.5] - 2026-06-11
 
 **Status:** Pre-release (beta). A real rethink of how the bot remembers.

@@ -2,4 +2,4 @@
 Discord Agents - Core Components
 """
 
-__version__ = "0.10.5"
+__version__ = "0.10.6"

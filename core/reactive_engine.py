@@ -41,6 +41,7 @@ from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size, model_max_output,
+    NONSTREAMING_MAX_OUTPUT,
 )
 from tools.web_search import get_web_search_tools
 from tools.discord_tools import DiscordToolExecutor, get_discord_tools
@@ -954,9 +955,12 @@ class ReactiveEngine:
         api_params = {
             "model": self.config.api.model,
             # Derived, never user-set: as much output room as the input budget
-            # allows, clamped to the model's real output ceiling.
+            # allows, clamped to the model's real output ceiling AND to what a
+            # non-streaming request may ask for (the SDK refuses > ~21k as a
+            # >10-min op, and several models' ceiling is 32k).
             "max_tokens": min(self.config.api.context_tokens,
-                              model_max_output(self.config.api.model)),
+                              model_max_output(self.config.api.model),
+                              NONSTREAMING_MAX_OUTPUT),
             "system": system_blocks,
             "messages": messages,
             "tools": tools,
