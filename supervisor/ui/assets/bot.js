@@ -82,6 +82,7 @@ function wireNameplate() {
 }
 
 const loaded = {};
+let activeTab = null;
 function wireTabs() {
   document.querySelectorAll(".tabs a").forEach((a) => {
     a.addEventListener("click", (e) => {
@@ -92,21 +93,44 @@ function wireTabs() {
 }
 function showTab(tab) {
   if (!document.getElementById(`tab-${tab}`)) tab = "monitor";
+  activeTab = tab;
   location.hash = tab;
   document.querySelectorAll(".tabs a").forEach((a) =>
     a.classList.toggle("active", a.dataset.tab === tab));
   document.querySelectorAll(".tabpanel").forEach((p) =>
     p.classList.toggle("active", p.id === `tab-${tab}`));
-  if (tab !== "monitor") stopLogTail();   // don't hold the SSE open off-tab
-  if (!loaded[tab]) { loaded[tab] = true; LOADERS[tab](); }
+  if (tab !== "monitor") {
+    stopMonitorRefresh();   // don't hold the refresh timer or SSE open off-tab
+  }
+  if (!loaded[tab]) {
+    loaded[tab] = true;
+    LOADERS[tab]();
+  } else if (tab === "monitor") {
+    startMonitorRefresh({ immediate: true });
+  }
 }
 
 /* ============================ Monitor ============================ */
 
 let monStatus = null, monTrace = [], monMain = [], monEpisodes = [], monSkills = [];
 let monView = new URLSearchParams(location.search).get("view") || "channels";
+const MONITOR_REFRESH_MS = 5000;
+let monitorRefreshTimer = null;
+let monitorRefreshInFlight = null;
 
 async function loadMonitor() {
+  wireActivity();
+  const snapshot = await fetchMonitorSnapshot();
+  if (activeTab !== "monitor") return;
+  applyMonitorSnapshot(snapshot, { initial: true });
+  startMonitorRefresh();
+}
+
+function monitorIsActive() {
+  return activeTab === "monitor" && !document.hidden;
+}
+
+async function fetchMonitorSnapshot() {
   const [status, stats, trace, main, episodes, skills] = await Promise.all([
     apiGet(A("/status")),
     apiGet(A("/stats")),
@@ -115,16 +139,64 @@ async function loadMonitor() {
     apiGet(A("/episodes")),
     apiGet(A("/skills")),
   ]);
+  return { status, stats, trace, main, episodes, skills };
+}
+
+function applyMonitorSnapshot(snapshot, options = {}) {
+  const { status, stats, trace, main, episodes, skills } = snapshot;
+  const scrollState = captureChannelScroll(options.preserveScroll);
   monStatus = status; monTrace = trace; monMain = main;
   monEpisodes = episodes; monSkills = skills;
+  renderNameplate(status);
   renderGauges(status);
   renderStatband(stats);
   renderCommitments(status);
   buildChannels();
+  normalizeChannelSelection();
   // honor ?view= deep-link
   document.querySelectorAll(".subtoggle a").forEach((a) => a.classList.toggle("active", a.dataset.view === monView));
-  renderActivity();
-  wireActivity();
+  if (monView === "raw" && options.preserveScroll) {
+    if (document.getElementById("raw-follow")?.checked ?? true) ensureLogTailRunning();
+    else stopLogTail();
+    return;
+  }
+  renderActivity({ preserveScroll: options.preserveScroll, scrollState });
+}
+
+async function refreshMonitor(options = {}) {
+  if (!monitorIsActive()) return;
+  if (monitorRefreshInFlight) return monitorRefreshInFlight;
+  monitorRefreshInFlight = fetchMonitorSnapshot()
+    .then((snapshot) => {
+      if (monitorIsActive()) applyMonitorSnapshot(snapshot, options);
+    })
+    .catch((e) => {
+      console.debug("Monitor refresh failed", e);
+    })
+    .finally(() => { monitorRefreshInFlight = null; });
+  return monitorRefreshInFlight;
+}
+
+function startMonitorRefresh(options = {}) {
+  if (!monitorIsActive()) {
+    stopMonitorRefresh();
+    return;
+  }
+  if (options.immediate) refreshMonitor({ preserveScroll: true });
+  if (!monitorRefreshTimer) {
+    monitorRefreshTimer = setInterval(
+      () => refreshMonitor({ preserveScroll: true }),
+      MONITOR_REFRESH_MS);
+  }
+  ensureLogTailRunning();
+}
+
+function stopMonitorRefresh() {
+  if (monitorRefreshTimer) {
+    clearInterval(monitorRefreshTimer);
+    monitorRefreshTimer = null;
+  }
+  stopLogTail();
 }
 
 /* ---------- commitments band (stateful special features) ---------- */
@@ -202,6 +274,20 @@ function buildChannels() {
   }
 }
 
+function normalizeChannelSelection() {
+  const srv = chTree.find((s) => s.key === chServer) || chTree[0];
+  if (!srv) {
+    chServer = null;
+    chChannel = null;
+    return;
+  }
+  chServer = srv.key;
+  if (!srv.channels.some((c) => c.id === chChannel)) {
+    const withActivity = srv.channels.find((c) => c.turns.length) || srv.channels[0];
+    chChannel = withActivity?.id;
+  }
+}
+
 const AVATAR_PALETTE = ["#b5703a", "#2a6c8f", "#3a7d5c", "#9a5a8a", "#a8772a", "#4a4a78", "#5a8a4a", "#a84a4a"];
 function avatarColor(name) {
   let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
@@ -212,9 +298,16 @@ const initials = (name) => name.replace(/^@/, "").slice(0, 2).toUpperCase();
 // Live log tail over the backend's SSE endpoint (replays the last lines, then
 // streams appended ones). Closed whenever the raw view isn't showing.
 let logES = null;
-function stopLogTail() { if (logES) { logES.close(); logES = null; } }
+let logPane = null;
+function stopLogTail() {
+  if (logES) logES.close();
+  logES = null;
+  logPane = null;
+}
 function startLogTail(pane) {
+  if (!pane) return;
   stopLogTail();
+  logPane = pane;
   logES = new EventSource(A("/logs?file=main&follow=1"));
   logES.onmessage = (e) => {
     const nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
@@ -227,7 +320,32 @@ function startLogTail(pane) {
   };
 }
 
-function renderActivity() {
+function ensureLogTailRunning() {
+  if (!monitorIsActive() || monView !== "raw") return;
+  if (!(document.getElementById("raw-follow")?.checked ?? true)) return;
+  const pane = document.getElementById("rawlog-live");
+  if (!pane) return;
+  if (!logES || logPane !== pane) startLogTail(pane);
+}
+
+function captureChannelScroll(enabled) {
+  if (!enabled || monView !== "channels") return null;
+  const feed = document.querySelector("#activity-body .feed");
+  if (!feed) return null;
+  const distanceFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+  return { distanceFromBottom, nearBottom: distanceFromBottom < 60 };
+}
+
+function restoreChannelScroll(feed, state) {
+  if (!feed || !state) return;
+  if (state.nearBottom) {
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+  feed.scrollTop = Math.max(0, feed.scrollHeight - feed.clientHeight - state.distanceFromBottom);
+}
+
+function renderActivity(options = {}) {
   const body = document.getElementById("activity-body");
   if (monView === "raw") {
     // auto-follow on (default) = live tail; off = frozen snapshot to read/scroll
@@ -239,7 +357,7 @@ function renderActivity() {
         `<div class="rawlog live" id="rawlog-live"></div>`;
       document.getElementById("rawlog-clear").onclick =
         () => { document.getElementById("rawlog-live").innerHTML = ""; };
-      startLogTail(document.getElementById("rawlog-live"));
+      if (monitorIsActive()) startLogTail(document.getElementById("rawlog-live"));
     } else {
       stopLogTail();
       body.innerHTML = rawHTML(monMain);
@@ -247,10 +365,10 @@ function renderActivity() {
     return;
   }
   stopLogTail();
-  renderChannelMonitor(body);   // episodes + skills now live inside the channel streams
+  renderChannelMonitor(body, options);   // episodes + skills now live inside the channel streams
 }
 
-function renderChannelMonitor(body) {
+function renderChannelMonitor(body, options = {}) {
   const srv = chTree.find((s) => s.key === chServer) || chTree[0];
   const chan = srv.channels.find((c) => c.id === chChannel) || srv.channels[0];
 
@@ -287,7 +405,10 @@ function renderChannelMonitor(body) {
     </div>`;
   // open at the newest, like a real channel
   const feed = body.querySelector(".feed");
-  if (feed) feed.scrollTop = feed.scrollHeight;
+  if (feed) {
+    if (options.preserveScroll) restoreChannelScroll(feed, options.scrollState);
+    else feed.scrollTop = feed.scrollHeight;
+  }
 }
 
 /* render one channel as a chronological stream of everything the bot did here */
@@ -597,12 +718,17 @@ function wireActivity() {
   document.getElementById("raw-follow")?.addEventListener("change", () => {
     if (monView === "raw") renderActivity();   // toggle live tail ↔ frozen snapshot
   });
-  window.addEventListener("beforeunload", stopLogTail);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopMonitorRefresh();
+    else if (activeTab === "monitor" && loaded.monitor) startMonitorRefresh({ immediate: true });
+  });
+  window.addEventListener("beforeunload", stopMonitorRefresh);
   document.querySelectorAll(".subtoggle a").forEach((a) =>
     a.addEventListener("click", () => {
       monView = a.dataset.view;
       document.querySelectorAll(".subtoggle a").forEach((x) => x.classList.toggle("active", x === a));
       renderActivity();
+      if (monView === "raw") ensureLogTailRunning();
     }));
 }
 
