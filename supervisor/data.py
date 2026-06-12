@@ -10,6 +10,7 @@ imports the bot's runtime objects.
 import json
 import logging
 import re
+import shutil
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -478,6 +479,11 @@ class BotData:
         def walk(d: Path, rel: str) -> list:
             entries = []
             for p in sorted(d.iterdir(), key=lambda x: (x.is_file(), x.name)):
+                # Skip dot-entries: .history archival snapshots (id-named copies
+                # that would surface as a phantom second tree) and any other
+                # internal bookkeeping the operator never edits.
+                if p.name.startswith("."):
+                    continue
                 child_rel = f"{rel}/{p.name}" if rel else p.name
                 node = {"name": p.name}
                 if labeler:
@@ -485,7 +491,8 @@ class BotData:
                     if lbl:
                         node["label"] = lbl
                 if p.is_dir():
-                    node.update({"type": "dir", "children": walk(p, child_rel)})
+                    node.update({"type": "dir", "path": child_rel,
+                                 "children": walk(p, child_rel)})
                 else:
                     stat = p.stat()
                     node.update({
@@ -520,6 +527,39 @@ class BotData:
     def repository_file(self, bot_id: str, rel_path: str) -> bytes:
         p = self.root.jailed(self.root.repository_dir(bot_id), rel_path)
         return p.read_bytes()
+
+    # --- repository file-manager ops (Finder-style; disk is the bot's truth) ----
+
+    def repo_mkdir(self, bot_id: str, rel_path: str) -> None:
+        """Create a folder (and any missing parents) in the repository."""
+        p = self.root.jailed(self.root.repository_dir(bot_id), rel_path)
+        p.mkdir(parents=True, exist_ok=True)
+
+    def repo_move(self, bot_id: str, src: str, dst: str) -> None:
+        """Rename or move a file/folder. Refuses to clobber an existing target
+        or to move a folder into itself."""
+        base = self.root.repository_dir(bot_id)
+        sp = self.root.jailed(base, src)
+        dp = self.root.jailed(base, dst)
+        if not sp.exists():
+            raise FileNotFoundError(f"no such entry: {src}")
+        if dp.exists():
+            raise FileExistsError(f"already exists: {dst}")
+        if sp.is_dir() and (dp == sp or sp in dp.parents):
+            raise ValueError("cannot move a folder into itself")
+        dp.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(sp), str(dp))
+
+    def repo_delete(self, bot_id: str, rel_path: str) -> bool:
+        """Delete a file or folder (folders recursively). False if absent."""
+        p = self.root.jailed(self.root.repository_dir(bot_id), rel_path)
+        if p.is_dir():
+            shutil.rmtree(p)
+            return True
+        if p.is_file():
+            p.unlink()
+            return True
+        return False
 
     # --- logs -----------------------------------------------------------------------
 

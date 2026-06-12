@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.3] - 2026-06-11
+
+**Status:** Pre-release (beta). Dashboard polish — the app reads more clearly
+and the repository tab behaves like a real file manager.
+
+### Added
+- **Repository file manager** — the Repository tab is now a small Finder:
+  one-click **Upload file** (straight to a native picker, into the selected
+  folder), **New folder** (created and dropped into inline rename),
+  double-click-to-rename for files and folders, and **drag-and-drop** to move
+  things between folders or out to the root. Backed by new
+  `repository/dir` (mkdir) and `repository/move` (rename/move) endpoints;
+  folder deletion is recursive.
+- **Config presets read as labelled cards.** Reaction usage, rate limit,
+  proactive intensity, and log level now render each option as a selectable
+  card with a Capitalized label and a one-line description, instead of a bare
+  dropdown — you can tell what each preset means without guessing.
+
+### Changed
+- **The dashboard stays current without a restart.** Saving config now
+  refreshes the bot's nameplate and re-pulls the monitor and memories tabs,
+  and the save banner reflects whether a restart is actually needed (a
+  stopped bot just applies it on next start) — matching the
+  configure-before-you-start workflow.
+- **File-tree chevrons track their state.** Folder arrows in the memory and
+  repository browsers rotate to show expanded vs. collapsed.
+- **Bot cards telegraph their clickability** with a hover state (the whole
+  card already opened the bot's dashboard).
+
+### Fixed
+- **Memory browser no longer shows a phantom second tree.** `.history`
+  archival snapshots (the id-named recovery copies kept beside each rewritten
+  file) are now hidden from the memory and repository trees.
+
 ## [0.10.2] - 2026-06-11
 
 **Status:** Pre-release (beta). Configuration clarity, memory readability, and a

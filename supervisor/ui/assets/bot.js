@@ -626,18 +626,29 @@ const HINTS = {
   "discord.backfill_days": { label: "Backfill history", help: "How much prior channel history to pull on first join. Off skips it entirely.", widget: "backfill" },
 
   "personality.base_prompt": { label: "Personality", help: "The standing prompt — who this bot is. The single most load-bearing field.", widget: "prompt" },
-  "personality.reaction_usage": { label: "Reaction usage", options: ["never", "rare", "moderate", "frequent"], help: "How often it adds emoji reactions." },
+  "personality.reaction_usage": { label: "Reaction usage", help: "How often it adds emoji reactions.", choices: [
+    ["never", "Never", "No emoji reactions at all."],
+    ["rare", "Rare", "An occasional reaction, only when it really lands."],
+    ["moderate", "Moderate", "Reacts when it fits the moment."],
+    ["frequent", "Frequent", "Leans on reactions as part of how it talks."]] },
 
   "reactive.enabled": { label: "Reactive engine", help: "Answers @mentions and scans conversation." },
   "reactive.always_respond_to_mentions": { label: "Always answer @mentions", help: "Guarantees a reply when pinged." },
-  "reactive.rate_limit": { label: "Rate limit", options: ["strict", "moderate", "permissive", "unlimited"], help: "Preset governing how often it answers." },
+  "reactive.rate_limit": { label: "Rate limit", help: "Preset governing how often it answers.", choices: [
+    ["strict", "Strict", "Answers sparingly; long cooldowns between replies."],
+    ["moderate", "Moderate", "A balanced replying cadence."],
+    ["permissive", "Permissive", "Replies readily; short cooldowns."],
+    ["unlimited", "Unlimited", "No rate limit — answers every time it decides to."]] },
   "reactive.check_interval_seconds": { label: "Scan interval", help: "Seconds between periodic conversation scans.", min: 1 },
 
   "agentic.enabled": { label: "Agentic engine", help: "The background loop — proactive engagement and follow-ups." },
   "agentic.check_interval_hours": { label: "Loop interval", help: "Hours between agentic wake-ups." },
   "agentic.followups.enabled": { label: "Follow-ups", help: "Lets the bot schedule and fire follow-ups." },
   "agentic.proactive.enabled": { label: "Proactive engagement", help: "Opening conversations unprompted." },
-  "agentic.proactive.intensity": { label: "Intensity", options: ["gentle", "moderate", "active"], help: "Preset: idle window + per-day caps." },
+  "agentic.proactive.intensity": { label: "Intensity", help: "How eagerly it opens conversation when a channel goes quiet.", choices: [
+    ["gentle", "Gentle", "Rarely opens up — long idle window, low daily cap."],
+    ["moderate", "Moderate", "Occasional openers when a channel goes quiet."],
+    ["active", "Active", "Reaches out often — short idle window, higher cap."]] },
   "agentic.proactive.quiet_hours": { label: "Quiet hours", help: "Local-clock hours when it stays silent. Click hours to toggle.", widget: "hours" },
   "agentic.proactive.allowed_channels": { label: "Proactive channels", help: "Where unprompted openings are permitted. Empty = none.", widget: "channels" },
 
@@ -659,7 +670,11 @@ const HINTS = {
   "attachments.backfill_days": { label: "Attachment backfill days", help: "0 = unlimited." },
   "attachments.repository.enabled": { label: "File repository", help: "Per-server drive the bot manages." },
 
-  "logging.level": { label: "Log level", options: ["DEBUG", "INFO", "WARNING", "ERROR"] },
+  "logging.level": { label: "Log level", help: "How much detail the bot writes to its log file.", choices: [
+    ["DEBUG", "Debug", "Everything, including internals. Noisy."],
+    ["INFO", "Info", "Normal operational detail. The default."],
+    ["WARNING", "Warning", "Only warnings and errors."],
+    ["ERROR", "Error", "Errors only."]] },
 
   "vaults": { label: "Vaults", help: "Channel/server ids whose content never leaves them. Empty = none.", widget: "chips" },
 };
@@ -780,10 +795,11 @@ function fieldHTML(path) {
       ${h.help ? `<div class="help">${esc(h.help)}</div>` : ""}
     </div>`;
   return `<div class="field" data-path="${esc(path)}" data-widget="${esc(widget)}">
-    ${lab}<div class="ctl">${ctlHTML(widget, val, h)}</div></div>`;
+    ${lab}<div class="ctl">${ctlHTML(widget, val, h, path)}</div></div>`;
 }
 
 function inferWidget(val, h) {
+  if (h.choices) return "radioset";
   if (h.options) return "select";
   if (typeof val === "boolean") return "toggle";
   if (typeof val === "number") return "number";
@@ -810,10 +826,20 @@ function hoursHTML(selected) {
     <div class="hours-cap">shaded = quiet (host's local clock)</div>`;
 }
 
-function ctlHTML(widget, val, h) {
+function ctlHTML(widget, val, h, path) {
   switch (widget) {
     case "toggle":
       return `<label class="toggle"><input type="checkbox" ${val ? "checked" : ""}></label>`;
+    case "radioset": {
+      // selectable cards: each option carries a one-line tagline (item 5/6)
+      const name = `rs-${(path || "x").replace(/\W/g, "_")}`;
+      return `<div class="radioset">${h.choices.map(([v, lbl, desc]) =>
+        `<label class="ropt">
+           <input type="radio" name="${name}" value="${esc(v)}" ${v === val ? "checked" : ""}>
+           <span class="rlab">${esc(lbl)}</span>
+           <span class="rdesc">${esc(desc)}</span>
+         </label>`).join("")}</div>`;
+    }
     case "prompt":
       return `<textarea class="prompt">${esc(String(val ?? ""))}</textarea>`;
     case "number":
@@ -832,8 +858,9 @@ function ctlHTML(widget, val, h) {
          <div class="picker"></div><div class="err"></div>`;
     case "effort": {
       const cur = val ?? "";
+      const titleize = (o) => o.charAt(0).toUpperCase() + o.slice(1);
       const opts = ["", "low", "medium", "high", "max"].map((o) =>
-        `<option value="${o}" ${o === cur ? "selected" : ""}>${o || "default (high)"}</option>`).join("");
+        `<option value="${o}" ${o === cur ? "selected" : ""}>${o ? titleize(o) : "Default (high)"}</option>`).join("");
       return `<select>${opts}</select>`;
     }
     case "backfill": {
@@ -1052,6 +1079,8 @@ function fieldValue(field) {
       return ctl.querySelector("select").value || null;
     }
     case "select": return ctl.querySelector("select").value;
+    case "radioset":
+      return ctl.querySelector("input[type=radio]:checked")?.value ?? null;
     case "guilds": case "channels": {
       const checks = [...ctl.querySelectorAll(".picker input[type=checkbox]")];
       if (checks.length) return checks.filter((c) => c.checked).map((c) => c.value);
@@ -1117,9 +1146,18 @@ async function saveConfig() {
     return;
   }
   cfg = candidate;
+  const saved = await r.json().catch(() => ({}));
   banner.className = "cfg-banner ok";
-  banner.textContent = "Saved — config validated and written. Restart the bot to apply it.";
+  banner.textContent = saved.restart_required
+    ? "Saved — config validated and written. Restart the bot to apply it."
+    : "Saved — config validated and written. It applies when you start the bot.";
   setDirty(false);
+  // keep the rest of the dashboard honest without a manual reload (item 4):
+  // refresh the always-visible nameplate and force config-dependent tabs to
+  // reload fresh the next time they're opened.
+  apiGet(A("/status")).then(renderNameplate).catch(() => {});
+  loaded.monitor = false;
+  loaded.memories = false;
 }
 
 /* ====================== file browser (shared) ====================== */
@@ -1145,6 +1183,8 @@ function makeBrowser(rootEl, treeData, kind) {
     const el = e.target.closest(".node");
     if (!el) return;
     if (el.classList.contains("dir")) {
+      // keep the chevron and the children in lockstep
+      el.classList.toggle("expanded");
       el.nextElementSibling?.classList.toggle("collapsed");
       return;
     }
@@ -1163,7 +1203,8 @@ function nodeHTML(node, depth) {
   const sub = node.label ? `<span class="nid">${esc(node.name)}</span>` : "";
   if (node.type === "dir") {
     const kids = (node.children || []).map((c) => nodeHTML(c, depth + 1)).join("");
-    return `<div class="node dir"><span class="ic">▸</span>${primary}${sub}</div>
+    // dirs start expanded; the chevron rotates with the .expanded state (CSS)
+    return `<div class="node dir expanded"><span class="ic chev">▸</span>${primary}${sub}</div>
             <div class="children">${kids}</div>`;
   }
   return `<div class="node file" data-file='${esc(JSON.stringify(node)).replace(/'/g, "&#39;")}'>
@@ -1376,54 +1417,229 @@ async function pollInduct(loud) {
   }
 }
 
-/* ---- Repository: browser + upload + delete ---- */
+/* ---- Repository: a small Finder — upload, new folder, rename, drag-move ---- */
+
+const baseName = (p) => p.split("/").pop();
+const parentDir = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+const joinPath = (dir, name) => (dir ? `${dir}/${name}` : name);
+
+let repoSel = "";   // selected folder = the upload target ("" is the root)
 
 async function loadRepository() {
   const panel = document.getElementById("tab-repository");
   const tree = await apiGet(A("/repository/tree"));
-  const folders = (tree.tree || []).filter((n) => n.type === "dir").map((n) => n.name);
+  // keep the selection only if that folder still exists
+  if (repoSel && !findRepoDir(tree.tree || [], repoSel)) repoSel = "";
   panel.innerHTML = `
-    <div class="browse-bar">
-      <label class="sub">into folder</label>
-      <input id="repo-folder" list="repo-folders" value="${esc(folders[0] || "")}"
-        placeholder="server id folder">
-      <datalist id="repo-folders">${folders.map((f) =>
-        `<option value="${esc(f)}">`).join("")}</datalist>
-      <input type="file" id="repo-file" multiple>
-      <button class="btn small" id="repo-upload">Upload</button>
-      <span class="sub">files land in the bot's repository — it sees them on
-        its next turn</span>
+    <div class="repo-bar">
+      <button class="btn small" id="repo-upload">Upload file</button>
+      <button class="btn small" id="repo-newdir">New folder</button>
+      <button class="btn small danger" id="repo-deldir" hidden>Delete folder</button>
+      <span class="repo-target">Upload to <b id="repo-target"></b></span>
       <span class="err" id="repo-err"></span>
+      <input type="file" id="repo-file" multiple hidden>
     </div>
-    <div id="repo-browser"></div>`;
-  makeBrowser(document.getElementById("repo-browser"), tree, "repository");
-  document.getElementById("repo-upload").onclick = uploadRepoFiles;
+    <div class="repo-hint">Drag files and folders to move them · double-click a
+      name to rename · drop onto the root strip to move out of a folder</div>
+    <div class="browser">
+      <div class="tree" id="repo-tree">
+        <div class="rootzone" data-path="">Repository root</div>
+        ${(tree.tree || []).map(repoNodeHTML).join("")
+          || `<div class="empty" style="padding:18px 8px">Empty — upload a file or make a folder.</div>`}
+      </div>
+      <div class="pane"><div class="empty">Select a file to view it.</div></div>
+    </div>`;
+  wireRepo(panel, tree);
 }
 
-async function uploadRepoFiles() {
-  const folder = document.getElementById("repo-folder").value.trim().replace(/^\/+|\/+$/g, "");
-  const files = document.getElementById("repo-file").files;
-  const err = document.getElementById("repo-err");
-  err.textContent = "";
-  if (!folder) { err.textContent = "name a folder (usually the server id)"; return; }
-  if (!files.length) { err.textContent = "choose at least one file"; return; }
-  const btn = document.getElementById("repo-upload");
-  btn.disabled = true; btn.textContent = "Uploading…";
-  try {
-    for (const f of files) {
-      const r = await fetch(A(`/repository/file?path=${encodeURIComponent(`${folder}/${f.name}`)}`),
-        { method: "PUT", body: f });
-      if (!r.ok) {
-        const b = await r.json().catch(() => ({}));
-        throw new Error(b.error || `upload failed (${r.status})`);
-      }
-    }
-  } catch (e) {
-    err.textContent = e.message;
-    btn.disabled = false; btn.textContent = "Upload";
-    return;
+function repoNodeHTML(node) {
+  const tag = `draggable="true" data-path="${esc(node.path)}" data-type="${node.type}"`;
+  if (node.type === "dir") {
+    const kids = (node.children || []).map(repoNodeHTML).join("");
+    return `<div class="node dir expanded droppable ${repoSel === node.path ? "selected" : ""}" ${tag}>
+        <span class="ic chev">▸</span><span class="nm">${esc(node.name)}</span>
+      </div><div class="children">${kids}</div>`;
   }
-  loadRepository();
+  return `<div class="node file" ${tag}
+        data-file='${esc(JSON.stringify(node)).replace(/'/g, "&#39;")}'>
+      <span class="ic">·</span><span class="nm">${esc(node.name)}</span></div>`;
+}
+
+function findRepoDir(nodes, path) {
+  for (const n of nodes) {
+    if (n.type !== "dir") continue;
+    if (n.path === path) return n;
+    const hit = findRepoDir(n.children || [], path);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function wireRepo(panel, tree) {
+  const treeEl = panel.querySelector("#repo-tree");
+  const paneEl = panel.querySelector(".pane");
+  const err = panel.querySelector("#repo-err");
+  const fileIn = panel.querySelector("#repo-file");
+  const setErr = (m) => { err.textContent = m || ""; };
+
+  const syncTarget = () => {
+    panel.querySelector("#repo-target").textContent = repoSel ? `/${repoSel}` : "/ (root)";
+    panel.querySelector("#repo-deldir").hidden = !repoSel;
+  };
+  syncTarget();
+
+  // selection + expand/collapse + open file
+  treeEl.addEventListener("click", (e) => {
+    if (e.target.closest(".nm.editing")) return;
+    const el = e.target.closest(".node");
+    if (!el) {
+      if (e.target.classList.contains("rootzone")) { repoSel = ""; reselect(); }
+      return;
+    }
+    if (el.classList.contains("dir")) {
+      if (e.target.closest(".chev")) {          // chevron toggles only
+        el.classList.toggle("expanded");
+        el.nextElementSibling?.classList.toggle("collapsed");
+        return;
+      }
+      repoSel = el.dataset.path; reselect();     // body selects as upload target
+      return;
+    }
+    treeEl.querySelectorAll(".node.file").forEach((n) => n.classList.remove("active"));
+    el.classList.add("active");
+    showFile(paneEl, JSON.parse(el.dataset.file), "repository");
+  });
+  function reselect() {
+    treeEl.querySelectorAll(".node.dir").forEach((n) =>
+      n.classList.toggle("selected", n.dataset.path === repoSel));
+    panel.querySelector(".rootzone").classList.toggle("selected", repoSel === "");
+    syncTarget();
+  }
+
+  // inline rename (double-click the name)
+  treeEl.addEventListener("dblclick", (e) => {
+    const nm = e.target.closest(".nm");
+    const node = e.target.closest(".node");
+    if (!nm || !node) return;
+    beginRename(nm, node);
+  });
+  function beginRename(nm, node) {
+    const oldName = nm.textContent;
+    const oldPath = node.dataset.path;
+    nm.classList.add("editing");
+    nm.innerHTML = `<input class="rename-in" value="${esc(oldName)}">`;
+    const inp = nm.querySelector("input");
+    inp.focus(); inp.select();
+    let done = false;
+    const finish = async (commit) => {
+      if (done) return; done = true;
+      const next = inp.value.trim();
+      nm.classList.remove("editing");
+      if (!commit || !next || next === oldName) { nm.textContent = oldName; return; }
+      nm.textContent = next;
+      try {
+        await apiSend("POST", A("/repository/move"),
+          { from: oldPath, to: joinPath(parentDir(oldPath), next) });
+        loadRepository();
+      } catch (ex) { setErr("rename failed — name may already exist"); loadRepository(); }
+    };
+    inp.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") finish(true);
+      else if (ev.key === "Escape") finish(false);
+    });
+    inp.addEventListener("blur", () => finish(true));
+  }
+
+  // drag to move (files and folders), into folders or out to the root strip
+  let dragPath = null, dragType = null;
+  treeEl.addEventListener("dragstart", (e) => {
+    const el = e.target.closest(".node");
+    if (!el) return;
+    dragPath = el.dataset.path; dragType = el.dataset.type;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", dragPath); } catch {}
+  });
+  const dropTarget = (e) => e.target.closest(".node.dir.droppable") || e.target.closest(".rootzone");
+  treeEl.addEventListener("dragover", (e) => {
+    if (dragPath == null) return;
+    const t = dropTarget(e);
+    if (!t) return;
+    e.preventDefault();
+    treeEl.querySelectorAll(".dropping").forEach((n) => n.classList.remove("dropping"));
+    t.classList.add("dropping");
+  });
+  treeEl.addEventListener("dragleave", (e) => {
+    const t = dropTarget(e);
+    if (t) t.classList.remove("dropping");
+  });
+  treeEl.addEventListener("drop", async (e) => {
+    const t = dropTarget(e);
+    treeEl.querySelectorAll(".dropping").forEach((n) => n.classList.remove("dropping"));
+    if (dragPath == null || !t) return;
+    e.preventDefault();
+    const destDir = t.dataset.path || "";
+    const from = dragPath; dragPath = null;
+    if (destDir === parentDir(from)) return;          // already there — no-op
+    if (dragType === "dir" && (destDir === from || destDir.startsWith(from + "/"))) {
+      setErr("can't move a folder into itself"); return;
+    }
+    try {
+      await apiSend("POST", A("/repository/move"),
+        { from, to: joinPath(destDir, baseName(from)) });
+      loadRepository();
+    } catch (ex) { setErr("move failed — a file with that name may already be there"); }
+  });
+
+  // toolbar: upload (to the selected folder), new folder, delete folder
+  panel.querySelector("#repo-upload").onclick = () => { setErr(""); fileIn.click(); };
+  fileIn.onchange = async () => {
+    const files = [...fileIn.files];
+    if (!files.length) return;
+    const btn = panel.querySelector("#repo-upload");
+    btn.disabled = true; btn.textContent = "Uploading…";
+    try {
+      for (const f of files) {
+        const r = await fetch(A(`/repository/file?path=${encodeURIComponent(joinPath(repoSel, f.name))}`),
+          { method: "PUT", body: f });
+        if (!r.ok) {
+          const b = await r.json().catch(() => ({}));
+          throw new Error(b.error || `upload failed (${r.status})`);
+        }
+      }
+      loadRepository();
+    } catch (ex) {
+      setErr(ex.message);
+      btn.disabled = false; btn.textContent = "Upload file";
+    }
+  };
+  panel.querySelector("#repo-newdir").onclick = async () => {
+    setErr("");
+    // mint a unique "untitled folder" then drop it straight into rename
+    const existing = new Set((tree.tree || []).filter((n) => n.type === "dir")
+      .map((n) => n.name));
+    let name = "untitled folder", i = 2;
+    while (existing.has(name)) name = `untitled folder ${i++}`;
+    try {
+      await apiSend("POST", A("/repository/dir"), { path: joinPath(repoSel, name) });
+      await loadRepository();
+      const node = [...document.querySelectorAll("#repo-tree .node.dir")]
+        .find((n) => n.dataset.path === joinPath(repoSel, name));
+      if (node) beginRename(node.querySelector(".nm"), node);
+    } catch (ex) { setErr("couldn't create folder"); }
+  };
+  panel.querySelector("#repo-deldir").onclick = async () => {
+    if (!repoSel) return;
+    if (!confirm(`Delete the folder "${repoSel}" and everything in it?`)) return;
+    try {
+      await apiSend("DELETE", A(`/repository/file?path=${encodeURIComponent(repoSel)}`));
+      repoSel = "";
+      loadRepository();
+    } catch (ex) { setErr("couldn't delete folder"); }
+  };
+
+  // open the first file so the pane isn't blank
+  const first = treeEl.querySelector(".node.file");
+  if (first) { first.classList.add("active"); showFile(paneEl, JSON.parse(first.dataset.file), "repository"); }
 }
 
 /* ====================== Integrations (skills + MCP) ====================== */

@@ -555,12 +555,41 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     async def delete_repo_file(request):
         bot_id = bot_or_404(request)
         rel = request.query.get("path", "")
-        p = root.jailed(root.repository_dir(bot_id), rel)
-        if not p.is_file():
-            return json_response({"error": f"no such file: {rel}"}, status=404)
-        p.unlink()
-        logger.info(f"Repository file deleted for {bot_id}: {rel}")
+        if not rel:
+            return json_response({"error": "path parameter required"}, status=400)
+        if not data.repo_delete(bot_id, rel):
+            return json_response({"error": f"no such entry: {rel}"}, status=404)
+        logger.info(f"Repository entry deleted for {bot_id}: {rel}")
         return json_response({"deleted": True, "path": rel})
+
+    async def post_repo_dir(request):
+        bot_id = bot_or_404(request)
+        body = await request.json()
+        rel = str(body.get("path") or "").strip()
+        if not rel:
+            return json_response({"error": "path required"}, status=400)
+        try:
+            data.repo_mkdir(bot_id, rel)
+        except PathJailError as e:
+            return json_response({"error": str(e)}, status=400)
+        logger.info(f"Repository folder created for {bot_id}: {rel}")
+        return json_response({"created": True, "path": rel})
+
+    async def post_repo_move(request):
+        bot_id = bot_or_404(request)
+        body = await request.json()
+        src = str(body.get("from") or "").strip()
+        dst = str(body.get("to") or "").strip()
+        if not src or not dst:
+            return json_response({"error": "from and to required"}, status=400)
+        try:
+            data.repo_move(bot_id, src, dst)
+        except PathJailError as e:
+            return json_response({"error": str(e)}, status=400)
+        except (FileNotFoundError, FileExistsError, ValueError) as e:
+            return json_response({"error": str(e)}, status=409)
+        logger.info(f"Repository move for {bot_id}: {src} -> {dst}")
+        return json_response({"moved": True, "from": src, "to": dst})
 
     # --- induction (memory pre-population from stored backlog) -----------------
 
@@ -669,6 +698,8 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
                        get_guild_channels)
     app.router.add_put("/api/bots/{bot_id}/repository/file", put_repo_file)
     app.router.add_delete("/api/bots/{bot_id}/repository/file", delete_repo_file)
+    app.router.add_post("/api/bots/{bot_id}/repository/dir", post_repo_dir)
+    app.router.add_post("/api/bots/{bot_id}/repository/move", post_repo_move)
     app.router.add_post("/api/bots/{bot_id}/induct", post_induct)
     app.router.add_get("/api/bots/{bot_id}/induct", get_induct)
     app.router.add_post("/api/supervisor/shutdown", post_shutdown)

@@ -99,6 +99,8 @@ header.page { padding: 34px 0 0; }
   cursor: pointer;   /* whole card opens the bot's dashboard */
 }
 .row > * { min-width: 0; }   /* cells shrink instead of overflowing into neighbours */
+/* whole card is clickable (→ bot dashboard); telegraph it on hover */
+.board .row:hover { background: #f3eee0; border-color: var(--ink-faint); }
 
 /* shed the least-critical columns on narrower windows; ops stays content-sized.
    `.board` prefix keeps these winning over the later `.row .vol/.signals` rules. */
@@ -909,3 +911,54 @@ footer.page {
   font-family: var(--mono); font-size: 10px; color: var(--ink-faint);
   margin-left: 8px; letter-spacing: .02em;
 }
+
+/* ===================== v0.10.3: polish pass ===================== */
+
+/* file-tree chevron now tracks expand/collapse state (item 2) */
+.tree .node.dir > .ic.chev { display: inline-block; transition: transform .12s ease; }
+.tree .node.dir.expanded > .ic.chev { transform: rotate(90deg); }
+/* resolved-id subtitle (the raw id under a human label) */
+.tree .node .nid { color: var(--ink-faint); margin-left: 8px; font-size: 10.5px; letter-spacing: .03em; }
+.tree .node.file.active .nid { color: rgba(247,243,234,.55); }
+
+/* config preset options as labelled cards — each choice carries a tagline
+   (items 5 + 6: descriptions + Capitalized labels) */
+.radioset { display: flex; flex-direction: column; gap: 8px; max-width: 540px; }
+.ropt {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 11px; row-gap: 2px;
+  border: 1px solid var(--rule-strong); padding: 9px 13px; cursor: pointer;
+  border-radius: 2px; transition: border-color .1s, background .1s;
+}
+.ropt input { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin: 2px 0 0; accent-color: var(--ink); }
+.ropt .rlab { grid-column: 2; grid-row: 1; font-size: 14px; color: var(--ink); }
+.ropt .rdesc { grid-column: 2; grid-row: 2; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+.ropt:hover { border-color: var(--ink-faint); }
+.ropt:has(input:checked) { border-color: var(--ink); background: rgba(33,29,22,.045); }
+
+/* destructive button variant */
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn.danger:hover { background: var(--danger-bg); }
+
+/* repository Finder: toolbar, root drop strip, drag/rename affordances (item 3) */
+.repo-bar { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; flex-wrap: wrap; }
+.repo-bar .repo-target { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); letter-spacing: .04em; }
+.repo-bar .repo-target b { color: var(--ink); }
+.repo-bar .err { color: var(--red); font-size: 12px; }
+.repo-hint { font-size: 12px; color: var(--ink-faint); line-height: 1.45; margin-bottom: 2px; }
+.rootzone {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-faint); padding: 7px 9px; margin-bottom: 8px;
+  border: 1px dashed var(--rule-strong); border-radius: 2px; cursor: pointer;
+}
+.rootzone:hover { color: var(--ink-soft); }
+.rootzone.selected { border-color: var(--ink); color: var(--ink-soft); }
+.tree .node.dir.selected > .nm { color: var(--ink); font-weight: 600; }
+.tree .node[draggable="true"] { cursor: grab; }
+.tree .node.dropping, .rootzone.dropping {
+  background: rgba(47,125,68,.12); outline: 1px solid var(--ok); outline-offset: -1px;
+}
+.rename-in {
+  font-family: var(--mono); font-size: 12.5px; padding: 1px 5px; width: 168px;
+  border: 1px solid var(--ink); background: var(--paper); color: var(--ink);
+}
+.rename-in:focus { outline: none; }
