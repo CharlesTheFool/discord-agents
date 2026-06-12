@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.1] - 2026-06-12
+
+**Status:** Pre-release (beta). Phantom-attachment hardening, from a second
+field occurrence on 0.11.3 (the guard fired and the model doubled down past
+it).
+
+### Fixed
+- **The bot can now see its own delivery record.** `<recent_messages>`
+  includes the bot's own recent messages with Discord's ground truth -
+  `[attached a file]` or `[no file attached]` - so a prior message claiming
+  a file that never attached is contradicted at perception level, every
+  request, instead of being trusted as memory.
+- **The phantom-attachment guard escalates instead of giving up.** Two
+  bounces with increasingly blunt system notes (the second states plainly
+  that zero files exist and points at the delivery record); on a third
+  strike the periodic path suppresses the response entirely - silence beats
+  a lie - while the must-reply path still answers.
+- **`send_message` description states the delivery rule**: writing
+  "attached" never attaches anything; files only ride a message through
+  `attach_outputs`.
+
+---
+
 ## [0.12.0] - 2026-06-12
 
 **Status:** Pre-release (beta). Native messaging, phase 1 (compat mode).

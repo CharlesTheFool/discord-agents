@@ -1,7 +1,7 @@
 ﻿{
   "name": "discord-agents",
   "productName": "Discord Agents",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Control panel for Discord Agents - persistent AI minds on Discord",
   "main": "main.js",
   "author": "Charles Belanger",
