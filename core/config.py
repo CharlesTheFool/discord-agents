@@ -83,12 +83,21 @@ class ProactiveConfig:
 
 
 @dataclass
+class ConsolidationConfig:
+    """Weekly memory reconsolidation (Batches API). Costs tokens, so it's
+    opt-out and its cadence is tunable - longer interval = cheaper, less fresh."""
+    enabled: bool = True
+    interval_days: int = 7
+
+
+@dataclass
 class AgenticConfig:
     """Agentic engine configuration"""
     enabled: bool = False
     check_interval_hours: float = 1.0  # Background loop frequency
     followups: FollowupsConfig = field(default_factory=FollowupsConfig)
     proactive: ProactiveConfig = field(default_factory=ProactiveConfig)
+    consolidation: ConsolidationConfig = field(default_factory=ConsolidationConfig)
 
 
 @dataclass
@@ -349,11 +358,18 @@ class BotConfig:
             allowed_channels=proactive_data.get("allowed_channels", []),
         )
 
+        consolidation_data = agentic_data.get("consolidation", {})
+        consolidation = ConsolidationConfig(
+            enabled=consolidation_data.get("enabled", True),
+            interval_days=int(consolidation_data.get("interval_days", 7)),
+        )
+
         agentic = AgenticConfig(
             enabled=agentic_data.get("enabled", False),
             check_interval_hours=agentic_data.get("check_interval_hours", 1.0),
             followups=followups,
             proactive=proactive,
+            consolidation=consolidation,
         )
 
         # Parse API config

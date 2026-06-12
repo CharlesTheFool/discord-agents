@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.5] - 2026-06-11
 
-**Status:** Pre-release (beta). Memory in the bot's own voice.
+**Status:** Pre-release (beta). A real rethink of how the bot remembers.
 
 ### Changed
 - **The bot writes its own memory in the first person.** Consolidation and
@@ -19,12 +19,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own voice. Era digests, channel notes, server culture, and user
   profiles all read like the bot's own notes-to-self instead of a report
   about it.
-- **Induction stays honest about provenance.** When the bot distills a
-  server's backlog from before it arrived, it now writes in the first person
-  but explicitly as *gathered-from-reading, not lived* — first-person voice
-  without faking familiarity it hasn't earned.
+- **Memory is patterns and facts, not a log of every exchange.** The
+  distillation prompts now pull recurring dynamics, learned facts, inside
+  jokes, the drama and conversations that *shaped* a group, relationships,
+  and — for working servers — deliverables, roles, and workflows. Cataloguing
+  every interaction flattened people into caricatures (and the bot with
+  them); it no longer does that.
+- **Consolidation edits surgically.** Memory is treated as precious: the
+  passes preserve stable long-term facts and change as little as the evidence
+  forces, revising recent/top-of-mind material first and overturning an old
+  established fact only on clear contradiction. (The bot can already edit its
+  own memory live, so the background pass is for consolidation, not churn.)
+- **Old facts are dated.** Time-sensitive claims (a job, a city, a status)
+  are written as *true-as-of-then* when they come from old messages, so a
+  year-old "works at X" reads as possibly stale instead of current.
+- **Induction stays honest about provenance** — first person, but explicitly
+  *gathered-from-reading, not lived*.
 - Origin tags, vault boundaries, and the cross-server discretion norms are
-  unchanged — only the register of the writing shifts.
+  unchanged.
+
+### Added
+- **Reconsolidation is opt-out and tunable.** New `agentic.consolidation`
+  config (`enabled`, `interval_days`) — turn the background memory pass off to
+  freeze memory at what the bot writes live, or stretch the interval to spend
+  fewer tokens. Surfaced in the app's Configure → Brain tab.
 
 ## [0.10.4] - 2026-06-11
 

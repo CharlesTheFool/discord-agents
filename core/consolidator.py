@@ -143,14 +143,16 @@ ERA_DIGEST_SCHEMA = {
 
 ERA_SYSTEM_PROMPT = (
     "Condense your old episode notes from this channel into one era digest - "
-    "what's still worth your remembering months from now. Notice what kind of "
-    "space this is and how people are in it: a working channel turns on "
-    "decisions, specs, and ownership; a social or gaming one turns on its "
-    "relationships, its humor, and who's who with each other - let that steer "
-    "what survives. Keep the standing facts, the decisions, the lines worth "
-    "remembering (attributed by name), the jokes and dynamics that stuck, and "
-    "the register of the room. Drop the play-by-play and one-off logistics. "
-    "People by name, never raw numeric IDs. Plain, tight markdown, in your voice."
+    "the patterns and facts still worth your remembering months from now, NOT a "
+    "log of who said what. Keep the throughlines: the recurring dynamics and "
+    "relationships, the inside jokes and bits that genuinely stuck, the handful "
+    "of moments that actually shaped the group, the standing facts, and - for a "
+    "working channel - the decisions, deliverables, roles, and workflows. Drop "
+    "one-off exchanges and play-by-play: writing down every interaction "
+    "flattens people into caricatures of who they were, and you don't want "
+    "that - people change, let them. For anything time-sensitive, note roughly "
+    "when it was true so a stale fact reads as stale. People by name, never raw "
+    "numeric IDs. Plain, tight markdown, in your voice."
 )
 
 # =============================================================================
@@ -176,15 +178,20 @@ PROFILE_SCHEMA = {
 }
 
 PROFILE_SYSTEM_PROMPT = (
-    "These are your own notes on one person - the same human wherever you run "
-    "into them. Rewrite them from the evidence, in the first person: what you "
-    "know about them and, where it's earned, your own read on them. Recent "
-    "messages outrank old notes when they conflict; date or drop anything "
-    "stale; keep it lean. Let the register of the space inform what's worth "
-    "noting - how someone shows up in a workplace differs from a friend group. "
+    "These are your own notes on one person. Update them SURGICALLY - memory is "
+    "precious, so preserve what's stable and change as little as the evidence "
+    "forces. You can already edit memory freely mid-conversation, so this pass "
+    "is consolidation, not a rewrite: revise the recent and top-of-mind first, "
+    "and overturn an established old fact only when new evidence clearly "
+    "contradicts it. Keep durable patterns and learned facts about who they "
+    "are - not a tally of every exchange you've had, which only flattens them "
+    "into a caricature. For anything that goes stale (a job, a city, a "
+    "relationship, a plan), note when you last saw it true; if it's from a "
+    "while ago, say so - their life has likely moved on since, and you may "
+    "simply not have heard. Recent evidence outranks old notes on conflict. "
     "Every note keeps the origin it was learned in - preserve an existing "
-    "origin tag; new notes from this evidence are tagged with this server. "
-    "Name them, never raw numeric IDs."
+    "origin tag; new notes are tagged with this server. First person, your own "
+    "read where it's earned. Name them, never raw numeric IDs."
 )
 
 
@@ -220,21 +227,25 @@ CHANNEL_BODY_SCHEMA = {
 }
 
 REFRESH_SYSTEM_PROMPT = (
-    "Refresh your standing notes for this channel from your recent episodes. "
-    "Notice what kind of channel this is - work, project, social, play - and "
-    "keep what matters for that: a working channel's decisions and open "
-    "threads, a social one's relationships, running bits, and dynamics. Keep "
-    "what the evidence still supports, drop what went stale, merge duplicates. "
-    "Lean and concrete, in your own voice."
+    "Refresh your standing notes for this channel - surgically. Preserve what's "
+    "stable and change little; don't re-litigate settled long-term facts. Keep "
+    "the patterns that define the place: its recurring dynamics, the running "
+    "bits, the relationships, and - for a working channel - the live decisions, "
+    "deliverables, roles, and open threads. Drop what genuinely went stale and "
+    "merge duplicates, but favor keeping a durable fact over churning it. Note "
+    "when time-sensitive things were last true. Lean and concrete, first person."
 )
 
 CULTURE_SYSTEM_PROMPT = (
     "Refresh your sense of this server's culture from your channel notes - what "
-    "kind of place this is to you (a workplace, a project team, a friend group, "
-    "a gaming hangout), its rhythms, its register, and how its people are with "
-    "each other, anchored in what actually happens here. Name the register "
-    "honestly - if it's dark, casual, in-jokey, say so. People by name, never "
-    "raw numeric IDs. Lean markdown, no fluff, first person."
+    "kind of place this is to you and how its people actually are, in PATTERNS, "
+    "not a scrapbook of anecdotes. Capture the throughlines: the relationships "
+    "and roles, the inside jokes and recurring drama, the things that genuinely "
+    "shaped the group; for a working server, what it's building and how it "
+    "works. Name the register honestly - dark, casual, in-jokey, heads-down - "
+    "say so. Don't flatten anyone into a caricature, and let the place evolve: "
+    "preserve what's stable, change surgically. People by name, never raw "
+    "numeric IDs. Lean markdown, no fluff, first person."
 )
 
 
@@ -291,12 +302,25 @@ class MemoryConsolidator:
             encoding="utf-8",
         )
 
+    def _interval_days(self) -> int:
+        """User-tunable cadence; falls back to the framework default."""
+        try:
+            return int(self.config.agentic.consolidation.interval_days)
+        except (AttributeError, TypeError, ValueError):
+            return CONSOLIDATION_INTERVAL_DAYS
+
+    def _consolidation_enabled(self) -> bool:
+        try:
+            return bool(self.config.agentic.consolidation.enabled)
+        except AttributeError:
+            return True
+
     def _is_due(self, server_id: str) -> bool:
         stamp = self._read_stamp(server_id)
         if stamp is None or "last_run" not in stamp:
             return True
         last = datetime.fromisoformat(stamp["last_run"])
-        return datetime.utcnow() - last >= timedelta(days=CONSOLIDATION_INTERVAL_DAYS)
+        return datetime.utcnow() - last >= timedelta(days=self._interval_days())
 
     def _culture_due(self, server_id: str) -> bool:
         stamp = self._read_stamp(server_id)
@@ -305,7 +329,7 @@ class MemoryConsolidator:
 
     async def nightly_tick(self) -> None:
         """3am hook: consolidate AT MOST one due server (stagger = cost smoothing)."""
-        if self._running:
+        if self._running or not self._consolidation_enabled():
             return
         root = self._servers_root()
         if not root.exists():
@@ -569,7 +593,7 @@ class MemoryConsolidator:
     async def _build_profile_requests(self, server_id: str) -> list:
         if self.vaults and server_id in getattr(self.vaults, "vaults", set()):
             return []  # vaulted server evidence never updates global profiles
-        since = datetime.utcnow() - timedelta(days=CONSOLIDATION_INTERVAL_DAYS)
+        since = datetime.utcnow() - timedelta(days=self._interval_days())
         authors = await self.message_memory.get_active_authors(server_id, since)
         exclude = self._vaulted_channel_ids(server_id)
         episodes_blurb = self._recent_episode_blurb(server_id)

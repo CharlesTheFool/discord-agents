@@ -591,6 +591,7 @@ const DEFAULTS = {
     rate_limit: "moderate", check_interval_seconds: 60 },
   agentic: { enabled: false, check_interval_hours: 1.0,
     followups: { enabled: false },
+    consolidation: { enabled: true, interval_days: 7 },
     proactive: { enabled: false, intensity: "moderate",
       quiet_hours: [0, 1, 2, 3, 4, 5, 6], allowed_channels: [] } },
   api: { model: "claude-sonnet-4-6", max_tokens: 4096, context_messages: 30,
@@ -658,6 +659,8 @@ const HINTS = {
   "api.context_tokens": { label: "Context ceiling", help: "Token budget before distill + reseed." },
   "api.effort": { label: "Effort", help: "Depth-of-thought dial. Only models with effort support show this.", widget: "effort" },
   "api.consolidation_model": { label: "Memory model", options: ["claude-sonnet-4-6", "claude-fable-5", "claude-opus-4-8"], help: "Distills episodes, runs weekly reconsolidation, and powers induction. Uses medium thinking effort." },
+  "agentic.consolidation.enabled": { label: "Reconsolidation", help: "The background pass that revisits and tidies the bot's own memory. Costs tokens (Batches API, half-price) — turn it off to freeze memory at what the bot writes live." },
+  "agentic.consolidation.interval_days": { label: "Reconsolidation interval", help: "Days between reconsolidation passes per server. Longer = cheaper and more stable, less fresh.", min: 1 },
   "api.thinking.enabled": { label: "Extended thinking", help: "Adaptive thinking; the model decides when." },
   "api.web_search.enabled": { label: "Web search", help: "Live web lookups when conversation calls for it." },
 
@@ -690,7 +693,8 @@ const CONFIG_TABS = [
     "discord.backfill_days", "discord.allow_bot_interactions"] },
   { title: "Brain", items: [
     "api.model", "api.effort", "api.thinking.enabled",
-    "api.web_search.enabled", "api.consolidation_model"] },
+    "api.web_search.enabled", "api.consolidation_model",
+    "agentic.consolidation.enabled", "agentic.consolidation.interval_days"] },
   { title: "Engagement", items: [
     "reactive.enabled", "reactive.rate_limit", "agentic.enabled",
     "agentic.proactive.enabled", "agentic.proactive.intensity",
