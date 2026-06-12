@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.5] - 2026-06-11
+
+**Status:** Pre-release (beta). Memory in the bot's own voice.
+
+### Changed
+- **The bot writes its own memory in the first person.** Consolidation and
+  induction used to frame the distilling model as a detached, third-person
+  archivist. It's now framed as the bot itself — fed the bot's personality —
+  revisiting its own memory top-down and rewriting it in the first person and
+  its own voice. Era digests, channel notes, server culture, and user
+  profiles all read like the bot's own notes-to-self instead of a report
+  about it.
+- **Induction stays honest about provenance.** When the bot distills a
+  server's backlog from before it arrived, it now writes in the first person
+  but explicitly as *gathered-from-reading, not lived* — first-person voice
+  without faking familiarity it hasn't earned.
+- Origin tags, vault boundaries, and the cross-server discretion norms are
+  unchanged — only the register of the writing shifts.
+
 ## [0.10.4] - 2026-06-11
 
 **Status:** Pre-release (beta). Skill management and a stray fixture.

@@ -64,6 +64,51 @@ def with_character(base_prompt: str, character: Optional[str]) -> str:
             "register, and let it steer what is worth keeping:\n" + character)
 
 
+# Memory is the bot's own — so the model that writes it should BE the bot, in
+# first person and its own voice, not a detached archivist. The personality is
+# capped to stay lean across many batch requests.
+PERSONALITY_CAP = 1500
+
+
+def read_personality(config) -> Optional[str]:
+    """The bot's standing personality prompt (who it is), capped, or None."""
+    personality = getattr(config, "personality", None)
+    text = (getattr(personality, "base_prompt", None) or "").strip()
+    return text[:PERSONALITY_CAP] or None
+
+
+def as_self(task_prompt: str, personality: Optional[str],
+            character: Optional[str] = None, lived: bool = True) -> str:
+    """Frame a distillation prompt as the bot revisiting its OWN memory: first
+    person, its own voice — not a report ABOUT the bot. `lived=False` is for
+    induction, where the bot is reading history it wasn't around for and must
+    stay honest that it's gathered-not-lived."""
+    if lived:
+        head = (
+            "You are this Discord bot, going back over your own memory. The notes "
+            "below are your own record of your own life on this server. Rewrite "
+            "them as yourself: first person, your own voice, the way you'd write "
+            "for yourself to read later. This is not a report about some bot - "
+            "it's you, remembering. Reconsider the whole picture top-down and let "
+            "newer evidence correct what you used to think.")
+    else:
+        head = (
+            "You are this Discord bot, about to join a server that already has a "
+            "history. Below is its backlog, from before you arrived. Read it as "
+            "yourself and write what you take from it in the first person and "
+            "your own voice - but stay honest that you weren't there: this is "
+            "what you've gathered from reading the backlog, not what you lived. "
+            "Don't fake familiarity you haven't earned yet.")
+    if personality:
+        head += "\n\n<who_you_are>\n" + personality + "\n</who_you_are>"
+    out = head + "\n\n" + task_prompt
+    if character:
+        out += ("\n\nWhat this space actually is, from the operator who runs it - "
+                "ground truth about the server's nature and register; let it "
+                "steer what's worth keeping:\n" + character)
+    return out
+
+
 def memory_output_config(schema: dict, model: str) -> dict:
     """Structured-output config for a distillation request, with medium thinking
     effort on models that support it (the memory model reasons harder than the
@@ -97,15 +142,15 @@ ERA_DIGEST_SCHEMA = {
 }
 
 ERA_SYSTEM_PROMPT = (
-    "You are condensing a Discord channel's old episode files into one era "
-    "digest - what's still worth knowing months later. First read what kind of "
+    "Condense your old episode notes from this channel into one era digest - "
+    "what's still worth your remembering months from now. Notice what kind of "
     "space this is and how people are in it: a working channel turns on "
     "decisions, specs, and ownership; a social or gaming one turns on its "
     "relationships, its humor, and who's who with each other - let that steer "
-    "what survives. Keep standing facts, decisions, attributed lines worth "
-    "remembering, the jokes and dynamics that stuck, and the register of the "
-    "room. Drop the play-by-play and one-off logistics. Refer to people by name, "
-    "not raw numeric IDs. Plain, tight markdown."
+    "what survives. Keep the standing facts, the decisions, the lines worth "
+    "remembering (attributed by name), the jokes and dynamics that stuck, and "
+    "the register of the room. Drop the play-by-play and one-off logistics. "
+    "People by name, never raw numeric IDs. Plain, tight markdown, in your voice."
 )
 
 # =============================================================================
@@ -131,15 +176,15 @@ PROFILE_SCHEMA = {
 }
 
 PROFILE_SYSTEM_PROMPT = (
-    "You maintain one profile file per person - the same human across every "
-    "server. Rewrite this profile from the evidence: recent messages outrank "
-    "old claims when they conflict; date or drop anything stale; keep it lean, "
-    "third person, and matter-of-fact. Read the register of the space they're "
-    "in and let it inform what's worth noting - how someone shows up in a "
-    "workplace differs from how they are in a friend group. No commentary about "
-    "your relationship with them. Every claim keeps the origin it was learned "
-    "in - if an old claim's origin tag exists, preserve it; new claims from "
-    "this evidence are origin-tagged with this server."
+    "These are your own notes on one person - the same human wherever you run "
+    "into them. Rewrite them from the evidence, in the first person: what you "
+    "know about them and, where it's earned, your own read on them. Recent "
+    "messages outrank old notes when they conflict; date or drop anything "
+    "stale; keep it lean. Let the register of the space inform what's worth "
+    "noting - how someone shows up in a workplace differs from a friend group. "
+    "Every note keeps the origin it was learned in - preserve an existing "
+    "origin tag; new notes from this evidence are tagged with this server. "
+    "Name them, never raw numeric IDs."
 )
 
 
@@ -175,21 +220,21 @@ CHANNEL_BODY_SCHEMA = {
 }
 
 REFRESH_SYSTEM_PROMPT = (
-    "You are refreshing a Discord channel's standing notes from its recent "
-    "episode record. Read what kind of channel this is - work, project, social, "
-    "play - and keep what matters for that: a working channel's decisions and "
-    "open threads, a social one's relationships, running bits, and dynamics. "
-    "Keep what the evidence still supports, drop what went stale, merge "
-    "duplicates. Lean and concrete."
+    "Refresh your standing notes for this channel from your recent episodes. "
+    "Notice what kind of channel this is - work, project, social, play - and "
+    "keep what matters for that: a working channel's decisions and open "
+    "threads, a social one's relationships, running bits, and dynamics. Keep "
+    "what the evidence still supports, drop what went stale, merge duplicates. "
+    "Lean and concrete, in your own voice."
 )
 
 CULTURE_SYSTEM_PROMPT = (
-    "You are refreshing a server's culture file from its channels' standing "
-    "notes - what kind of place this is (a workplace, a project team, a friend "
-    "group, a gaming hangout), its rhythms, its social register, and how its "
-    "people are with each other, anchored in what actually happens there. Name "
-    "the register honestly - if it's dark, casual, in-jokey, say so. Refer to "
-    "people by name, not raw numeric IDs. Lean markdown, no fluff."
+    "Refresh your sense of this server's culture from your channel notes - what "
+    "kind of place this is to you (a workplace, a project team, a friend group, "
+    "a gaming hangout), its rhythms, its register, and how its people are with "
+    "each other, anchored in what actually happens here. Name the register "
+    "honestly - if it's dark, casual, in-jokey, say so. People by name, never "
+    "raw numeric IDs. Lean markdown, no fluff, first person."
 )
 
 
@@ -219,6 +264,7 @@ class MemoryConsolidator:
         self.batch = BatchClient(anthropic_client)
         self.vaults = vaults
         self.guild_name_resolver = guild_name_resolver
+        self._personality = read_personality(config)  # frame the writer AS the bot
         self._running = False
         self._pending_era_files: dict = {}  # key "channel_id::month" -> list[Path]
 
@@ -449,7 +495,7 @@ class MemoryConsolidator:
                     "params": {
                         "model": self.config.api.consolidation_model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": with_character(ERA_SYSTEM_PROMPT, character),
+                        "system": as_self(ERA_SYSTEM_PROMPT, self._personality, character),
                         "messages": [{"role": "user", "content":
                             f"<episodes channel_id=\"{ch_dir.name}\" month=\"{month}\">\n"
                             f"{corpus}\n</episodes>"}],
@@ -548,7 +594,7 @@ class MemoryConsolidator:
                 "params": {
                     "model": self.config.api.consolidation_model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": with_character(PROFILE_SYSTEM_PROMPT, character),
+                    "system": as_self(PROFILE_SYSTEM_PROMPT, self._personality, character),
                     "messages": [{"role": "user", "content":
                         f"This server's id: {server_id}\n\n"
                         f"<current_profile>\n{current}\n</current_profile>\n\n"
@@ -641,7 +687,7 @@ class MemoryConsolidator:
                     "params": {
                         "model": self.config.api.consolidation_model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": with_character(REFRESH_SYSTEM_PROMPT, character),
+                        "system": as_self(REFRESH_SYSTEM_PROMPT, self._personality, character),
                         "messages": [{"role": "user", "content":
                             f"<channel_state channel_id=\"{cid}\">\n{body}\n</channel_state>\n\n"
                             f"<recent_episodes>\n{episodes_text}\n</recent_episodes>"}],
@@ -660,7 +706,7 @@ class MemoryConsolidator:
             "params": {
                 "model": self.config.api.consolidation_model,
                 "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                "system": with_character(CULTURE_SYSTEM_PROMPT, character),
+                "system": as_self(CULTURE_SYSTEM_PROMPT, self._personality, character),
                 "messages": [{"role": "user", "content":
                     f"<culture>\n{culture_text}\n</culture>\n\n"
                     f"<channels>\n{channels_summary}\n</channels>"}],

@@ -21,7 +21,8 @@ from core.consolidator import (
     CULTURE_SYSTEM_PROMPT,
     archive_to_history,
     read_server_character,
-    with_character,
+    read_personality,
+    as_self,
     memory_output_config,
 )
 from core.internal_constants import (
@@ -36,28 +37,28 @@ logger = logging.getLogger(__name__)
 ARCHAEOLOGY_HEADER = "*(from reading the backlog before I was here - observations, not lived memory)*"
 
 ARCHAEOLOGY_SYSTEM = (
-    "You are reading a Discord channel's backlog from before you were around - "
-    "homework, not memories. First read what kind of space this is and how "
-    "people are in it: a workplace runs on decisions, specs, and ownership; a "
-    "tight social or gaming group runs on its relationships, its humor, and "
-    "who's who with each other - let that shape what you keep. Distill what is "
-    "still worth knowing: standing facts, decisions, attributed lines worth "
-    "keeping, the jokes and bits that actually landed, the recurring social "
-    "dynamics, and per-person observations (lean, third person, objective - you "
-    "have no relationship with these people yet). Match the register of the "
-    "room - if it's dark, casual, in-jokey, capture that texture instead of "
-    "sanding it into corporate minutes. Refer to people and channels by name, "
-    "not raw numeric IDs (the transcript gives you both - use the name). Never "
-    "write as if you were there."
+    "Read this channel's backlog - it's from before your time here, so it's "
+    "homework, not memories you lived. Notice what kind of space this is and "
+    "how people are in it: a workplace runs on decisions, specs, and ownership; "
+    "a tight social or gaming group runs on its relationships, its humor, and "
+    "who's who with each other - let that shape what you keep. Set down what's "
+    "still worth knowing: standing facts, decisions, lines worth keeping "
+    "(attributed by name), the jokes and bits that actually landed, the "
+    "recurring dynamics, and what you can tell about each person so far - lean, "
+    "and honest that you've only read them, not met them yet. Match the "
+    "register - if it's dark, casual, in-jokey, capture that texture instead of "
+    "sanding it into corporate minutes. People and channels by name, never raw "
+    "numeric IDs (the transcript gives both - use the name). Write in the first "
+    "person, but don't pretend you were there."
 )
 
 INDUCT_PROFILE_SYSTEM = (
-    "You are writing a first profile for someone from backlog observations "
-    "alone - you have never spoken to them. Third person, objective, lean. "
-    "Read the register of the space they're in and let it inform what's worth "
-    "noting - how someone shows up in a workplace differs from a friend group. "
-    "No claims about your relationship with them; there is none yet. Every "
-    "claim is origin-tagged with this server."
+    "You're forming a first impression of someone from backlog you're reading "
+    "before you've ever spoken to them. First person, lean, and honest that "
+    "you haven't met them yet - what you've gathered about them so far, not a "
+    "relationship you don't have. Let the register of the space inform what's "
+    "worth noting - how someone shows up in a workplace differs from a friend "
+    "group. Every note is origin-tagged with this server."
 )
 
 # Chunk digests reuse the era schema + a per-user observation channel
@@ -120,6 +121,7 @@ class ServerInductor:
         self.user_cache = user_cache
         self.batch = BatchClient(anthropic_client)
         self.vaults = vaults
+        self._personality = read_personality(config)  # frame the writer AS the bot
 
     async def induct(self, server_id: str, dry_run: bool = False,
                      channels: Optional[list] = None,
@@ -168,7 +170,7 @@ class ServerInductor:
                     "params": {
                         "model": model,
                         "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": with_character(ARCHAEOLOGY_SYSTEM, character),
+                        "system": as_self(ARCHAEOLOGY_SYSTEM, self._personality, character, lived=False),
                         "messages": [{"role": "user", "content":
                             f"<backlog channel_id=\"{cid}\" chunk=\"{idx + 1}/{len(chunks)}\">\n"
                             f"{transcript}\n</backlog>"}],
@@ -340,7 +342,7 @@ class ServerInductor:
                 "params": {
                     "model": model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": with_character(INDUCT_PROFILE_SYSTEM, character),
+                    "system": as_self(INDUCT_PROFILE_SYSTEM, self._personality, character, lived=False),
                     "messages": [{"role": "user", "content":
                         f"This server's id: {server_id}\n\n"
                         f"<current_profile>\n{current}\n</current_profile>\n\n"
@@ -358,7 +360,7 @@ class ServerInductor:
                 "params": {
                     "model": model,
                     "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": with_character(CULTURE_SYSTEM_PROMPT, character),
+                    "system": as_self(CULTURE_SYSTEM_PROMPT, self._personality, character, lived=False),
                     "messages": [{"role": "user", "content":
                         f"<channels>\n{channels_summary}\n</channels>"}],
                     "output_config": memory_output_config(CULTURE_SCHEMA, model),
