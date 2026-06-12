@@ -179,10 +179,11 @@ PRIME_CONTEXT_TEMPLATE = (
 # =============================================================================
 # SERVER INDUCTION (v0.8.0, Internal)
 # =============================================================================
-# Input target per distillation call (chars/4). Kept well under the point where
-# a dense chunk's digest would overflow CONSOLIDATION_MAX_TOKENS (8k) output and
-# truncate into invalid JSON - empirically ~40k-token chunks overflowed, ~29k fit.
-INDUCTION_CHUNK_TOKENS = 25_000
+# Input target per distillation call (chars/4). Kept small so a dense chunk's
+# digest stays well under the CONSOLIDATION_MAX_TOKENS output cap rather than
+# truncating into invalid JSON. Very dense channels (short, rapid messages) still
+# overflowed at 25k, so this pairs a small chunk with a raised output cap below.
+INDUCTION_CHUNK_TOKENS = 12_000
 INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
 
 # Batch-rate $/MTok (50% of live) for the dry-run cost table; unknown models
@@ -409,4 +410,4 @@ CONSOLIDATION_BATCH_POLL_SECONDS = 60
 CONSOLIDATION_BATCH_TIMEOUT_HOURS = 12
 CONSOLIDATION_EVIDENCE_MESSAGES = 80   # message sample per user for profile rewrites
 CONSOLIDATION_EVIDENCE_EPISODES = 3    # recent episode files folded into profile evidence
-CONSOLIDATION_MAX_TOKENS = 8000
+CONSOLIDATION_MAX_TOKENS = 12000  # output cap; headroom so dense induction chunks don't truncate
