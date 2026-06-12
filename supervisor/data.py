@@ -263,7 +263,7 @@ class BotData:
         # tokens today + last activity timestamps, all from the events table
         events_today = _query(
             db, "SELECT kind, ts, payload FROM events WHERE ts >= ?", (_today_iso(),))
-        tokens = {"uncached_in": 0, "cache_read": 0, "out": 0}
+        tokens = {"uncached_in": 0, "cache_read": 0, "cache_write": 0, "out": 0}
         for row in events_today:
             t = (json.loads(row["payload"]) or {}).get("tokens") or {}
             for k in tokens:

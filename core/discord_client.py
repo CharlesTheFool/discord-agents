@@ -423,6 +423,7 @@ class DiscordClient(discord.Client):
         if self.config.discord.backfill_enabled:
             self._track_task(self.backfill_message_history(
                 days_back=self.config.discord.backfill_days,
+                incremental=True,  # boot resumes where the last session stopped
             ))
 
             # Initialize memory structure with skeleton files (v0.5.0)
@@ -763,7 +764,8 @@ class DiscordClient(discord.Client):
         """Bot removed from server"""
         logger.info(f"Removed from server: {guild.name} (ID: {guild.id})")
 
-    async def backfill_message_history(self, days_back: int = 30):
+    async def backfill_message_history(self, days_back: int = 30,
+                                       incremental: bool = False):
         """
         Fetch and index historical messages from accessible channels.
 
@@ -773,15 +775,21 @@ class DiscordClient(discord.Client):
         Args:
             days_back: Number of days of history to fetch; 0 = unlimited
                        (all accessible history)
+            incremental: resume each channel from its newest stored message
+                         instead of re-fetching the whole window. Boot uses
+                         this; the daily re-backfill stays full because its
+                         job is catching edits to already-stored messages.
         """
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         if days_back <= 0:
             logger.info("Starting UNLIMITED message history backfill (all accessible history)...")
             cutoff = None
         else:
             logger.info(f"Starting message history backfill ({days_back} days)...")
-            cutoff = datetime.utcnow() - timedelta(days=days_back)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+
+        resume = await self.message_memory.newest_message_times() if incremental else {}
 
         total_messages = 0
         total_channels = 0
@@ -806,8 +814,13 @@ class DiscordClient(discord.Client):
                             str(channel.id), parent_id=str(channel.parent_id),
                             name=channel.name, archived=bool(channel.archived))
 
-                    # Use cutoff if provided, otherwise fetch all
-                    async for message in channel.history(limit=None, after=cutoff):
+                    # Resume point: newest stored message wins over the
+                    # window cutoff when it's more recent
+                    after = resume.get(str(channel.id)) or cutoff
+                    if after and cutoff and cutoff > after:
+                        after = cutoff
+
+                    async for message in channel.history(limit=None, after=after):
                         try:
                             await self.message_memory.add_message(message)
                             channel_messages += 1

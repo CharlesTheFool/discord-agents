@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.2] - 2026-06-12
+
+**Status:** Pre-release (beta).
+
+### Fixed
+- **Cost today counts cache writes.** Turn events now record
+  `cache_creation_input_tokens`, and the estimator bills them at 1.25x input
+  (the 5-minute-cache write rate). Previously only uncached input, cache
+  reads, and output were counted, silently undercounting every turn.
+- **Boot backfill is incremental.** On startup each channel resumes from its
+  newest stored message instead of re-fetching the entire configured window
+  from Discord. The daily 3 AM re-backfill and the manual reindex command
+  still sweep the full window - their job is catching edits.
+
 ## [0.11.1] - 2026-06-12
 
 **Status:** Pre-release (beta).

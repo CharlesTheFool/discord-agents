@@ -776,6 +776,21 @@ class MessageMemory:
         row = await cursor.fetchone()
         return row["message_id"] if row else None
 
+    async def newest_message_times(self) -> dict:
+        """channel_id -> created_at (aware UTC) of the newest stored message.
+
+        One bulk query so boot backfill can resume each channel where the
+        last session stopped instead of re-fetching the whole window."""
+        cursor = await self._db.execute(
+            "SELECT channel_id, MAX(timestamp) FROM messages GROUP BY channel_id")
+        out = {}
+        for cid, ts in await cursor.fetchall():
+            try:
+                out[cid] = datetime.fromisoformat(ts)
+            except (TypeError, ValueError):
+                pass
+        return out
+
     async def get_latest_message(self, channel_id: str) -> Optional[StoredMessage]:
         """Get the most recent non-system message in a channel, or None."""
         cursor = await self._db.execute(

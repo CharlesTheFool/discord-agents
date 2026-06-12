@@ -237,7 +237,8 @@ def model_live_prices(model: str):
 
 
 def estimate_cost_usd(tokens: dict, model: str):
-    """Dollar estimate for a {uncached_in, cache_read, out} token bundle.
+    """Dollar estimate for a {uncached_in, cache_read, cache_write, out} token
+    bundle. Cache reads bill at 0.1x input, 5-minute cache writes at 1.25x.
     None when the model's prices aren't known - honesty over a guess."""
     prices = model_live_prices(model or "")
     if not prices:
@@ -245,6 +246,7 @@ def estimate_cost_usd(tokens: dict, model: str):
     p_in, p_out = prices
     return ((tokens.get("uncached_in", 0) or 0) * p_in
             + (tokens.get("cache_read", 0) or 0) * p_in * 0.1
+            + (tokens.get("cache_write", 0) or 0) * p_in * 1.25
             + (tokens.get("out", 0) or 0) * p_out) / 1_000_000
 
 

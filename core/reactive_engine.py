@@ -1034,6 +1034,7 @@ class ReactiveEngine:
             "tokens": {
                 "uncached_in": getattr(usage, "input_tokens", 0) or 0,
                 "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
+                "cache_write": getattr(usage, "cache_creation_input_tokens", 0) or 0,
                 "out": getattr(usage, "output_tokens", 0) or 0,
             } if usage else {},
             **extra,
