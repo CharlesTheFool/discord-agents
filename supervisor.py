@@ -45,9 +45,20 @@ async def main(root_path: Path, port: int, code_root: Path = None) -> None:
     stop = asyncio.Event()
     app = build_app(root, pm, health=health, stop_event=stop)
 
-    # Dashboard static files (Plan C lands the real UI here)
+    # Dashboard static files (Plan C lands the real UI here).
+    # no-store on everything: Chromium's heuristic caching (keyed off
+    # Last-Modified) otherwise keeps serving a STALE bot.html - and with it
+    # the old bot.js - after a framework update. Local files, cost is nil.
     ui_dir = Path(__file__).parent / "supervisor" / "ui"
     if ui_dir.exists():
+        @web.middleware
+        async def no_cache_ui(request, handler):
+            response = await handler(request)
+            if not request.path.startswith("/api/"):
+                response.headers["Cache-Control"] = "no-store"
+            return response
+        app.middlewares.append(no_cache_ui)
+
         async def index(request):
             return web.FileResponse(ui_dir / "index.html")
         app.router.add_get("/", index)

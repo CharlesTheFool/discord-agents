@@ -102,7 +102,10 @@ function showTab(tab) {
   if (tab !== "monitor") {
     stopMonitorRefresh();   // don't hold the refresh timer or SSE open off-tab
   }
-  if (!loaded[tab]) {
+  // memories/repository re-fetch on every visit - the bot writes to both
+  // behind the dashboard's back. configure/integrations keep load-once
+  // (they hold unsaved client-side state).
+  if (!loaded[tab] || tab === "memories" || tab === "repository") {
     loaded[tab] = true;
     LOADERS[tab]();
   } else if (tab === "monitor") {

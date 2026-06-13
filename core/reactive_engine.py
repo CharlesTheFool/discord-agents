@@ -11,6 +11,7 @@ import discord
 import asyncio
 import hashlib
 import io
+import json
 import logging
 import re
 from anthropic import Anthropic, AsyncAnthropic, NotFoundError
@@ -1431,6 +1432,8 @@ class ReactiveEngine:
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
+        repeat_sig = None  # repeat-call guard: identical consecutive tool calls
+        repeat_count = 0
         tail_messages = (
             [{"role": "user", "content": [{"type": "text", "text": volatile_tail}]}]
             if volatile_tail else []
@@ -1509,10 +1512,37 @@ class ReactiveEngine:
                     loop_result=result,
                 )
 
+                # Repeat-call guard (0.12.3): the gif saga showed the model
+                # re-fetching the same attachment 8x when its real problem was
+                # elsewhere. Detect identical consecutive tool calls and say so.
+                sig = "|".join(sorted(
+                    f"{b.name}:{json.dumps(b.input, sort_keys=True, default=str)}"
+                    for b in response.content
+                    if getattr(b, "type", None) == "tool_use"
+                ))
+                if sig and sig == repeat_sig:
+                    repeat_count += 1
+                else:
+                    repeat_sig, repeat_count = sig, 0
+                guard_note = []
+                if repeat_count >= 2:
+                    logger.warning(
+                        f"Identical tool call repeated {repeat_count + 1}x"
+                        f"{log_suffix} - injecting repeat note"
+                    )
+                    guard_note = [{"type": "text", "text": (
+                        f"<system_note>You have now made this exact tool call "
+                        f"{repeat_count + 1} times in a row with identical input, and it "
+                        "returned the same result each time. The call is working - "
+                        "repeating it will not change anything. Whatever you're stuck "
+                        "on, the problem is elsewhere: reconsider your approach, or "
+                        "say plainly what's blocking you.</system_note>"
+                    )}]
+
                 # Tool results ride in the next user message; fetched file
                 # blocks come AFTER them (API: tool_result blocks must come first)
                 api_params["messages"].append({"role": "assistant", "content": response.content})
-                api_params["messages"].append({"role": "user", "content": tool_results + pending_file_blocks})
+                api_params["messages"].append({"role": "user", "content": tool_results + pending_file_blocks + guard_note})
 
                 # Persist tool use and results to conversation state
                 if conversation_state:

@@ -253,6 +253,34 @@ class SkillsManager:
         filename = f"{folder_path.name}.zip"
         return buf, filename
 
+    def _discover_skill_folders(self) -> List[Path]:
+        """
+        Skill folders are subdirectories containing SKILL.md. Zip extraction
+        commonly produces a wrapper dir (skills/foo/foo/SKILL.md) - resolve
+        one level of nesting instead of silently finding nothing.
+        """
+        skill_folders = []
+        for d in self.skills_dir.iterdir():
+            if not d.is_dir():
+                continue
+            if (d / "SKILL.md").exists():
+                skill_folders.append(d)
+                continue
+            nested = [s for s in d.iterdir()
+                      if s.is_dir() and (s / "SKILL.md").exists()]
+            if len(nested) == 1:
+                logger.warning(
+                    f"Skill folder {d.name}/ has SKILL.md one level down "
+                    f"({d.name}/{nested[0].name}/) - using the nested folder. "
+                    f"Consider flattening it."
+                )
+                skill_folders.append(nested[0])
+            elif d.name != "__pycache__":
+                logger.warning(
+                    f"Folder {d.name}/ in skills directory has no SKILL.md - skipped"
+                )
+        return skill_folders
+
     async def scan_and_upload_skills(self) -> List[Dict]:
         """
         Scan skills directory for .zip files and skill folders, then upload
@@ -270,11 +298,7 @@ class SkillsManager:
         # Find .zip files
         zip_files = list(self.skills_dir.glob("*.zip"))
 
-        # Find skill folders (subdirectories containing SKILL.md)
-        skill_folders = [
-            d for d in self.skills_dir.iterdir()
-            if d.is_dir() and (d / "SKILL.md").exists()
-        ]
+        skill_folders = self._discover_skill_folders()
 
         total = len(zip_files) + len(skill_folders)
         if total == 0:

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.3] - 2026-06-12
+
+**Status:** Pre-release (beta). Field-test fixes round two: dashboard
+staleness root-caused, skills discovery hardened, tool-loop spiraling
+guarded.
+
+### Fixed
+- **Dashboard updates actually reach you now.** Root cause of "the dashboard
+  still doesn't refresh": the supervisor served UI files with no cache
+  headers, so Chromium's heuristic caching could pin a stale `bot.html` -
+  and with it the previous version's JavaScript - long after a framework
+  update. All non-API responses are now `no-store`. Additionally, the
+  Memories and Repository tabs re-fetch every time they're opened (the bot
+  writes to both behind the dashboard's back); Monitor keeps its 5s
+  auto-refresh, verified live.
+- **Skills survive sloppy unzipping.** A skill extracted as
+  `skills/foo/foo/SKILL.md` (the classic zip wrapper folder) is now
+  resolved one level down with a warning instead of the whole skills
+  directory silently scanning as empty. Folders with no SKILL.md anywhere
+  are named in the log.
+- **The tool loop notices it's going in circles.** Three identical
+  consecutive tool calls (same tool, same input) inject a note telling the
+  model the call is working, repetition won't help, and the problem is
+  elsewhere - instead of letting it burn its whole iteration budget
+  re-fetching one file, as observed in the music-video field test.
+
+### Changed
+- **The bot knows its sandbox.** Code-execution guidance now states the
+  environment is air-gapped (no pip, no curl, no ffmpeg - verified
+  empirically) and lists what's actually preinstalled, so the bot stops
+  discovering this the hard way mid-task. It's also taught to use the
+  repository as its workbench for multi-turn projects: drafts and
+  intermediates persist there, container files die with the turn.
+
+---
+
 ## [0.12.2] - 2026-06-12
 
 **Status:** Pre-release (beta). Dashboard fix only - no bot runtime changes.
