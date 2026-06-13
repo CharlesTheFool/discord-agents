@@ -131,6 +131,23 @@ v0.6.0 pre-release sweep, config freeze.
 - **Richer presence** — events, polls, scheduled activities
 - **Daily web-search quota** — dormant; revisit only if per-request caps
   prove insufficient
+- **The workshop: a real development sandbox** — the Anthropic code-execution
+  container is air-gapped (probed 2026-06-12: pip install times out, curl
+  fails, no ffmpeg binary; only the preinstalled scientific stack exists).
+  That caps artifact work at what ships in the box. Two candidate paths for
+  giving bots a real workspace, to be designed properly before building:
+  1. **Local sandbox** — a Docker/WSL container on the host with network,
+     pip, ffmpeg, and the per-server repository mounted as its working
+     directory. Maximum capability; serious security surface (model-written
+     code + network + operator's machine) — needs egress policy, resource
+     caps, and a kill switch designed first.
+  2. **Managed Agents session** (Anthropic-hosted, beta) — the bot spawns a
+     cloud session whose environment allows package managers
+     (`networking.limited` + `allow_package_managers`), mounts repo files,
+     and returns outputs via the Files API. No local attack surface, real
+     pip; adds per-session cost, latency, and a beta dependency.
+  Pairs naturally with long-work concurrency below — workshop jobs are
+  exactly the long work the chat path must survive. Design both together.
 - **Long-work concurrency** — when a turn enters long tool work (skill
   containers, deck generation), a parallel chat path keeps handling incoming
   messages with an injected "you're already mid-response to X" notice, so
