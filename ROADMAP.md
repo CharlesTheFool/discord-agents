@@ -144,3 +144,9 @@ v0.6.0 pre-release sweep, config freeze.
   data shows silent scans are a real expense (the prompt-cache layout already
   makes them ~330 uncached tokens), and only if the gate provably doesn't
   degrade the social judgment that makes the bot fun.
+- **Repository file viewer** — the dashboard's repository view should
+  preview the file types the bots actually produce: PDFs, images (incl.
+  gifs), audio, video — not just text. And the file browser itself needs a
+  redesign toward the clean macOS-Finder-style UI originally requested
+  (columns/preview pane, drag-drop, breadcrumbs) instead of the current
+  clunky list. Feature work, not a bugfix; schedule deliberately.
