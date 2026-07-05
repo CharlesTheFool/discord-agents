@@ -510,6 +510,14 @@ class BotConfig:
                 f"switch to an effort-capable model"
             )
 
+        if "haiku" in self.api.model and self.api.thinking.enabled:
+            errors.append(
+                f"api.model '{self.api.model}' is set with api.thinking.enabled "
+                f"(every API call would send adaptive thinking, which Haiku doesn't "
+                f"reliably support) - disable api.thinking or switch the main chat "
+                f"model off Haiku"
+            )
+
         if self.api.context_tokens <= 0:
             errors.append("api.context_tokens must be positive")
 

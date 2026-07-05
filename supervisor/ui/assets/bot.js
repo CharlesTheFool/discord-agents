@@ -743,7 +743,7 @@ function wireActivity() {
    section. Checkboxes mean one thing: checked = on. */
 
 const MODEL_OPTIONS = [
-  "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5",
+  "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5",
 ];
 // mirrors internal_constants._EFFORT_CAPABLE_MARKERS
 const EFFORT_MARKERS = ["fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "sonnet-5"];
@@ -841,7 +841,7 @@ const HINTS = {
   "agentic.proactive.quiet_hours": { label: "Quiet hours", help: "Local-clock hours when it stays silent. Click hours to toggle.", widget: "hours" },
   "agentic.proactive.allowed_channels": { label: "Proactive channels", help: "Where unprompted openings are permitted. Empty = none.", widget: "channels" },
 
-  "api.model": { label: "Model", options: MODEL_OPTIONS, help: "The mind. Fable 5 is the most capable; Haiku the most economical." },
+  "api.model": { label: "Model", options: MODEL_OPTIONS, help: "The mind. Fable 5 is the most capable; Sonnet 5 the most economical. Haiku isn't offered here — it doesn't reliably support adaptive thinking, and this pipeline always sends it when api.thinking.enabled is on." },
   "api.max_tokens": { label: "Max tokens", help: "Cap on tokens per response." },
   "api.context_messages": { label: "Context messages", help: "Live messages kept before reseed (5–100).", min: 5, max: 100 },
   "api.context_tokens": { label: "Context ceiling", help: "Token budget before distill + reseed." },
