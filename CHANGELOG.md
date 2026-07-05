@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.4] - 2026-07-05
+
+**Status:** Pre-release (beta). Default model bump only - no behavioral changes.
+
+### Changed
+- **Default chat/consolidation model is now Claude Sonnet 5.** Config
+  defaults, the supervisor dashboard's new-bot template, and docs all point
+  at `claude-sonnet-5` instead of `claude-sonnet-4-6`. Sonnet 4.6 remains a
+  supported, effort-capable model - its registry entries were kept, not
+  removed - for anyone still pinned to it. Required adding `sonnet-5` to the
+  effort-capable model marker list (`internal_constants.py` and its
+  `bot.js` mirror); without it, a bot config with `api.effort` set and the
+  model bumped to Sonnet 5 would fail startup validation.
+
+---
+
 ## [0.12.3] - 2026-06-12
 
 **Status:** Pre-release (beta). Field-test fixes round two: dashboard

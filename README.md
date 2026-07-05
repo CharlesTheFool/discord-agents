@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.10.0 (Pre-release Beta)
+**Version:** 0.12.4 (Pre-release Beta)
 
 Build intelligent Discord bots that think, remember, and act autonomously. Powered by Claude.
 
