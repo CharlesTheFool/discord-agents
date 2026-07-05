@@ -743,10 +743,10 @@ function wireActivity() {
    section. Checkboxes mean one thing: checked = on. */
 
 const MODEL_OPTIONS = [
-  "claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+  "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5",
 ];
 // mirrors internal_constants._EFFORT_CAPABLE_MARKERS
-const EFFORT_MARKERS = ["fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6"];
+const EFFORT_MARKERS = ["fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "sonnet-5"];
 const supportsEffort = (m) => EFFORT_MARKERS.some((x) => (m || "").includes(x));
 
 // Curated IANA timezones for the dropdown (no more typing); the current value
@@ -782,8 +782,8 @@ const DEFAULTS = {
     consolidation: { enabled: true, interval_days: 7 },
     proactive: { enabled: false, intensity: "moderate",
       quiet_hours: [0, 1, 2, 3, 4, 5, 6], allowed_channels: [] } },
-  api: { model: "claude-sonnet-4-6", max_tokens: 4096, context_messages: 30,
-    context_tokens: 80000, effort: null, consolidation_model: "claude-sonnet-4-6",
+  api: { model: "claude-sonnet-5", max_tokens: 4096, context_messages: 30,
+    context_tokens: 80000, effort: null, consolidation_model: "claude-sonnet-5",
     thinking: { enabled: true }, web_search: { enabled: false } },
   mcp: { enabled: false },
   skills: { include_anthropic_skills: true, default_skills: [] },
@@ -846,7 +846,7 @@ const HINTS = {
   "api.context_messages": { label: "Context messages", help: "Live messages kept before reseed (5–100).", min: 5, max: 100 },
   "api.context_tokens": { label: "Context ceiling", help: "Token budget before distill + reseed." },
   "api.effort": { label: "Effort", help: "Depth-of-thought dial. Only models with effort support show this.", widget: "effort" },
-  "api.consolidation_model": { label: "Memory model", options: ["claude-sonnet-4-6", "claude-fable-5", "claude-opus-4-8"], help: "Distills episodes, runs weekly reconsolidation, and powers induction. Uses medium thinking effort." },
+  "api.consolidation_model": { label: "Memory model", options: ["claude-sonnet-5", "claude-fable-5", "claude-opus-4-8"], help: "Distills episodes, runs weekly reconsolidation, and powers induction. Uses medium thinking effort." },
   "agentic.consolidation.enabled": { label: "Reconsolidation", help: "The background pass that revisits and tidies the bot's own memory. Costs tokens (Batches API, half-price) — turn it off to freeze memory at what the bot writes live." },
   "agentic.consolidation.interval_days": { label: "Reconsolidation interval", help: "Days between reconsolidation passes per server. Longer = cheaper and more stable, less fresh.", min: 1 },
   "api.thinking.enabled": { label: "Extended thinking", help: "Adaptive thinking; the model decides when." },

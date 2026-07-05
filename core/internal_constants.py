@@ -40,7 +40,7 @@ PROACTIVE_SETTLE_DELAY_MINUTES = 15
 FOLLOWUP_STANDALONE_IDLE_MINUTES = 10
 
 # Models that accept output_config.effort; passing it elsewhere is a 400
-_EFFORT_CAPABLE_MARKERS = ("fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6")
+_EFFORT_CAPABLE_MARKERS = ("fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "sonnet-5")
 
 
 def model_supports_effort(model: str) -> bool:
@@ -219,6 +219,7 @@ MODEL_BATCH_PRICES = {
     "haiku-4-5": (0.50, 2.50),
     "sonnet-4-5": (1.50, 7.50),
     "sonnet-4-6": (1.50, 7.50),
+    "sonnet-5": (1.50, 7.50),
     "opus-4-5": (2.50, 12.50),
     "opus-4-6": (2.50, 12.50),
     "opus-4-7": (2.50, 12.50),

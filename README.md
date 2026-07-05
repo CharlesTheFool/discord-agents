@@ -142,7 +142,7 @@ Prime itself.
 - **Discord Bot** — [Create application](https://discord.com/developers/applications)
   - Enable "Message Content Intent" in Bot settings
 - **Anthropic API Key** — [Get key](https://console.anthropic.com/)
-  - Defaults to `claude-sonnet-4-6`. Any Claude 4-family model works; the
+  - Defaults to `claude-sonnet-5`. Any Claude 4-family model works; the
     optional `api.effort` setting requires an effort-capable model (validated
     at startup).
 
@@ -237,7 +237,7 @@ agentic:
     quiet_hours: [0, 1, 2, 3, 4, 5, 6]   # LOCAL host-clock hours
 
 api:
-  model: "claude-sonnet-4-6"
+  model: "claude-sonnet-5"
   context_messages: 30          # Rolling window of Discord messages
   context_tokens: 80000         # Session threshold: episodize + reseed past this
   effort: "medium"              # Optional cost/depth dial (low|medium|high|max)

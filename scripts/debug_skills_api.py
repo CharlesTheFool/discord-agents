@@ -75,7 +75,7 @@ def main():
     print("\n[3] Testing Skills + Code Execution API call...")
     try:
         response = client.beta.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             max_tokens=256,
             betas=["skills-2025-10-02"],
             container={

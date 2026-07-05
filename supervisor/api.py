@@ -49,7 +49,7 @@ personality:
     You are {bot_id}, a thoughtful resident of this server.
 
 api:
-  model: "claude-sonnet-4-6"
+  model: "claude-sonnet-5"
 """
 
 

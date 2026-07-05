@@ -123,12 +123,12 @@ class CodeExecutionConfig:
 @dataclass
 class APIConfig:
     """Claude API configuration"""
-    model: str = "claude-sonnet-4-6"
+    model: str = "claude-sonnet-5"
     max_tokens: int = 4096
     context_messages: int = 30  # Messages to remember (rolling window)
     context_tokens: int = 80000  # Session token threshold: episodize + reseed past this (from response.usage)
     effort: Optional[str] = None  # low | medium | high | max (None = API default, high)
-    consolidation_model: str = "claude-sonnet-4-6"  # weekly memory reconsolidation (Batches API)
+    consolidation_model: str = "claude-sonnet-5"  # weekly memory reconsolidation (Batches API)
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     code_execution: CodeExecutionConfig = field(default_factory=CodeExecutionConfig)
@@ -402,12 +402,12 @@ class BotConfig:
         )
 
         api = APIConfig(
-            model=api_data.get("model", "claude-sonnet-4-6"),
+            model=api_data.get("model", "claude-sonnet-5"),
             max_tokens=api_data.get("max_tokens", 4096),
             context_messages=context_messages,
             context_tokens=context_tokens,
             effort=api_data.get("effort"),
-            consolidation_model=api_data.get("consolidation_model", "claude-sonnet-4-6"),
+            consolidation_model=api_data.get("consolidation_model", "claude-sonnet-5"),
             thinking=thinking,
             web_search=web_search,
             code_execution=code_execution,

@@ -93,7 +93,7 @@ agentic:
 # AI MODEL
 # ============================================================
 api:
-  model: "claude-sonnet-4-6"
+  model: "claude-sonnet-5"
   max_tokens: 16000
 
   # Context management
@@ -106,7 +106,7 @@ api:
 
   # Weekly memory reconsolidation model (Batches API, 50% token cost).
   # Sonnet default; Haiku = cheap, Opus/Fable = premium.
-  consolidation_model: "claude-sonnet-4-6"
+  consolidation_model: "claude-sonnet-5"
 
   # Adaptive thinking - model decides when and how much to think
   thinking:
