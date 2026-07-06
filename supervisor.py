@@ -10,8 +10,10 @@ dashboard + its API on 127.0.0.1 only. --root names the install it manages
 
 import argparse
 import asyncio
+import hashlib
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +34,29 @@ logger = logging.getLogger("supervisor")
 
 DEFAULT_PORT = 8642
 
+_ASSET_REF_RE = re.compile(r'(assets/[\w.-]+\.(?:js|css))(?:\?v=[\w.-]+)?')
+
+
+def _assets_fingerprint(assets_dir: Path) -> str:
+    """Hash over every file in assets/ - changes the instant any dashboard
+    JS/CSS changes, so cache-busted URLs update themselves instead of
+    depending on a hand-maintained ?v=N literal (which already silently
+    fell out of sync once). Recomputed per request: cheap at this size,
+    and it means editing a JS file takes effect on refresh, no restart."""
+    digest = hashlib.sha256()
+    for f in sorted(assets_dir.glob("*")):
+        if f.is_file():
+            digest.update(f.read_bytes())
+    return digest.hexdigest()[:10]
+
+
+def _render_html(path: Path, assets_dir: Path) -> str:
+    """Serve an HTML page with every assets/*.js|css reference tagged with
+    the live content fingerprint, replacing any ?v=N already in the source."""
+    html = path.read_text(encoding="utf-8")
+    version = _assets_fingerprint(assets_dir)
+    return _ASSET_REF_RE.sub(rf"\1?v={version}", html)
+
 
 async def main(root_path: Path, port: int, code_root: Path = None) -> None:
     root = SupervisorRoot(root_path, code_root=code_root)
@@ -49,6 +74,11 @@ async def main(root_path: Path, port: int, code_root: Path = None) -> None:
     # no-store on everything: Chromium's heuristic caching (keyed off
     # Last-Modified) otherwise keeps serving a STALE bot.html - and with it
     # the old bot.js - after a framework update. Local files, cost is nil.
+    # That alone only stops *future* poisoning though - it can't evict a
+    # copy already cached under a given URL before no-store existed. The
+    # index/bot.html handlers below close that gap for good by tagging
+    # every asset reference with a live content hash (_assets_fingerprint),
+    # so the URL itself changes whenever the file does - no ?v=N to forget.
     ui_dir = Path(__file__).parent / "supervisor" / "ui"
     if ui_dir.exists():
         @web.middleware
@@ -59,9 +89,13 @@ async def main(root_path: Path, port: int, code_root: Path = None) -> None:
             return response
         app.middlewares.append(no_cache_ui)
 
-        async def index(request):
-            return web.FileResponse(ui_dir / "index.html")
-        app.router.add_get("/", index)
+        def html_page(filename):
+            async def handler(request):
+                html = _render_html(ui_dir / filename, ui_dir / "assets")
+                return web.Response(text=html, content_type="text/html")
+            return handler
+        app.router.add_get("/", html_page("index.html"))
+        app.router.add_get("/bot.html", html_page("bot.html"))
         app.router.add_static("/", ui_dir)
 
     runner = web.AppRunner(app)

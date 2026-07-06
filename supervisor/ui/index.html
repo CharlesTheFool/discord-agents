@@ -83,6 +83,8 @@
   </div>
 </dialog>
 
-<script type="module" src="assets/fleet.js?v=7"></script>
+<!-- ?v= is injected by supervisor.py's html_page handler (content hash of
+     assets/) - don't hand-maintain a version here, it'll be overwritten. -->
+<script type="module" src="assets/fleet.js"></script>
 </body>
 </html>

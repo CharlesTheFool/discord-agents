@@ -167,6 +167,8 @@
   </form>
 </dialog>
 
-<script type="module" src="assets/bot.js?v=16"></script>
+<!-- ?v= is injected by supervisor.py's html_page handler (content hash of
+     assets/) - don't hand-maintain a version here, it'll be overwritten. -->
+<script type="module" src="assets/bot.js"></script>
 </body>
 </html>
