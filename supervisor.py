@@ -34,15 +34,29 @@ logger = logging.getLogger("supervisor")
 
 DEFAULT_PORT = 8642
 
-_ASSET_REF_RE = re.compile(r'(assets/[\w.-]+\.(?:js|css))(?:\?v=[\w.-]+)?')
+# js/css today; also covers images and fonts so a future asset of either
+# kind is cache-busted automatically instead of needing this pattern
+# extended by hand (see CLAUDE.md's no-store gotcha for why that matters).
+_ASSET_EXTENSIONS = (
+    "js", "css",
+    "png", "jpg", "jpeg", "svg", "gif", "webp", "ico",
+    "woff", "woff2", "ttf", "otf", "eot",
+)
+# Longest-first: regex alternation is first-match, not longest-match, so
+# "woff" ahead of "woff2" would truncate "brand.woff2" to "brand.woff" + "2".
+_ASSET_REF_RE = re.compile(
+    r'(assets/[\w.-]+\.(?:'
+    + "|".join(sorted(_ASSET_EXTENSIONS, key=len, reverse=True))
+    + r'))(?:\?v=[\w.-]+)?'
+)
 
 
 def _assets_fingerprint(assets_dir: Path) -> str:
     """Hash over every file in assets/ - changes the instant any dashboard
-    JS/CSS changes, so cache-busted URLs update themselves instead of
+    asset changes, so cache-busted URLs update themselves instead of
     depending on a hand-maintained ?v=N literal (which already silently
     fell out of sync once). Recomputed per request: cheap at this size,
-    and it means editing a JS file takes effect on refresh, no restart."""
+    and it means editing a file takes effect on refresh, no restart."""
     digest = hashlib.sha256()
     for f in sorted(assets_dir.glob("*")):
         if f.is_file():
@@ -51,8 +65,9 @@ def _assets_fingerprint(assets_dir: Path) -> str:
 
 
 def _render_html(path: Path, assets_dir: Path) -> str:
-    """Serve an HTML page with every assets/*.js|css reference tagged with
-    the live content fingerprint, replacing any ?v=N already in the source."""
+    """Serve an HTML page with every assets/ reference (js/css/images/fonts -
+    see _ASSET_EXTENSIONS) tagged with the live content fingerprint,
+    replacing any ?v=N already in the source."""
     html = path.read_text(encoding="utf-8")
     version = _assets_fingerprint(assets_dir)
     return _ASSET_REF_RE.sub(rf"\1?v={version}", html)
