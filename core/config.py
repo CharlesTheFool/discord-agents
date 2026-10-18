@@ -25,8 +25,8 @@ from core.internal_constants import (
     PROACTIVE_LEARNING_WINDOW_DAYS,
     PROACTIVE_ENGAGEMENT_THRESHOLD,
     PROACTIVE_MIN_PROVOCATION_GAP_HOURS,
-    model_supports_effort,
 )
+from core.model.catalog import spec_for
 
 
 # =============================================================================
@@ -121,14 +121,26 @@ class CodeExecutionConfig:
 
 
 @dataclass
+class ProviderConfig:
+    """Which wire API serves the models, and where. Optional: without it
+    the bot talks to Anthropic with ANTHROPIC_API_KEY."""
+    wire_api: str = "anthropic_messages"
+    base_url: Optional[str] = None
+    api_key_env: str = "ANTHROPIC_API_KEY"
+
+
+@dataclass
 class APIConfig:
-    """Claude API configuration"""
+    """Model API configuration"""
     model: str = "claude-sonnet-5"
     max_tokens: int = 4096
     context_messages: int = 30  # Messages to remember (rolling window)
     context_tokens: int = 80000  # Session token threshold: episodize + reseed past this (from response.usage)
     effort: Optional[str] = None  # low | medium | high | max (None = API default, high)
     consolidation_model: str = "claude-sonnet-5"  # weekly memory reconsolidation (Batches API)
+    background_model: str = "claude-haiku-4-5"  # episode distillation, watch checks
+    worker_model: Optional[str] = None  # delegated workers (0.14); None = the main model
+    provider: Optional[ProviderConfig] = None
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     code_execution: CodeExecutionConfig = field(default_factory=CodeExecutionConfig)
@@ -401,6 +413,13 @@ class BotConfig:
             context_management_data.get("max_total_tokens", 100000)
         )
 
+        provider_data = api_data.get("provider")
+        provider = ProviderConfig(
+            wire_api=provider_data.get("wire_api", "anthropic_messages"),
+            base_url=provider_data.get("base_url"),
+            api_key_env=provider_data.get("api_key_env", "ANTHROPIC_API_KEY"),
+        ) if provider_data else None
+
         api = APIConfig(
             model=api_data.get("model", "claude-sonnet-5"),
             max_tokens=api_data.get("max_tokens", 4096),
@@ -408,6 +427,9 @@ class BotConfig:
             context_tokens=context_tokens,
             effort=api_data.get("effort"),
             consolidation_model=api_data.get("consolidation_model", "claude-sonnet-5"),
+            background_model=api_data.get("background_model", "claude-haiku-4-5"),
+            worker_model=api_data.get("worker_model"),
+            provider=provider,
             thinking=thinking,
             web_search=web_search,
             code_execution=code_execution,
@@ -483,8 +505,14 @@ class BotConfig:
         elif not os.getenv(self.discord.token_env_var):
             errors.append(f"Missing environment variable: {self.discord.token_env_var}")
 
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            errors.append("Missing ANTHROPIC_API_KEY in environment")
+        provider = self.api.provider or ProviderConfig()
+        if not os.getenv(provider.api_key_env):
+            errors.append(f"Missing {provider.api_key_env} in environment")
+        if provider.wire_api != "anthropic_messages":
+            errors.append(
+                f"api.provider.wire_api must be 'anthropic_messages' in this release, "
+                f"got '{provider.wire_api}'"
+            )
 
         # Type validation
         if not isinstance(self.discord.servers, list):
@@ -503,14 +531,14 @@ class BotConfig:
                 f"api.effort must be one of low/medium/high/max, got '{self.api.effort}'"
             )
 
-        if self.api.effort is not None and not model_supports_effort(self.api.model):
+        if self.api.effort is not None and not spec_for(self.api.model).effort:
             errors.append(
                 f"api.effort is set but model '{self.api.model}' does not support the "
                 f"effort parameter (every API call would 400) - remove api.effort or "
                 f"switch to an effort-capable model"
             )
 
-        if "haiku" in self.api.model and self.api.thinking.enabled:
+        if self.api.thinking.enabled and not spec_for(self.api.model).thinking:
             errors.append(
                 f"api.model '{self.api.model}' is set with api.thinking.enabled "
                 f"(every API call would send adaptive thinking, which Haiku doesn't "
@@ -544,6 +572,9 @@ class BotConfig:
 
         if not self.api.consolidation_model or not self.api.consolidation_model.strip():
             errors.append("api.consolidation_model cannot be empty")
+
+        if not self.api.background_model or not self.api.background_model.strip():
+            errors.append("api.background_model cannot be empty")
 
         # Validate logging level
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
