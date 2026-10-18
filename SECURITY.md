@@ -1,175 +1,188 @@
 # Security Policy
 
-## Supported Versions
-
-We actively support the following versions with security updates:
+## Supported versions
 
 | Version | Supported |
 | ------- | --------- |
-| 0.12.x (latest) | ✅ |
-| < 0.12 | ❌ |
+| 0.13.x  | Yes       |
+| < 0.13  | No        |
 
-**Note:** Beta versions receive security patches on a best-effort basis. A formal security support policy will be established with v1.0.0.
+Beta versions receive security patches on a best-effort basis. A formal
+support policy arrives with 1.0.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-**Do not report security vulnerabilities through public GitHub issues.**
+Do not report security vulnerabilities through public GitHub issues. Use
+GitHub Security Advisories: open the repository's **Security** tab, click
+**Report a vulnerability**, and fill in the form.
 
-### Preferred Method: GitHub Security Advisories
-1. Navigate to the **Security** tab in this repository
-2. Click **"Report a vulnerability"**
-3. Complete the form with the information detailed below
+Include what you can of the following: the type of vulnerability, the
+affected component (Discord client, reactive engine, memory manager,
+supervisor, and so on), affected versions, steps to reproduce, the impact
+you believe it has, and a suggested fix if you have one.
 
-### Alternative: Direct Contact
-Email security reports to: `[Your Email or Security Contact]`
+What to expect: an acknowledgment within 48 hours, progress updates during
+the investigation, and a patch for critical issues within 7 to 14 days.
+Reporters are credited in the advisory unless they prefer not to be. A
+90-day embargo is requested before public disclosure; advisories are
+published for every confirmed vulnerability, and CVEs are requested for
+significant ones.
 
-### What to Include
+## Threat model
 
-Provide as much detail as possible:
+Two populations can steer the model. Members of a server already see what
+the bot sees there, and Discord itself is their exfiltration channel, so the
+framework does not try to hide a server's content from its own members.
+Outsiders reach the model through content it reads: fetched pages,
+attachments, repository files. They cannot see the server, but the bot's
+memory includes cross-server user profiles, so for them the prize is
+exfiltration.
 
-- **Type of vulnerability** (authentication bypass, API key exposure, injection, etc.)
-- **Affected component** (Discord client, reactive engine, memory manager, etc.)
-- **Affected versions** (if known)
-- **Steps to reproduce** (detailed proof-of-concept preferred)
-- **Potential impact** (what can an attacker accomplish?)
-- **Suggested fix** (if you have one)
+The binding design rule, in force since the 0.13 design: no safety property
+may depend on the model declining something. The model is swappable from
+0.13.0 on, and weaker models obey injections more readily, so every boundary
+below is enforced in storage, SQL, or tool code. Where the model is still
+the only guard, this document says so.
 
-### What to Expect
+## What is enforced mechanically
 
-- **Initial Response:** Acknowledgment within 48 hours
-- **Status Updates:** Regular progress reports during investigation
-- **Resolution Timeline:** Critical issues patched within 7-14 days
-- **Credit:** Recognition in security advisory (unless you prefer anonymity)
+### Vaults
 
-### Disclosure Policy
+`vaults: []` in the bot config lists channel or server IDs whose content
+never leaves them. `VaultEnforcer` (`core/vaults.py`) is the one gate, and
+every tool seam threads the current server and channel through it:
 
-- **Coordinated disclosure:** 90-day embargo requested before public disclosure
-- **Security advisories:** Published for all confirmed vulnerabilities
-- **CVEs:** Requested for significant vulnerabilities affecting users
+- message search and attachment listings exclude vaulted places in the SQL
+  itself, with a vaulted channel's threads expanded into the exclusion;
+- memory paths under a vaulted server or channel can be read or written only
+  from inside it;
+- repository saves are blocked from vaulted channels;
+- global user-profile writes are refused from inside a vault, so what is
+  learned there cannot land on a profile other servers read.
 
-## Security Best Practices
+Inside a vault the bot is fully itself. Threads inherit their parent's
+vault. A context with no server (a DM) counts as outside every vault.
 
-### API Key Management
+**Not enforced in 0.13.0:** a vaulted channel can still write into its own
+server's memory tree or another server's. 0.13.1 contains memory writes from
+inside a vault to that vault's own tree (see [ROADMAP.md](ROADMAP.md)).
 
-**Essential practices:**
-- Store API keys exclusively in `.env` files (already in `.gitignore`)
-- Use separate keys for development and production environments
-- Rotate keys immediately upon suspected compromise
-- Never hardcode keys in source code or configuration files
+### DM privacy
 
-**Common mistakes to avoid:**
-- Committing `.env` files to version control
-- Sharing keys via chat platforms (Discord, Slack, email)
-- Reusing the same key across multiple projects or environments
-- Storing keys in bot YAML configuration files
+Every DM is an implicit vault. Its memory lives under
+`memories/<bot>/global/dms/<user_id>/`, readable only from that DM; from
+anywhere else the path is refused outright. From a DM, memory writes stay
+inside that DM's tree, with one exception: `/memory remember`, `forget` and
+`feedback` thread a one-shot grant that opens exactly the caller's own
+global profile for that turn, matched structurally rather than by suffix so
+a crafted path cannot pass. DM messages and files never surface in search or
+attachment access from any other context. This check runs before the vault
+check and holds with zero vaults configured.
 
-### Discord Bot Token Security
+### Cross-server coordination
 
-**Essential practices:**
-- Regenerate tokens immediately if exposed
-- Enable 2FA on your Discord account
-- Apply minimum required permissions (principle of least privilege)
-- Audit bot's server list regularly
+`ask_prime` lets the bot in one server have its presence in another post a
+question or announcement. Before the one bounded judgment call, mechanical
+gates run: vault boundaries in both directions, a daily cap, and refusal
+from DM context. API errors fail closed. Delivered messages are labelled
+with their origin.
 
-**Common mistakes to avoid:**
-- Sharing tokens publicly or with untrusted parties
-- Granting excessive Discord permissions "just in case"
-- Adding bots to unfamiliar or untrusted servers
+### The supervisor dashboard
 
-### Rate Limiting & Quota Management
+The supervisor (and the desktop app built on it) listens on `127.0.0.1`
+only, but loopback does not keep out the operator's own browser: any web
+page you visit can send requests to `127.0.0.1`. Since 0.12.5 the dashboard
+API defends against that:
 
-**Essential practices:**
-- Monitor API usage patterns regularly
-- Configure appropriate rate limits for your deployment
-- Set web search quota limits to control costs
-- Review logs for anomalous activity
-
-**Common mistakes to avoid:**
-- Disabling rate limiting in production
-- Ignoring quota warnings or usage spikes
-- Sharing bot instances with untrusted users
-
-### Server & Memory Isolation
-
-**Essential practices:**
-- Understand that memories are server-specific, not private
-- Review memory contents periodically for sensitive data
-- Limit bot deployment to trusted servers
-- Use separate bot instances for different communities
-
-**Common mistakes to avoid:**
-- Assuming memory files are private (server admins can access them)
-- Storing sensitive personal information in bot memory
-- Deploying bots without vetting the server community
-
-### Dependency Security
-
-**Essential practices:**
-- Update dependencies regularly: `pip install --upgrade -r requirements.txt`
-- Monitor security advisories for `discord.py` and `anthropic` SDK
-- Pin versions in production: `pip freeze > requirements.txt`
-
-**Common mistakes to avoid:**
-- Running outdated dependencies with known CVEs
-- Ignoring dependency security warnings from GitHub or pip
-
-## Known Security Considerations
-
-### The Supervisor Dashboard
-The supervisor (and the desktop app built on it) listens on `127.0.0.1` only,
-but loopback doesn't keep out the operator's own browser: any web page you
-visit can send requests to `127.0.0.1`. Since 0.12.5 the dashboard API
-defends against that:
 - every `/api/` route requires a per-install token, generated on first run
   into `persistence/supervisor_token` and embedded in the pages the daemon
-  serves (a cross-origin page can't read it, and a custom header forces a
+  serves (a cross-origin page cannot read it, and a custom header forces a
   CORS preflight the daemon never approves);
-- requests whose `Host` isn't `127.0.0.1:<port>` or `localhost:<port>` are
+- requests whose `Host` is not `127.0.0.1:<port>` or `localhost:<port>` are
   refused, which defeats DNS rebinding;
 - state-changing requests from a foreign `Origin` are refused;
-- every response forbids framing, so a hostile page can't overlay the
+- every response forbids framing, so a hostile page cannot overlay the
   dashboard and trick clicks.
 
 The one open route is `GET /api/supervisor`, a read-only health check the
 desktop launcher uses. Treat `supervisor_token` like a password: anything
 holding it can drive the dashboard.
 
-### Message History Access
-The bot can search and access full message history in channels with appropriate permissions. Sensitive conversations should occur in channels the bot cannot access. Use Discord's permission system to restrict bot visibility.
+Two more properties of the daemon: every file route resolves its path
+through one jailing builder that rejects absolute paths, drive letters and
+traversal out of the root; and secrets set from the UI are write-only, since
+the API reports whether a key is set and never returns its value.
 
-### LLM Prompt Injection
-Users may attempt prompt injection attacks via Discord messages. The bot's system prompt includes safeguards, but no defense is foolproof. Monitor bot behavior for unexpected responses and report concerning patterns via security advisory.
+### Discord-side controls
 
-### Memory Persistence
-Bot memories are stored as plaintext Markdown files in the `memories/` directory. Anyone with filesystem access can read these files. Consider full-disk encryption for sensitive deployments.
+- Rate limits are per channel with preset tiers (`strict`, `moderate`,
+  `permissive`, `unlimited`). After five consecutive ignored messages the
+  bot goes quiet in that channel for half an hour; @mentions bypass the
+  silence.
+- Deleting a Discord message purges it from the bot's history, search index
+  and attachment pipeline. The handlers use raw gateway events, so messages
+  older than the running process are covered.
+- Web search and fetch are capped per request.
+- The `send_message` tool reports ground truth about what it posted (message
+  id, which files attached), so the model cannot claim an attachment that
+  never went out.
 
-### Web Search & External Content
-The bot can fetch and display external web content, which creates potential phishing vectors. The bot includes citation display to show content sources—review these before trusting search results.
+### Code execution
 
-## Security Hardening Recommendations
+In 0.13.x, code execution and skills run in Anthropic's server-side
+container. Model-written code never runs on your host, and the container is
+air-gapped: no package installs, no network. Version 0.14 moves execution
+into local microVMs with a default-deny egress policy; that design is in
+[ROADMAP.md](ROADMAP.md) and nothing in it is shipped yet.
 
-### Development Environments
-- Use Python virtual environments: `python -m venv venv`
-- Run bot with standard user privileges (never elevated)
-- Enable debug logging only in development
-- Use dedicated Discord servers for testing
+## What the model is still trusted with
 
-### Production Deployments
-- Run bot in isolated containers (Docker recommended)
-- Use systemd service with restricted user permissions
-- Implement firewall rules limiting outbound connections
-- Configure monitoring and alerting for anomalies
-- Maintain regular backups of memories and configuration
+- **Cross-server discretion.** Vaults are the only mechanical boundary
+  between servers. Whether to mention that you know someone from another
+  server, or to repeat what they said there, is governed by a mandatory
+  prompt section, and a successful injection could make the bot cross that
+  line. Put anything that must not travel in a vault.
+- **The double post.** The bot can send through `send_message` and also
+  emit trailing text that the compat-mode tail posts. In 0.13.0 only the
+  tool's description prevents the duplicate; 0.13.1 adds a mechanical
+  guard.
+- **External content.** Fetched pages, attachments and MCP tool results
+  reach the model as text. Citations show where search results came from;
+  review them before trusting a claim. Report patterns of injected behavior
+  through a security advisory.
 
-### Self-Hosted Instances
-- Keep host OS updated with security patches
-- Use SSH key authentication (disable password login)
-- Implement fail2ban or similar intrusion prevention
-- Enable automatic security updates where possible
-- Monitor system logs for suspicious activity
+## Secrets and data at rest
+
+API keys and Discord tokens live in environment variables, loaded from
+`.env`, which is gitignored. Each bot config names its token variable
+(`discord.token_env_var`), and `api.provider.api_key_env` can point a bot at
+its own API key. The desktop app writes secrets to the data root's `.env`
+through the write-only API above. Rotate a key immediately if it is
+exposed, and regenerate a Discord token the same way; a token's first
+base64 segment decodes to its bot id, which is the quickest way to confirm
+which identity a token belongs to.
+
+Memory is plaintext Markdown and message history is SQLite. Anyone with
+filesystem access, including whoever operates the dashboard, can read
+everything the bot knows. Treat the host accordingly: full-disk encryption
+on laptops, a dedicated user for the bot process, and Discord's own channel
+permissions to keep the bot out of conversations it has no business
+remembering.
+
+## Hardening checklist
+
+- Run the bot as an unprivileged user, in a virtual environment or a
+  container.
+- Give the Discord application only the permissions it needs, and audit its
+  server list.
+- Keep `discord.py` and the `anthropic` SDK current; pin versions in
+  production.
+- Back up `memories/`, `persistence/` and `bots/` (`python
+  deployment_tool.py export` produces a portable zip).
+- Separate keys for development and production, and separate bot tokens for
+  separate installs.
 
 ## Acknowledgments
 
-We appreciate security researchers who responsibly disclose vulnerabilities. Contributors will be recognized in security advisories, release notes, and CHANGELOG.md (with consent).
-
-Thank you for helping keep this framework secure.
+Researchers who disclose responsibly are credited in the advisory, the
+release notes and CHANGELOG.md, with their consent.
