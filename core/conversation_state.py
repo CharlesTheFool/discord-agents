@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from core.internal_constants import TOOL_STUB_TEXT, TOOL_STUB_MIN_CHARS
+from core.model.messages import INTERNAL_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,8 @@ class ConversationState:
         self,
         role: str,
         content: Any,
-        attachment_ids: Optional[List[str]] = None
+        attachment_ids: Optional[List[str]] = None,
+        model: Optional[str] = None,
     ) -> None:
         """
         Add message to conversation state.
@@ -64,12 +66,15 @@ class ConversationState:
             role: 'user' or 'assistant'
             content: Message content (string or content blocks array)
             attachment_ids: Optional attachment IDs, annotated on the message
+            model: The model that wrote an assistant message (ignored for users)
         """
         message = {
             "role": role,
             "content": content,
             "message_type": f"discord_{role}"  # Tag as Discord message for message cap filtering
         }
+        if model and role == "assistant":
+            message["model"] = model
 
         if attachment_ids:
             message["attachment_ids"] = attachment_ids
@@ -95,17 +100,22 @@ class ConversationState:
     def add_tool_use_and_results(
         self,
         assistant_content: List[Dict[str, Any]],
-        tool_results: List[Dict[str, Any]]
+        tool_results: List[Dict[str, Any]],
+        model: Optional[str] = None,
     ) -> None:
         """
         Add assistant message with tool_use blocks and user message with
         tool_result blocks, persisting tool interactions in the transcript.
+        model stamps the assistant half.
         """
-        self.messages.append({
+        assistant = {
             "role": "assistant",
             "content": assistant_content,
             "message_type": "tool_use"
-        })
+        }
+        if model:
+            assistant["model"] = model
+        self.messages.append(assistant)
         self.messages.append({
             "role": "user",
             "content": tool_results,
@@ -316,7 +326,7 @@ class ConversationState:
         """
         Get messages array ready for Claude API.
 
-        Strips internal-only fields (message_type, attachment_ids). Server
+        Strips internal-only fields (core.model.messages.INTERNAL_FIELDS). Server
         tool blocks never reach persisted state (stripped at serialization
         and healed at deserialization), so no block sanitization is needed.
 
@@ -328,8 +338,6 @@ class ConversationState:
         Returns:
             Copy of messages array without internal fields
         """
-        internal_fields = {"message_type", "attachment_ids"}
-
         # Contentless Discord turns (sticker-only, pin/system messages) persist
         # as empty strings in legacy states - the API rejects empty text blocks
         def _empty_discord_turn(msg) -> bool:
@@ -356,7 +364,7 @@ class ConversationState:
         for msg in self.messages[start:]:
             if _empty_discord_turn(msg):
                 continue
-            out = {k: v for k, v in msg.items() if k not in internal_fields}
+            out = {k: v for k, v in msg.items() if k not in INTERNAL_FIELDS}
             if isinstance(out.get("content"), str):
                 out["content"] = [{"type": "text", "text": out["content"]}]
             result.append(out)

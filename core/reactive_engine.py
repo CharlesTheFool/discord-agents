@@ -212,6 +212,7 @@ class ToolLoopResult:
     thinking_text: str = ""
     thinking_block: Any = None
     tools_were_used: bool = False
+    model: str = ""  # the model that wrote this turn (stamped on persisted assistant messages)
     usage: Any = None  # usage of the final response in the loop
     container_file_ids: List[str] = field(default_factory=list)
     tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
@@ -1427,7 +1428,7 @@ class ReactiveEngine:
         cache breakpoint, so per-request churn never invalidates the cached
         conversation prefix. It is never persisted.
         """
-        result = ToolLoopResult()
+        result = ToolLoopResult(model=api_params["model"])
         container_id = None
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
@@ -1549,7 +1550,8 @@ class ReactiveEngine:
                     try:
                         conversation_state.add_tool_use_and_results(
                             assistant_content=serialize_assistant_blocks(response.content),
-                            tool_results=tool_results
+                            tool_results=tool_results,
+                            model=result.model,
                         )
                         await self.conversation_state_manager.save(conversation_state)
 
@@ -1781,7 +1783,8 @@ class ReactiveEngine:
             # All-tool-send turns (v0.12.0) may leave no final content; the
             # sends themselves are already in state via tool_use/tool_result
             if assistant_content:
-                conversation_state.add_message("assistant", assistant_content)
+                conversation_state.add_message("assistant", assistant_content,
+                                               model=result.model or None)
 
             removed_count = conversation_state.enforce_message_cap()
             if removed_count > 0:
