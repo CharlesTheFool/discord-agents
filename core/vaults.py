@@ -3,7 +3,7 @@ Vaults (v0.7.0) - the one mechanical isolation gate.
 
 A vault is a channel or server whose content never leaves it: excluded from
 outside search and attachment access, its memory files unreadable from
-outside, writes from inside contained. Inside a vault the bot is fully
+outside, memory writes from inside contained to its own tree (0.13.1). Inside a vault the bot is fully
 itself. Everything coarser is Discord's job; everything finer is the
 discretion-norms prompt.
 """
@@ -161,4 +161,33 @@ class VaultEnforcer:
                 "keep person-notes in this server's channel notes instead"
             )
 
+        if command in _WRITE_COMMANDS and not self._inside_own_vault_tree(
+                parts, server_id, channel_id):
+            return False, "that's outside this vault - notes made here stay here"
+
         return True, None
+
+    def _inside_own_vault_tree(self, parts: List[str], server_id, channel_id) -> bool:
+        """From inside a vault, writes stay in that vault's own tree; the
+        innermost vault wins (a vaulted channel in a vaulted server keeps its
+        notes in the channel's tree, out of the rest of the server's reach).
+        True when the context is in no vault at all."""
+        inside = self.vaults & self._context_ids(server_id, channel_id)
+        if not inside:
+            return True
+        # parts: ['', 'memories', bot, 'servers', sid, ...rest]
+        if len(parts) < 6 or parts[3] != "servers" or parts[4] != str(server_id):
+            return False
+        rest = parts[5:]
+        if rest == ["followups.json"]:
+            return True   # follow-ups are server-level by design (SECURITY.md residual)
+        channel_vaults = inside - {str(server_id)}
+        if not channel_vaults:
+            return True   # a vaulted server: its whole tree
+        if rest[0] != "channels" or len(rest) < 2:
+            return False
+        names = [n.replace(".md", "").replace("_stats.json", "") for n in rest[1:]]
+        # channels/{C}[.md|_stats.json|/...], or a vaulted thread's
+        # channels/{parent}/threads/{T}[.md|/...]
+        return (names[0] in channel_vaults
+                or (len(names) >= 3 and names[1] == "threads" and names[2] in channel_vaults))
