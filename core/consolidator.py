@@ -14,13 +14,14 @@ to CONSOLIDATION_HISTORY_KEEP. Vault boundaries are absolute. A failed run
 leaves the stamp untouched and retries next night.
 """
 
+import hashlib
 import json
 import logging
 import re
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from core.internal_constants import (
     CONSOLIDATION_INTERVAL_DAYS,
@@ -255,6 +256,15 @@ CULTURE_SYSTEM_PROMPT = (
 )
 
 
+def text_fingerprint(text: Optional[str]) -> Optional[str]:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest() if text is not None else None
+
+
+def file_fingerprint(path: Path) -> Optional[str]:
+    """Hash of a file's text, None while it doesn't exist."""
+    return text_fingerprint(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
 def archive_to_history(fs_path: Path, keep: int = CONSOLIDATION_HISTORY_KEEP) -> None:
     """Copy a file into a .history sibling dir before rewriting it."""
     if not fs_path.exists():
@@ -284,6 +294,9 @@ class MemoryConsolidator:
         self._personality = read_personality(config)  # frame the writer AS the bot
         self._running = False
         self._pending_era_files: dict = {}  # key "channel_id::month" -> list[Path]
+        # custom_id -> (fingerprint fn, its value at build time): a batch can
+        # take hours, and the bot keeps writing these files meanwhile
+        self._built_from: dict = {}
 
     # ---------- cadence ----------
 
@@ -369,6 +382,7 @@ class MemoryConsolidator:
 
         # Pass 1: era compaction; Passes 2+3: profile rewrites + provenance repair;
         # Pass 4 (monthly): channel/culture refresh
+        self._built_from.clear()
         era_requests = self._build_era_requests(server_id)
         all_requests = era_requests + await self._build_profile_requests(server_id)
         all_requests += self._build_refresh_requests(server_id)
@@ -379,6 +393,11 @@ class MemoryConsolidator:
             for cid, result in results.items():
                 if result.type != "succeeded":
                     logger.warning(f"Batch item {cid} {result.type} - skipped")
+                    continue
+                if self._edited_since_build(cid):
+                    # The bot changed the file while the batch ran; applying
+                    # would overwrite that edit. The next cycle rebuilds it.
+                    logger.info(f"Skipped {cid}: edited since the batch was submitted")
                     continue
                 try:
                     text = next(b.text for b in result.message.content if b.type == "text")
@@ -584,6 +603,16 @@ class MemoryConsolidator:
 
     # ---------- Pass 2: profile rewrites ----------
 
+    def _remember_source(self, custom_id: str, fingerprint: Callable[[], Optional[str]]) -> None:
+        """Record what a request was built from, to check again at apply time."""
+        self._built_from[custom_id] = (fingerprint, fingerprint())
+
+    def _edited_since_build(self, custom_id: str) -> bool:
+        if custom_id not in self._built_from:
+            return False   # era digests: applied against the files as they are then
+        fingerprint, at_build = self._built_from[custom_id]
+        return fingerprint() != at_build
+
     def _vaulted_channel_ids(self, server_id: str) -> list:
         if not self.vaults or not self.vaults.vaults:
             return []
@@ -612,6 +641,7 @@ class MemoryConsolidator:
             gpath = self.memory.get_global_user_profile_path(uid)
             existing = self.memory.resolve_path(gpath)
             current = existing.read_text(encoding="utf-8") if existing.exists() else "(no profile yet)"
+            self._remember_source(f"profile_{uid}", lambda path=existing: file_fingerprint(path))
             requests.append((f"profile_{uid}", memory_request(
                 self.config.api.consolidation_model,
                 as_self(PROFILE_SYSTEM_PROMPT, self._personality, character),
@@ -689,6 +719,11 @@ class MemoryConsolidator:
                 state_content = state_fs.read_text(encoding="utf-8")
                 body, _ = split_channel_state(state_content)
                 channel_bodies[cid] = body
+                # Only the body is rewritten (the index is re-read at apply
+                # time), so index lines appended meanwhile don't count
+                self._remember_source(f"channel_{cid}", lambda path=state_fs: text_fingerprint(
+                    split_channel_state(path.read_text(encoding="utf-8"))[0]
+                    if path.exists() else None))
                 # Collect newest N non-era episode files (era digests are derived, not evidence)
                 ep_dir = ch_dir / "episodes"
                 ep_files = []
@@ -707,6 +742,7 @@ class MemoryConsolidator:
         # Culture request: current culture.md + all channel bodies
         culture_fs = self._servers_root() / server_id / "culture.md"
         culture_text = culture_fs.read_text(encoding="utf-8") if culture_fs.exists() else "(no culture file yet)"
+        self._remember_source("culture", lambda: file_fingerprint(culture_fs))
         channels_summary = "\n\n".join(
             f"<channel id=\"{cid}\">\n{body}\n</channel>"
             for cid, body in channel_bodies.items())
@@ -730,5 +766,6 @@ class MemoryConsolidator:
 
     def _apply_culture(self, server_id: str, data: dict) -> None:
         culture_fs = self._servers_root() / server_id / "culture.md"
+        culture_fs.parent.mkdir(parents=True, exist_ok=True)
         archive_to_history(culture_fs)
         culture_fs.write_text(data["culture_markdown"], encoding="utf-8")
