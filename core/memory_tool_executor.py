@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import shutil
 
-from .vaults import VaultEnforcer
+from .vaults import VaultEnforcer, normalize_memory_path
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,12 @@ class MemoryToolExecutor:
             write_grant: one-shot /memory consent (v0.9) - that user's own
                 global profile is writable from their DM for this turn
         """
+        # Every check below reads the path as written, so it must be the path
+        # that gets touched: "a/b/../../c" and Windows backslashes would
+        # otherwise pass a vault or DM rule and land somewhere else
+        tool_input = {**tool_input, **{
+            key: normalize_memory_path(tool_input[key])
+            for key in ("path", "new_path") if tool_input.get(key)}}
         command = tool_input.get("command")
         path = tool_input.get("path", "")
 

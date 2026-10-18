@@ -151,6 +151,9 @@ class AgenticEngine:
         # attached by discord_client.on_ready (it lives on ReactiveEngine).
         self._coordination_queue = []
         self._coordination_tasks = set()
+        # One drainer at a time: two would both read the head, both send it,
+        # and drop the next action
+        self._drain_lock = asyncio.Lock()
         self.watch_manager = None
         self.conversation_state_manager = None
 
@@ -1119,6 +1122,10 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
     async def _drain_coordination_queue(self) -> None:
         """Send queued coordination messages; stop at the first gate so
         deferred sends retry next tick instead of being dropped."""
+        async with self._drain_lock:
+            await self._drain_coordination_queue_locked()
+
+    async def _drain_coordination_queue_locked(self) -> None:
         while self._coordination_queue:
             action = self._coordination_queue[0]
             current_hour = datetime.now().hour

@@ -9,12 +9,19 @@ discretion-norms prompt.
 """
 
 import logging
+import posixpath
 from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # Memory tool commands that write
 _WRITE_COMMANDS = {"create", "str_replace", "insert", "delete", "rename"}
+
+
+def normalize_memory_path(path: str) -> str:
+    """The path a memory command really touches: '..' and '.' resolved,
+    backslashes (a separator on Windows) treated as slashes."""
+    return posixpath.normpath(path.replace("\\", "/"))
 
 
 class VaultEnforcer:
@@ -113,6 +120,7 @@ class VaultEnforcer:
         """Gate one memory-tool call. Returns (allowed, reason_if_denied).
         write_grant (v0.9): one-shot /memory consent - the named user's own
         global profile becomes writable from their DM, nothing else."""
+        path = normalize_memory_path(path)
         # DM privacy is mechanical and holds even with no vaults configured
         dm_verdict = self._check_dm_memory(path, command, server_id, channel_id,
                                            write_grant=write_grant)

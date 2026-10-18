@@ -95,7 +95,7 @@ class ToolLoopResult:
     model: str = ""  # the model that wrote this turn (stamped on persisted assistant messages)
     usage: Any = None  # the final call's usage: its input is the live context size
     total_usage: Usage = field(default_factory=Usage)  # every call this turn, for cost
-    last_tool_name: str = ""  # the last tool called before the turn ended
+    ended_on_send: bool = False  # the turn's last tool call was a send that posted
     dropped_text_chars: int = 0  # trailing text the send guard held back
     container_file_ids: List[str] = field(default_factory=list)
     tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
@@ -1130,6 +1130,8 @@ class ReactiveEngine:
         for block in response.content:
             if block.type != "tool_use":
                 continue
+            if loop_result is not None:
+                loop_result.ended_on_send = False   # send_message sets it back
 
             if block.name == "memory":
                 command = block.input.get('command', 'unknown')
@@ -1254,6 +1256,7 @@ class ReactiveEngine:
                      "reply" if block.input.get("reply_to_message_id") else "send",
                      preview)
                 if loop_result is not None:
+                    sent_before = len(loop_result.sent_message_ids)
                     result = await self._execute_send_message(
                         block.input, message, loop_result)
                 else:
@@ -1263,6 +1266,8 @@ class ReactiveEngine:
                     "tool_use_id": block.id,
                     "content": result
                 })
+                if loop_result is not None:
+                    loop_result.ended_on_send = len(loop_result.sent_message_ids) > sent_before
 
             # MCP tools are prefixed with their server name (v0.5.0)
             elif "_" in block.name and self.mcp_manager:
@@ -1374,8 +1379,6 @@ class ReactiveEngine:
                         result.response_text = result.response_text or "I got stuck in a tool loop - try asking again."
                     break
                 result.tools_were_used = True
-                result.last_tool_name = [b.name for b in response.content
-                                         if getattr(b, "type", None) == "tool_use"][-1]
 
                 tool_results, pending_file_blocks, container_rebuilt = await self._execute_tool_blocks(
                     response, message, conversation_state, request,
@@ -1475,11 +1478,14 @@ class ReactiveEngine:
                 if citations_list:
                     result.response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
 
-                # Send guard (0.13.1): text right after a send_message call is
-                # the double-post pattern (send, then restate it). It's held
-                # back - never posted, never persisted - and counted. Text
-                # after other work still goes out as a normal message.
-                if result.last_tool_name == "send_message" and result.response_text.strip():
+                # Send guard (0.13.1): text right after a send_message call
+                # that posted is the double-post pattern (send, then restate
+                # it). It's held back - never posted, never persisted - and
+                # counted. Text after a failed send, after other work, or after
+                # server tools in this response (search, code) still goes out.
+                if any(getattr(b, "type", None) == "server_tool_use" for b in response.content):
+                    result.ended_on_send = False
+                if result.ended_on_send and result.response_text.strip():
                     logger.info(f"Dropped trailing text after send_message{log_suffix}: "
                                 f"{result.response_text[:120]!r}")
                     result.dropped_text_chars = len(result.response_text)
@@ -1754,6 +1760,9 @@ class ReactiveEngine:
                 # own handlers - seeding them here would duplicate them
                 conversation_state = await self._load_conversation_state(
                     channel_id, exclude_message_ids=list(self._responded_messages))
+                # Messages that came before this mention but haven't been
+                # scanned in yet go first, so the mention can't overtake them
+                await self._ingest_channel_backlog(channel_id, before_message_id=message.id)
 
                 # Exclude messages currently being processed to prevent seeing
                 # other pending @mentions
@@ -2136,9 +2145,13 @@ class ReactiveEngine:
         logger.debug(f"Processing {len(messages_to_check)} pending messages")
 
         channel_triggers: dict = {}
+        deferred, deferred_channels = [], set()
         for channel_id, message_id in messages_to_check:
-            if self.channel_locks.busy(channel_id):
-                self.pending_messages.append((channel_id, message_id))
+            # Once a channel defers, its later messages defer too, or a
+            # turn ending mid-pass would let them overtake the deferred ones
+            if channel_id in deferred_channels or self.channel_locks.busy(channel_id):
+                deferred_channels.add(channel_id)
+                deferred.append((channel_id, message_id))
                 continue
             try:
                 async with self.channel_locks.lock(channel_id):
@@ -2148,8 +2161,25 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Error processing message {message_id} in channel {channel_id}: {e}", exc_info=True)
 
+        # Deferred messages are older than anything that arrived during the
+        # pass, so they go back in front
+        self.pending_messages[:0] = deferred
         logger.debug(f"Phase 1 complete: {len(channel_triggers)} channels with updates")
         return channel_triggers
+
+    async def _ingest_channel_backlog(self, channel_id: str, before_message_id: int) -> None:
+        """Claim and ingest this channel's pending messages older than
+        before_message_id. Call with the channel's lock held."""
+        mine = [p for p in self.pending_messages
+                if p[0] == channel_id and int(p[1]) < int(before_message_id)]
+        if not mine:
+            return
+        self.pending_messages = [p for p in self.pending_messages if p not in mine]
+        for cid, message_id in mine:
+            try:
+                await self._process_message_to_state(cid, message_id)
+            except Exception as e:
+                logger.error(f"Error ingesting backlog message {message_id}: {e}", exc_info=True)
 
     async def _process_message_to_state(self, channel_id: str, message_id: int) -> bool:
         """
@@ -2373,6 +2403,20 @@ class ReactiveEngine:
 
         # One turn per channel, from reading the state to saving the reply
         async with self.channel_locks.lock(channel_id):
+            # Another turn may have held the channel while this scan waited:
+            # if anyone (the bot included) spoke since the target, there's
+            # nothing left to decide about it - newer messages get their own scan
+            try:
+                newest = None
+                async for m in message.channel.history(limit=1):
+                    newest = m
+                if newest is not None and newest.id != message.id:
+                    logger.info(f"Skipping scan in {channel_id}: the conversation moved past "
+                                f"target {message.id} while it waited")
+                    return
+            except discord.HTTPException:
+                pass  # can't verify; decide anyway
+
             # Messages are already in state (with attachments) from Phase 1
             # processing; seeding only happens when the state is empty
             conversation_state = await self._load_conversation_state(channel_id)
