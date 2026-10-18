@@ -67,6 +67,7 @@ class ModelResponse:
     stop_reason: str                   # one of STOP_REASONS
     usage: Usage
     model: str
+    stop_detail: str = ""              # the provider's own stop reason, for logs
     persistable: list = field(default_factory=list)   # content as dicts safe to store
     # Provider extras: the code-execution container (removed in 0.14.0)
     container_id: Optional[str] = None

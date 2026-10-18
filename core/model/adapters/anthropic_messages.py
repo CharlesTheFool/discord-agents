@@ -210,6 +210,7 @@ def to_response(message) -> ModelResponse:
     return ModelResponse(
         content=message.content,
         stop_reason=_STOP_REASONS.get(message.stop_reason, "other"),
+        stop_detail=message.stop_reason or "",
         usage=Usage(
             input_tokens=usage.input_tokens or 0,
             cache_read_input_tokens=usage.cache_read_input_tokens or 0,

@@ -904,7 +904,7 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 if response.stop_reason != "end_turn":
                     logger.warning(
                         f"Proactive generation stopped with stop_reason="
-                        f"{response.stop_reason} (iteration {loop_iteration})"
+                        f"{response.stop_detail} (iteration {loop_iteration})"
                     )
                 break
 

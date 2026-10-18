@@ -762,7 +762,7 @@ function wireActivity() {
 const MODEL_OPTIONS = [
   "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5",
 ];
-// mirrors internal_constants._EFFORT_CAPABLE_MARKERS
+// mirrors the effort=True entries in core/model/catalog.py - keep in step
 const EFFORT_MARKERS = ["fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "sonnet-5"];
 const supportsEffort = (m) => EFFORT_MARKERS.some((x) => (m || "").includes(x));
 

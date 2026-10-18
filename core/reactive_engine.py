@@ -1316,7 +1316,7 @@ class ReactiveEngine:
             # Collect files written by code execution for Discord delivery
             result.container_file_ids.extend(response.container_file_ids)
 
-            self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
+            self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_detail)
             self._log_response_blocks(response, log_suffix)
 
             if loop_iteration == 1:
@@ -1518,7 +1518,7 @@ class ReactiveEngine:
                 break
 
             else:
-                logger.warning(f"Unexpected stop_reason{log_suffix}: {response.stop_reason}")
+                logger.warning(f"Unexpected stop_reason{log_suffix}: {response.stop_detail}")
                 if fallback_text and not result.did_send:
                     result.response_text = fallback_text
                 break

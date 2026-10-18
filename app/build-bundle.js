@@ -22,7 +22,7 @@ const RUNTIME = path.join(BUNDLE, "runtime", "python");
 const FRAMEWORK = path.join(BUNDLE, "framework");
 
 const FRAMEWORK_ITEMS = [
-  "core", "supervisor", "skills",
+  "core", "tools", "supervisor", "skills",
   "bot_manager.py", "supervisor.py", "deployment_tool.py",
   "requirements.txt", "README.md", "CHANGELOG.md",
 ];
@@ -91,10 +91,15 @@ function copyFiltered(src, dest) {
     copyFiltered(src, path.join(FRAMEWORK, item));
   }
 
-  // 5. prove the bundle stands alone: the embedded python imports the stack
-  log("smoke test: embedded interpreter imports the framework deps…");
+  // 5. prove the bundle stands alone: the embedded python imports the
+  // dependencies AND the framework's own entry points (a missing framework
+  // folder once shipped unnoticed because only the deps were checked)
+  log("smoke test: embedded interpreter imports the deps and the framework…");
   execFileSync(path.join(RUNTIME, "python.exe"),
-    ["-c", "import discord, anthropic, aiohttp, aiosqlite, yaml, PIL, dotenv; print('bundle ok')"],
+    ["-c", "import sys; sys.path.insert(0, 'framework'); " +
+           "import discord, anthropic, aiohttp, aiosqlite, yaml, PIL, dotenv; " +
+           "import core.reactive_engine, core.agentic_engine, supervisor.api; " +
+           "print('bundle ok')"],
     { stdio: "inherit", cwd: BUNDLE });
 
   log("bundle staged: app/bundle/{runtime,framework}");

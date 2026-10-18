@@ -242,7 +242,7 @@ class ConversationState:
         a one-line stub (REDESIGN: turn-scoped working memory). Idempotent.
 
         Only client tool_result blocks are stubbed - server tool blocks are
-        never persisted (see serialize_assistant_blocks in reactive_engine).
+        never persisted (see serialize_assistant_blocks in the Anthropic adapter).
 
         Returns number of blocks stubbed.
         """
@@ -333,7 +333,7 @@ class ConversationState:
         String content is normalized to block form so every message has one
         stable wire representation across turns - prompt caching matches on
         the serialized prefix, and the per-turn cache breakpoint rides on a
-        content block (see with_message_cache_breakpoint in reactive_engine).
+        content block (see with_message_cache_breakpoint in the Anthropic adapter).
 
         Returns:
             Copy of messages array without internal fields
