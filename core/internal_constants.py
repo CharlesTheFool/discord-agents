@@ -10,6 +10,8 @@ For user-configurable settings, see config.py and the bot YAML files.
 from dataclasses import dataclass
 from typing import List
 
+from core.model.catalog import CATALOG, spec_for
+
 
 # =============================================================================
 # EPISODIC SESSIONS (Internal)
@@ -39,37 +41,20 @@ PROACTIVE_SETTLE_DELAY_MINUTES = 15
 # Channel quiet this long -> a standalone follow-up won't interrupt anything
 FOLLOWUP_STANDALONE_IDLE_MINUTES = 10
 
-# Models that accept output_config.effort; passing it elsewhere is a 400
-_EFFORT_CAPABLE_MARKERS = ("fable", "opus-4-5", "opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6", "sonnet-5")
+# Per-model capabilities, ceilings and prices live in core/model/catalog.py;
+# these helpers keep their old names for the code that calls them.
 
 
 def model_supports_effort(model: str) -> bool:
-    return any(marker in model for marker in _EFFORT_CAPABLE_MARKERS)
-
-
-# Per-model OUTPUT-token ceilings (distinct from the 1M *input* context window).
-# max_tokens is derived as min(context_tokens, this) and never shown to users.
-# Chat requests stream, so the SDK's 10-minute non-streaming guard doesn't cap this.
-# Conservative safe floors - the API 400s if max_tokens exceeds the real cap, so
-# these bias low (responses rarely approach them); raise if Anthropic docs confirm
-# higher per model. Substring match, longest/most-specific markers first.
-_MODEL_MAX_OUTPUT = (
-    ("fable", 32000),
-    ("opus-4-8", 32000),
-    ("opus", 32000),
-    ("sonnet-4-6", 32000),
-    ("sonnet", 32000),
-    ("haiku", 16000),
-)
-MODEL_MAX_OUTPUT_DEFAULT = 16000
+    """Whether the model accepts output_config.effort (anywhere else it's a 400)."""
+    return spec_for(model).effort
 
 
 def model_max_output(model: str) -> int:
-    """The output-token ceiling for a model (safe floor; see _MODEL_MAX_OUTPUT)."""
-    for marker, cap in _MODEL_MAX_OUTPUT:
-        if marker in (model or ""):
-            return cap
-    return MODEL_MAX_OUTPUT_DEFAULT
+    """The output-token ceiling for a model. max_tokens is derived as
+    min(context_tokens, this) and never shown to users; chat requests
+    stream, so the SDK's 10-minute non-streaming guard doesn't cap it."""
+    return spec_for(model).max_output
 
 
 # =============================================================================
@@ -211,30 +196,16 @@ PRIME_CONTEXT_TEMPLATE = (
 INDUCTION_CHUNK_TOKENS = 12_000
 INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
 
-# Batch-rate $/MTok (50% of live) for the dry-run cost table; unknown models
-# print "n/a" rather than a guess. Substring match - specific keys FIRST
-# (opus-4-5+ repriced below the opus-4.0/4.1 tier).
-MODEL_BATCH_PRICES = {
-    "fable": (5.00, 25.00),
-    "haiku-4-5": (0.50, 2.50),
-    "sonnet-4-5": (1.50, 7.50),
-    "sonnet-4-6": (1.50, 7.50),
-    "sonnet-5": (1.50, 7.50),
-    "opus-4-5": (2.50, 12.50),
-    "opus-4-6": (2.50, 12.50),
-    "opus-4-7": (2.50, 12.50),
-    "opus-4-8": (2.50, 12.50),
-    "opus-4": (7.50, 37.50),
-}
+# Batch-rate $/MTok (50% of live) by catalog marker, in match order; the
+# induction dry-run prices from it. Unknown models print "n/a", not a guess.
+MODEL_BATCH_PRICES = {spec.marker: spec.batch_prices
+                      for spec in CATALOG if spec.batch_prices}
 
 
 def model_live_prices(model: str):
     """Live $/MTok (input, output) for a model, or None when unknown.
     Cache reads bill at 0.1x input."""
-    for marker, (batch_in, batch_out) in MODEL_BATCH_PRICES.items():
-        if marker in model:
-            return (batch_in * 2, batch_out * 2)
-    return None
+    return spec_for(model).live_prices
 
 
 def estimate_cost_usd(tokens: dict, model: str):
