@@ -21,10 +21,10 @@ from core.internal_constants import (
     EPISODE_BOOTSTRAP_DAYS,
     EPISODE_SEED_TAIL_MESSAGES,
     EPISODE_INDEX_SEED_TAIL,
-    EPISODE_DISTILL_MODEL,
     EPISODE_DISTILL_MAX_TOKENS,
     EPISODE_RETRY_COOLDOWN_MINUTES,
 )
+from core.model.driver import ModelRequest
 
 logger = logging.getLogger(__name__)
 
@@ -227,12 +227,14 @@ class EpisodeManager:
         message_memory,
         memory_manager,
         conversation_state_manager,
-        anthropic_client,
+        driver,
+        model: str,
     ):
         self.message_memory = message_memory
         self.memory_manager = memory_manager
         self.conversation_state_manager = conversation_state_manager
-        self.anthropic = anthropic_client
+        self.driver = driver
+        self.model = model  # the background model: distillation is a summarizing job
         self._locks: dict = {}
         # Distillation-failure cooldowns: the usage trigger re-fires every
         # turn while over threshold, which would re-attempt (and re-bill) a
@@ -358,7 +360,7 @@ class EpisodeManager:
         return last_old
 
     async def _distill_segment(self, channel_id: str, segment: list) -> dict:
-        """One Haiku call -> episode file + updated channel state file.
+        """One background-model call -> episode file + updated channel state file.
         Returns the distilled episode data (the reseed event reads title)."""
         server_id = await self.message_memory.get_server_for_channel(channel_id)
         if not server_id:
@@ -385,13 +387,14 @@ class EpisodeManager:
 
 Distill this episode and return the updated channel state per the schema."""
 
-        response = await self.anthropic.beta.messages.create(
-            model=EPISODE_DISTILL_MODEL,
+        response = await self.driver.generate(ModelRequest(
+            model=self.model,
             max_tokens=EPISODE_DISTILL_MAX_TOKENS,
             system=DISTILL_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
-            output_config={"format": {"type": "json_schema", "schema": EPISODE_SCHEMA}},
-        )
+            output_schema=EPISODE_SCHEMA,
+            beta=True,
+        ))
         text = next(b.text for b in response.content if b.type == "text")
         data = json.loads(text)
 

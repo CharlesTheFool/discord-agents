@@ -422,7 +422,7 @@ class DiscordClient(discord.Client):
         if self.agentic_engine and self.agentic_engine.watch_manager:
             from tools.ask_prime import AskPrimeExecutor
             self.reactive_engine.ask_prime_executor = AskPrimeExecutor(
-                anthropic=self.reactive_engine.anthropic,
+                driver=self.reactive_engine.driver,
                 model=self.config.api.model,
                 vault_ids=self.config.vaults,
                 watch_manager=self.agentic_engine.watch_manager,

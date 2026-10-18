@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .config import BotConfig
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
-    from anthropic import AsyncAnthropic
+    from .model.driver import ModelDriver
 
 from .proactive_action import ProactiveAction
 from .engagement_tracker import EngagementTracker
@@ -32,14 +32,14 @@ from .internal_constants import (
     PROACTIVE_INCLUDES_THREADS,
     PROACTIVE_SETTLE_DELAY_MINUTES,
     WATCH_EVAL_MAX_TOKENS,
-    WATCH_EVAL_MODEL,
     WATCH_EVAL_PROMPT,
     WATCH_EVAL_SCHEMA,
     WATCH_EXPIRED_NOTE,
     WATCH_RELAY_NOTE,
-    model_supports_effort,
 )
 from .memory_tool_executor import MemoryToolExecutor
+from .model.driver import ModelRequest
+from .model.registry import MEMORY
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class AgenticEngine:
         config: "BotConfig",
         memory_manager: "MemoryManager",
         message_memory: "MessageMemory",
-        anthropic_client: "AsyncAnthropic",
+        driver: "ModelDriver",
     ):
         """
         Initialize agentic engine.
@@ -115,12 +115,12 @@ class AgenticEngine:
             config: Bot configuration
             memory_manager: Memory tool manager
             message_memory: Message storage
-            anthropic_client: Anthropic API client
+            driver: Model driver every model call goes through
         """
         self.config = config
         self.memory = memory_manager
         self.message_memory = message_memory
-        self.anthropic = anthropic_client
+        self.driver = driver
         self.discord_client = None  # Set after Discord client initialization
 
         # Memory tool executor for the proactive tool loop (MemoryManager has
@@ -175,13 +175,6 @@ class AgenticEngine:
         """
         self.discord_client = discord_client
         logger.info("Discord client reference set on AgenticEngine")
-
-    def _build_output_config(self, schema: dict) -> dict:
-        """Structured output config; effort only where the model accepts it."""
-        output_config = {"format": {"type": "json_schema", "schema": schema}}
-        if model_supports_effort(self.config.api.model):
-            output_config["effort"] = AGENTIC_EFFORT
-        return output_config
 
     async def agentic_loop(self):
         """
@@ -692,12 +685,13 @@ Your personality:
 {base_prompt}"""
 
         try:
-            response = await self.anthropic.messages.create(
+            response = await self.driver.generate(ModelRequest(
                 model=self.config.api.model,
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
-                output_config=self._build_output_config(FOLLOWUP_MESSAGE_SCHEMA),
-            )
+                output_schema=FOLLOWUP_MESSAGE_SCHEMA,
+                effort=AGENTIC_EFFORT,
+            ))
 
             text = "".join(block.text for block in response.content if block.type == "text")
             return json.loads(text)["message"].strip()
@@ -850,19 +844,16 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 "If nothing genuinely invites a fresh message, set should_send to false instead of forcing one."
             )
 
-            # Build API params with extended thinking and memory tool
-            api_params = {
-                "model": self.config.api.model,
-                "max_tokens": 2000,  # thinking counts against this; truncation aborts the send
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": "\n".join(user_parts)}],
-                "tools": [{"type": "memory_20250818", "name": "memory"}],
-                "output_config": self._build_output_config(PROACTIVE_MESSAGE_SCHEMA),
-            }
-
-            # Add adaptive thinking if configured
-            if self.config.api.thinking.enabled:
-                api_params["thinking"] = {"type": "adaptive"}
+            request = ModelRequest(
+                model=self.config.api.model,
+                max_tokens=2000,  # thinking counts against this; truncation aborts the send
+                system=system_prompt,
+                messages=[{"role": "user", "content": "\n".join(user_parts)}],
+                tools=[MEMORY],
+                output_schema=PROACTIVE_MESSAGE_SCHEMA,
+                effort=AGENTIC_EFFORT,
+                thinking=self.config.api.thinking.enabled,
+            )
 
             # Call Claude to generate message
             logger.info(f"Generating proactive message for channel {action.channel_id}")
@@ -876,7 +867,7 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
             while True:
                 loop_iteration += 1
 
-                response = await self.anthropic.messages.create(**api_params)
+                response = await self.driver.generate(request)
 
                 # Extract thinking
                 for block in response.content:
@@ -900,12 +891,12 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                             })
 
                     # Continue conversation
-                    api_params["messages"].append({"role": "assistant", "content": response.content})
-                    api_params["messages"].append({"role": "user", "content": tool_results})
+                    request.messages.append({"role": "assistant", "content": response.content})
+                    request.messages.append({"role": "user", "content": tool_results})
                     continue
 
                 # end_turn or anything unexpected (max_tokens, refusal,
-                # pause_turn) terminates the loop - re-issuing the identical
+                # pause) terminates the loop - re-issuing the identical
                 # request would spin forever in a background task
                 for block in response.content:
                     if block.type == "text":
@@ -1008,14 +999,13 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                     for m in human
                 )
                 try:
-                    response = await self.anthropic.messages.create(
-                        model=WATCH_EVAL_MODEL,
+                    response = await self.driver.generate(ModelRequest(
+                        model=self.config.api.background_model,
                         max_tokens=WATCH_EVAL_MAX_TOKENS,
                         system=WATCH_EVAL_PROMPT.format(question=watch["question"]),
                         messages=[{"role": "user", "content": transcript}],
-                        output_config={"format": {"type": "json_schema",
-                                                  "schema": WATCH_EVAL_SCHEMA}},
-                    )
+                        output_schema=WATCH_EVAL_SCHEMA,
+                    ))
                     verdict = json.loads("".join(
                         b.text for b in response.content if b.type == "text"))
                 except Exception as e:
@@ -1193,15 +1183,14 @@ this room talks - brief, natural, and honest about where it comes from."""
             if action.context:
                 user_parts.append(f"Where it comes from: {action.context}")
 
-            api_params = {
-                "model": self.config.api.model,
-                "max_tokens": 1500,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": "\n".join(user_parts)}],
-                "output_config": self._build_output_config(FOLLOWUP_MESSAGE_SCHEMA),
-            }
-
-            response = await self.anthropic.messages.create(**api_params)
+            response = await self.driver.generate(ModelRequest(
+                model=self.config.api.model,
+                max_tokens=1500,
+                system=system_prompt,
+                messages=[{"role": "user", "content": "\n".join(user_parts)}],
+                output_schema=FOLLOWUP_MESSAGE_SCHEMA,
+                effort=AGENTIC_EFFORT,
+            ))
             response_text = "".join(b.text for b in response.content if b.type == "text")
             if not response_text.strip():
                 logger.warning("Coordination generation produced no text; skipping send")

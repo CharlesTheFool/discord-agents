@@ -41,7 +41,7 @@ class SkillsManager:
         self,
         skills_dir: Path = Path("skills"),
         cache_file: Path = Path(".skills_cache.json"),
-        anthropic_api_key: Optional[str] = None
+        anthropic_client: Optional[AsyncAnthropic] = None
     ):
         """
         Initialize Skills Manager.
@@ -49,14 +49,15 @@ class SkillsManager:
         Args:
             skills_dir: Directory containing skill .zip files or skill folders
             cache_file: Path to cache file for tracking uploads
-            anthropic_api_key: Anthropic API key for uploading skills
+            anthropic_client: The model driver's Anthropic client, for uploads.
+                Async: skill uploads and list pagination are slow HTTP calls
+                that run during on_ready - a sync client stalls the gateway
+                heartbeat
         """
         self.skills_dir = skills_dir
         self.cache_file = cache_file
         self.cache: Dict[str, Dict] = {}
-        # Async client: skill uploads and list pagination are slow HTTP calls
-        # that ran during on_ready - a sync client stalls the gateway heartbeat
-        self.anthropic_client = AsyncAnthropic(api_key=anthropic_api_key) if anthropic_api_key else None
+        self.anthropic_client = anthropic_client
 
         # Ensure skills directory exists
         self.skills_dir.mkdir(parents=True, exist_ok=True)

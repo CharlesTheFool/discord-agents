@@ -23,6 +23,7 @@ import threading
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.config import BotConfig
+from core.model.factory import build_driver
 from core.rate_limiter import RateLimiter
 from core.message_memory import MessageMemory
 from core.memory_manager import MemoryManager
@@ -102,9 +103,10 @@ class BotManager:
 
         logger.info(f"[{self.bot_id}] Configuration validated successfully")
 
-        # Extract API credentials (already validated)
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        # Credentials were checked by validate(); every model call in this
+        # process goes through the one driver
         discord_token = os.getenv(self.config.discord.token_env_var)
+        driver = build_driver(self.config.api)
 
         # Apply log level from config
         log_level = getattr(logging, self.config.logging.level)
@@ -155,7 +157,7 @@ class BotManager:
             rate_limiter=rate_limiter,
             message_memory=self.message_memory,
             memory_manager=memory_manager,
-            anthropic_api_key=anthropic_key,
+            driver=driver,
             conversation_logger=conversation_logger,
             user_cache=user_cache,
         )
@@ -170,7 +172,7 @@ class BotManager:
                 config=self.config,
                 memory_manager=memory_manager,
                 message_memory=self.message_memory,
-                anthropic_client=reactive_engine.anthropic,
+                driver=driver,
             )
             logger.info("Agentic engine initialized")
 
@@ -182,7 +184,7 @@ class BotManager:
                 message_memory=self.message_memory,
                 memory_manager=memory_manager,
                 user_cache=user_cache,
-                anthropic_client=reactive_engine.anthropic,
+                driver=driver,
                 vaults=reactive_engine.vaults,
             )
             logger.info("Memory consolidator initialized (weekly, 3am hook)")
@@ -317,7 +319,6 @@ class BotManager:
 
 async def _run_consolidation(bot_id: str, server_id: str, force: bool):
     """Standalone consolidation run (debug / live-test path)."""
-    from anthropic import AsyncAnthropic
     from core.consolidator import MemoryConsolidator
     from core.user_cache import UserCache
     from core.vaults import VaultEnforcer
@@ -337,7 +338,7 @@ async def _run_consolidation(bot_id: str, server_id: str, force: bool):
             bot_id=bot_id, config=config, message_memory=memory,
             memory_manager=MemoryManager(bot_id, Path("memories")),
             user_cache=user_cache,
-            anthropic_client=AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY")),
+            driver=build_driver(config.api),
             vaults=VaultEnforcer(config.vaults),
         )
         report = await consolidator.consolidate_server(server_id, force=force)
@@ -350,7 +351,6 @@ async def _run_consolidation(bot_id: str, server_id: str, force: bool):
 async def _run_induction(bot_id: str, server_id: str, dry_run: bool,
                          channels, force_full: bool):
     """Standalone induction run: distill a backfilled server's backlog."""
-    from anthropic import AsyncAnthropic
     from core.inductor import ServerInductor
     from core.user_cache import UserCache
     from core.vaults import VaultEnforcer
@@ -374,7 +374,7 @@ async def _run_induction(bot_id: str, server_id: str, dry_run: bool,
         inductor = ServerInductor(
             bot_id=bot_id, config=config, message_memory=memory,
             memory_manager=memory_manager, user_cache=user_cache,
-            anthropic_client=AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY")),
+            driver=build_driver(config.api),
             vaults=vaults,
         )
         report = await inductor.induct(server_id, dry_run=dry_run,

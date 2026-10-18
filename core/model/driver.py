@@ -9,7 +9,9 @@ Anthropic-shaped (type, text, name, input, id, thinking, signature, ...),
 so engine code that walks response.content works on any driver. The raw
 blocks are kept as returned, which lets the tool loop append them for
 in-turn continuation exactly as before (signatures and server blocks
-round-trip).
+round-trip); `persistable` is the same turn as plain dicts in the persisted
+vocabulary (core/model/messages.py), which is what conversation state
+stores.
 """
 
 from dataclasses import dataclass, field
@@ -65,7 +67,10 @@ class ModelResponse:
     stop_reason: str                   # one of STOP_REASONS
     usage: Usage
     model: str
+    persistable: list = field(default_factory=list)   # content as dicts safe to store
+    # Provider extras: the code-execution container (removed in 0.14.0)
     container_id: Optional[str] = None
+    container_file_ids: list = field(default_factory=list)
     raw: Any = None                    # the provider's own object, for logging only
 
 

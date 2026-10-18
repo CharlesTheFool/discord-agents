@@ -10,7 +10,7 @@ For user-configurable settings, see config.py and the bot YAML files.
 from dataclasses import dataclass
 from typing import List
 
-from core.model.catalog import CATALOG, spec_for
+from core.model.catalog import spec_for
 
 
 # =============================================================================
@@ -22,7 +22,6 @@ EPISODE_MIN_MESSAGES = 3            # Segments smaller than this merge forward
 EPISODE_BOOTSTRAP_DAYS = 2          # On first run, skip history older than this
 EPISODE_SEED_TAIL_MESSAGES = 10     # Discord messages kept when a session reseeds
 EPISODE_INDEX_SEED_TAIL = 10        # Episode-index lines inlined into the seed
-EPISODE_DISTILL_MODEL = "claude-haiku-4-5"
 EPISODE_DISTILL_MAX_TOKENS = 4000
 EPISODE_RETRY_COOLDOWN_MINUTES = 10  # Backoff after a failed distillation
 
@@ -115,7 +114,6 @@ PRIME_ASKS_PER_CHANNEL_PER_DAY = 5
 PRIME_ASKS_PER_SERVER_PER_DAY = 12
 PRIME_MAX_CONCURRENT_WATCHES = 10
 PRIME_WATCH_EXPIRY_HOURS = 24
-WATCH_EVAL_MODEL = "claude-haiku-4-5"
 WATCH_EVAL_MAX_TOKENS = 300
 
 # Watch evaluation + relay notes. The eval is one cheap structured call;
@@ -195,12 +193,6 @@ PRIME_CONTEXT_TEMPLATE = (
 # overflowed at 25k, so this pairs a small chunk with a raised output cap below.
 INDUCTION_CHUNK_TOKENS = 12_000
 INDUCTION_OUTPUT_RATIO = 0.05      # output-token estimate as fraction of input
-
-# Batch-rate $/MTok (50% of live) by catalog marker, in match order; the
-# induction dry-run prices from it. Unknown models print "n/a", not a guess.
-MODEL_BATCH_PRICES = {spec.marker: spec.batch_prices
-                      for spec in CATALOG if spec.batch_prices}
-
 
 def model_live_prices(model: str):
     """Live $/MTok (input, output) for a model, or None when unknown.

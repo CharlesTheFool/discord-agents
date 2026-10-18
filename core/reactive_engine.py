@@ -14,7 +14,6 @@ import io
 import json
 import logging
 import re
-from anthropic import Anthropic, AsyncAnthropic, NotFoundError
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional, TYPE_CHECKING
@@ -28,6 +27,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 if TYPE_CHECKING:
     from .config import BotConfig
+    from .model.driver import ModelDriver
     from .rate_limiter import RateLimiter
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
@@ -43,136 +43,15 @@ from .files_api_client import FilesAPIClient
 from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .internal_constants import (
-    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size, model_max_output,
+    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size,
 )
-from tools.web_search import get_web_search_tools
-from tools.discord_tools import DiscordToolExecutor, get_discord_tools
-from tools.skills_tool import get_skill_request_tool, SkillRequestExecutor
+from .model.driver import ModelRequest, StaleFileError, total_input_tokens
+from .model.registry import ToolContext, assemble_tools
+from tools.skills_tool import SkillRequestExecutor
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_LOOP_ITERATIONS = 10
-
-
-def total_input_tokens(usage) -> int:
-    """
-    Full context size from response.usage. With prompt caching, input_tokens
-    counts only uncached tokens - cached reads/writes live in separate fields.
-    """
-    return (
-        usage.input_tokens
-        + (getattr(usage, "cache_read_input_tokens", 0) or 0)
-        + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
-    )
-
-
-def serialize_assistant_blocks(content) -> list:
-    """
-    Convert SDK response content into dicts safe to persist and replay.
-
-    Server tool blocks (server_tool_use, code execution, web search/fetch and
-    their results) are deliberately dropped: detached from the live response
-    their content shapes can't be reproduced (a stringified result 400s on
-    replay), and the assistant's final text already carries the conclusions.
-
-    When server blocks are dropped, thinking blocks go with them: their
-    signatures bind to the original block sequence, so a thinking block
-    re-sent without the server blocks it surrounded 400s as "modified".
-    History thinking is optional - mid-loop continuations use the live
-    response.content, never this serialized form.
-    """
-    serialized = []
-    dropped_server_block = False
-    for block in content:
-        block_type = getattr(block, "type", None)
-        if block_type == "text":
-            serialized.append({"type": "text", "text": block.text})
-        elif block_type == "thinking":
-            # Signature required for tool-use continuity on replay
-            serialized.append({
-                "type": "thinking",
-                "thinking": block.thinking,
-                "signature": block.signature,
-            })
-        elif block_type == "redacted_thinking":
-            serialized.append({"type": "redacted_thinking", "data": block.data})
-        elif block_type == "tool_use":
-            serialized.append({
-                "type": "tool_use",
-                "id": block.id,
-                "name": block.name,
-                "input": block.input,
-            })
-        else:
-            dropped_server_block = True
-    if dropped_server_block:
-        serialized = [
-            b for b in serialized
-            if b["type"] not in ("thinking", "redacted_thinking")
-        ]
-    return serialized
-
-
-def collect_container_output_file_ids(response) -> list:
-    """
-    File IDs of files written by code execution in this response.
-    Output blocks ride inside code_execution / bash_code_execution tool
-    results; error results have no output list (getattr returns None).
-    """
-    file_ids = []
-    for block in response.content:
-        if getattr(block, "type", None) in (
-            "code_execution_tool_result",
-            "bash_code_execution_tool_result",
-        ):
-            result_content = getattr(block, "content", None)
-            for output in (getattr(result_content, "content", None) or []):
-                file_id = getattr(output, "file_id", None)
-                if file_id:
-                    file_ids.append(file_id)
-    return file_ids
-
-
-_CACHEABLE_BLOCK_TYPES = frozenset({"text", "tool_result", "image", "document"})
-
-
-def with_message_cache_breakpoint(messages: list) -> list:
-    """
-    Copy of messages with cache_control on the last cacheable block, so each
-    request caches the whole conversation up to its tail (the system-prefix
-    breakpoint alone re-reads the full history every turn). Old breakpoints
-    need no removal: the marked message is rebuilt fresh from state each
-    request, and markers don't affect prefix matching - the next turn's
-    breakpoint lands further down and reads the previous one's cache.
-
-    This only pays off because NOTHING upstream of the messages is volatile:
-    the cache hierarchy is tools -> system -> messages, so per-request
-    content (timestamp, momentum, attachment index) must ride AFTER this
-    breakpoint - see the volatile tail in _run_tool_loop - never in a
-    system block, or every lookup here would miss.
-
-    The source messages are never mutated (their dicts are shared with
-    conversation state). SDK objects (in-loop assistant content) and
-    unmarkable block types are skipped by walking backwards.
-    """
-    for mi in range(len(messages) - 1, -1, -1):
-        content = messages[mi].get("content") if isinstance(messages[mi], dict) else None
-        if isinstance(content, str):
-            new_content = [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
-        elif isinstance(content, list):
-            for bi in range(len(content) - 1, -1, -1):
-                block = content[bi]
-                if isinstance(block, dict) and block.get("type") in _CACHEABLE_BLOCK_TYPES:
-                    new_content = list(content)
-                    new_content[bi] = {**block, "cache_control": {"type": "ephemeral"}}
-                    break
-            else:
-                continue
-        else:
-            continue
-        new_msg = {**messages[mi], "content": new_content}
-        return messages[:mi] + [new_msg] + messages[mi + 1:]
-    return messages
 
 
 def memory_intent(kind: str, text: str, display_name: str) -> str:
@@ -248,7 +127,7 @@ class ReactiveEngine:
         rate_limiter: "RateLimiter",
         message_memory: "MessageMemory",
         memory_manager: "MemoryManager",
-        anthropic_api_key: str,
+        driver: "ModelDriver",
         conversation_logger: "ConversationLogger",
         user_cache: Optional["UserCache"] = None,
     ):
@@ -260,7 +139,7 @@ class ReactiveEngine:
             rate_limiter: Rate limiter instance
             message_memory: Message storage
             memory_manager: Memory tool manager
-            anthropic_api_key: Anthropic API key
+            driver: Model driver every model call goes through
             conversation_logger: Conversation logger
             user_cache: User cache for DM channel registry (v0.9)
         """
@@ -274,8 +153,7 @@ class ReactiveEngine:
         # on_ready); feeds the DM prime-context line (v0.9).
         self.list_servers = None
 
-        # Initialize Anthropic client
-        self.anthropic = AsyncAnthropic(api_key=anthropic_api_key)
+        self.driver = driver
 
         # Cache internal config values (v0.6.0 - simplified config)
         self._rate_limiting_config = config.get_rate_limiting_config()
@@ -324,7 +202,7 @@ class ReactiveEngine:
         self.skills_manager = SkillsManager(
             skills_dir=Path(skills_config["skills_dir"]),
             cache_file=Path(skills_config["cache_file"]),
-            anthropic_api_key=anthropic_api_key
+            anthropic_client=driver.client,
         )
         logger.info(f"Skills manager initialized with directory: {skills_config['skills_dir']}")
 
@@ -345,7 +223,7 @@ class ReactiveEngine:
         # Files API access for container output delivery. Independent of the
         # attachments feature: code execution is always available, and the
         # system prompt promises $OUTPUT_DIR files ride on the reply.
-        self.files_api_client = FilesAPIClient(self.anthropic)
+        self.files_api_client = FilesAPIClient(driver.client)
 
         # Conversation State Manager (v0.5.0 - dual-cap context management)
         self.conversation_state_manager = None  # Initialized in async_initialize
@@ -409,7 +287,8 @@ class ReactiveEngine:
                 message_memory=self.message_memory,
                 memory_manager=self.memory_manager,
                 conversation_state_manager=self.conversation_state_manager,
-                anthropic_client=self.anthropic,
+                driver=self.driver,
+                model=self.config.api.background_model,
             )
 
         # Initialize MCP Manager (discover tools from servers)
@@ -435,7 +314,7 @@ class ReactiveEngine:
             try:
                 self.attachment_manager = UnifiedAttachmentManager(
                     config=self.config,
-                    anthropic_client=self.anthropic,
+                    anthropic_client=self.driver.client,
                     message_memory=self.message_memory
                 )
                 await self.attachment_manager.initialize()
@@ -704,12 +583,6 @@ class ReactiveEngine:
             )
             await self.conversation_state_manager.save(conversation_state)
         return touched > 0
-
-    @staticmethod
-    def _stale_file_id_from_error(error: Exception) -> Optional[str]:
-        """Extract the file id from a 'File `file_xxx` not found.' API error."""
-        match = re.search(r"File `(file_[A-Za-z0-9]+)` not found", str(error))
-        return match.group(1) if match else None
 
     async def _container_files_for_discord(self, file_ids: list) -> list:
         """
@@ -1035,13 +908,13 @@ class ReactiveEngine:
             + "\n</context_update>"
         )
 
-    def _build_api_params(self, system_blocks: list, conversation_state, context,
-                          is_dm: bool = False) -> dict:
+    def _build_request(self, system_blocks: list, conversation_state, context,
+                          is_dm: bool = False, volatile_tail: str = "") -> ModelRequest:
         """
-        Assemble the Messages API request shared by both response paths:
-        tool registry, beta headers, message history, skills container,
-        thinking and effort. The skills catalog joins the cached system
-        prefix (it changes only when active skills change).
+        Assemble the request shared by both response paths: tools from the
+        registry, message history, skills container, thinking and effort.
+        The skills catalog joins the cached system prefix (it changes only
+        when active skills change); per-request context rides volatile_tail.
 
         is_dm (v0.9): DM requests don't get ask_prime - a DM already IS the
         Prime. Tool sets stay stable per channel, so the cache holds.
@@ -1053,47 +926,28 @@ class ReactiveEngine:
             if skills_prompt:
                 system_blocks[0]["text"] += "\n\n" + skills_prompt
 
-        tools = [{"type": "memory_20250818", "name": "memory"}]
-
-        if self.discord_tool_executor:
-            tools.extend(get_discord_tools())
-        else:
+        if not self.discord_tool_executor:
             logger.warning("Discord tool executor is None - discord tools NOT added!")
+        mcp_tools = self.mcp_manager.get_tools_for_api() if self.mcp_manager else []
+        if mcp_tools:
+            logger.debug(f"Added {len(mcp_tools)} MCP tools to API request")
 
-        if self.repository_manager:
-            from tools.repository_tool import get_repository_tool
-            tools.append(get_repository_tool())
-
-        # ask_prime (v0.9): server contexts only
-        if self.ask_prime_executor and not is_dm:
-            from tools.ask_prime import ASK_PRIME_TOOL
-            tools.append(ASK_PRIME_TOOL)
-
-        # Native messaging (v0.12.0): deliberate mid-turn sends
-        from tools.send_message import SEND_MESSAGE_TOOL
-        tools.append(SEND_MESSAGE_TOOL)
-
-        beta_headers = []
-        if self.web_search_enabled:
-            web_search_config = self.config.get_web_search_config()
-            tools.extend(get_web_search_tools(citations_enabled=web_search_config["citations_enabled"]))
-
-        if self.mcp_manager:
-            mcp_tools = self.mcp_manager.get_tools_for_api()
-            if mcp_tools:
-                tools.extend(mcp_tools)
-                logger.debug(f"Added {len(mcp_tools)} MCP tools to API request")
-
-        # Skills REQUIRE code_execution: skill files load into the container
-        if self.skills_manager:
-            tools.append({"type": "code_execution_20260120", "name": "code_execution"})
-            tools.append(get_skill_request_tool())
-            beta_headers.append("skills-2025-10-02")
-
-        # Persisted state may carry file_id references even when fresh
-        # uploads are disabled, so the beta rides whenever the manager exists
-        if self.attachment_manager:
-            beta_headers.append("files-api-2025-04-14")
+        model = self.config.api.model
+        spec = self.driver.spec_for(model)
+        tools, betas = assemble_tools(ToolContext(
+            is_dm=is_dm,
+            discord_tools=self.discord_tool_executor is not None,
+            repository=self.repository_manager is not None,
+            ask_prime=self.ask_prime_executor is not None,
+            web_search=self.web_search_enabled,
+            web_citations=self.config.get_web_search_config()["citations_enabled"],
+            mcp_tools=mcp_tools,
+            skills=self.skills_manager is not None,
+            # Persisted state may carry file_id references even when fresh
+            # uploads are disabled, so the files beta rides whenever the
+            # manager exists
+            files=self.attachment_manager is not None,
+        ), spec)
 
         if conversation_state:
             messages = conversation_state.get_messages_for_api()
@@ -1102,20 +956,8 @@ class ReactiveEngine:
             messages = context["messages"].copy()
             logger.warning("Conversation state not available, falling back to context builder")
 
-        api_params = {
-            "model": self.config.api.model,
-            # Derived, never user-set: as much output room as the input budget
-            # allows, clamped to the model's real output ceiling. The request
-            # is streamed, so the SDK's 10-minute non-streaming guard is moot.
-            "max_tokens": min(self.config.api.context_tokens,
-                              model_max_output(self.config.api.model)),
-            "system": system_blocks,
-            "messages": messages,
-            "tools": tools,
-            "betas": beta_headers  # SDK's beta endpoint uses 'betas' parameter, not extra_headers
-        }
-
         # Skills container with progressive disclosure (v0.5.0)
+        container = None
         if self.skills_manager:
             active_skill_names = conversation_state.get_active_skills() if conversation_state else []
             if not active_skill_names:
@@ -1126,16 +968,27 @@ class ReactiveEngine:
                     )
             skills_list = self.skills_manager.select_skills(active_skill_names)
             if skills_list:
-                api_params["container"] = {"skills": skills_list}
+                container = {"skills": skills_list}
                 logger.debug(f"Container skills: {active_skill_names}")
 
-        # Adaptive thinking and effort if configured
-        if self.config.api.thinking.enabled:
-            api_params["thinking"] = {"type": "adaptive"}
-        if self.config.api.effort:
-            api_params["output_config"] = {"effort": self.config.api.effort}
-
-        return api_params
+        return ModelRequest(
+            model=model,
+            # Derived, never user-set: as much output room as the input budget
+            # allows, clamped to the model's real output ceiling
+            max_tokens=min(self.config.api.context_tokens, spec.max_output),
+            system=system_blocks,
+            cache_system=True,
+            messages=messages,
+            cache_messages=True,
+            volatile_tail=volatile_tail,
+            tools=tools,
+            betas=betas,
+            container=container,
+            thinking=self.config.api.thinking.enabled,
+            effort=self.config.api.effort,
+            stream=True,
+            beta=True,
+        )
 
     def _log_response_blocks(self, response, log_suffix: str = "") -> None:
         """Verbose per-block debug logging (active only with web search on)."""
@@ -1209,7 +1062,7 @@ class ReactiveEngine:
             logger.exception(f"Turn-event emit failed ({kind})")
 
     async def _execute_tool_blocks(self, response, message: discord.Message,
-                                   conversation_state, api_params: dict,
+                                   conversation_state, request: ModelRequest,
                                    container_file_ids: list = None,
                                    tool_calls_log: list = None,
                                    memory_write_grant: Optional[str] = None,
@@ -1292,7 +1145,7 @@ class ReactiveEngine:
                         conversation_state.get_active_skills()
                     )
                     if new_skills:
-                        api_params["container"] = {"skills": new_skills}
+                        request.container = {"skills": new_skills}
                         container_rebuilt = True
                 else:
                     result = "Error: Conversation state not available"
@@ -1407,87 +1260,72 @@ class ReactiveEngine:
 
     async def _run_tool_loop(
         self,
-        api_params: dict,
+        request: ModelRequest,
         message: discord.Message,
         conversation_state,
         fallback_text: Optional[str] = None,
-        volatile_tail: str = "",
         log_suffix: str = "",
         memory_write_grant: Optional[str] = None,
     ) -> ToolLoopResult:
         """
-        Drive the Claude API tool-use loop to completion (both response paths).
+        Drive the model's tool-use loop to completion (both response paths).
 
         fallback_text marks a must-reply path: the result text is never empty
         (loop overruns, blank replies, and unexpected stops degrade to it).
         When None (periodic path), the same outcomes end with empty text,
         which the caller treats as silence.
 
-        volatile_tail (timestamp, momentum, attachment index) is appended as
-        a transient final user message on every request - after the message
-        cache breakpoint, so per-request churn never invalidates the cached
-        conversation prefix. It is never persisted.
+        The request carries its own volatile tail (timestamp, momentum,
+        attachment index): the driver appends it after the message cache
+        breakpoint on every call, so per-request churn never invalidates the
+        cached conversation prefix. It is never persisted.
         """
-        result = ToolLoopResult(model=api_params["model"])
+        result = ToolLoopResult(model=request.model)
         container_id = None
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
         repeat_sig = None  # repeat-call guard: identical consecutive tool calls
         repeat_count = 0
-        tail_messages = (
-            [{"role": "user", "content": [{"type": "text", "text": volatile_tail}]}]
-            if volatile_tail else []
-        )
 
         while True:
             loop_iteration += 1
 
-            logger.debug(f"API params{log_suffix}: model={api_params.get('model')}, betas={api_params.get('betas')}")
-            logger.debug(f"  Tools: {[t.get('name') or t.get('type') for t in api_params.get('tools', [])]}")
-            if 'container' in api_params:
-                logger.debug(f"  Container/Skills: {api_params.get('container')}")
+            logger.debug(f"Request{log_suffix}: model={request.model}, betas={request.betas}")
+            logger.debug(f"  Tools: {[t.name for t in request.tools]}")
+            if request.container is not None:
+                logger.debug(f"  Container/Skills: {request.container}")
 
             try:
-                # Streamed so large max_tokens are allowed (the SDK refuses a
-                # non-streaming request it estimates could exceed 10 minutes).
-                # Accumulated to the same Message object create() would return.
-                async with self.anthropic.beta.messages.stream(
-                    **{
-                        **api_params,
-                        "messages": with_message_cache_breakpoint(api_params["messages"]) + tail_messages,
-                    }
-                ) as api_stream:
-                    response = await api_stream.get_final_message()
-            except NotFoundError as e:
-                # Stale file_id in persisted state 404s the whole request
-                stale_id = self._stale_file_id_from_error(e)
-                if (stale_id and conversation_state
-                        and stale_id not in recovered_file_ids):
-                    recovered_file_ids.add(stale_id)
-                    if await self._recover_stale_file_in_state(conversation_state, stale_id):
-                        api_params["messages"] = conversation_state.get_messages_for_api()
+                response = await self.driver.generate(request)
+            except StaleFileError as e:
+                # A stale file id in persisted state fails the whole request
+                if conversation_state and e.file_id not in recovered_file_ids:
+                    recovered_file_ids.add(e.file_id)
+                    if await self._recover_stale_file_in_state(conversation_state, e.file_id):
+                        request.messages = conversation_state.get_messages_for_api()
                         continue
                 raise
 
-            result.usage = getattr(response, "usage", None)
+            result.usage = response.usage
 
             # Multi-iteration turns must reuse the container (per Anthropic docs)
-            if getattr(response, "container", None) and getattr(response.container, "id", None):
-                container_id = response.container.id
+            if response.container_id:
+                container_id = response.container_id
 
             # Collect files written by code execution for Discord delivery
-            result.container_file_ids.extend(collect_container_output_file_ids(response))
+            result.container_file_ids.extend(response.container_file_ids)
 
             self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_reason)
             self._log_response_blocks(response, log_suffix)
 
-            if loop_iteration == 1 and result.usage is not None:
+            if loop_iteration == 1:
+                usage = result.usage
                 logger.info(
-                    f"Input tokens: {total_input_tokens(result.usage):,} "
-                    f"(uncached: {result.usage.input_tokens:,}, "
-                    f"cache_read: {getattr(result.usage, 'cache_read_input_tokens', 0) or 0:,}, "
-                    f"cache_write: {getattr(result.usage, 'cache_creation_input_tokens', 0) or 0:,})"
+                    f"Input tokens: {total_input_tokens(usage):,} "
+                    f"(uncached: {usage.input_tokens:,}, "
+                    f"cache_read: {usage.cache_read_input_tokens:,}, "
+                    f"cache_write: {usage.cache_creation_input_tokens:,})"
                 )
 
             # Extract thinking (full block kept for persistence with signature)
@@ -1506,7 +1344,7 @@ class ReactiveEngine:
                 result.tools_were_used = True
 
                 tool_results, pending_file_blocks, container_rebuilt = await self._execute_tool_blocks(
-                    response, message, conversation_state, api_params,
+                    response, message, conversation_state, request,
                     container_file_ids=result.container_file_ids,
                     tool_calls_log=result.tool_calls,
                     memory_write_grant=memory_write_grant,
@@ -1542,14 +1380,14 @@ class ReactiveEngine:
 
                 # Tool results ride in the next user message; fetched file
                 # blocks come AFTER them (API: tool_result blocks must come first)
-                api_params["messages"].append({"role": "assistant", "content": response.content})
-                api_params["messages"].append({"role": "user", "content": tool_results + pending_file_blocks + guard_note})
+                request.messages.append({"role": "assistant", "content": response.content})
+                request.messages.append({"role": "user", "content": tool_results + pending_file_blocks + guard_note})
 
                 # Persist tool use and results to conversation state
                 if conversation_state:
                     try:
                         conversation_state.add_tool_use_and_results(
-                            assistant_content=serialize_assistant_blocks(response.content),
+                            assistant_content=response.persistable,
                             tool_results=tool_results,
                             model=result.model,
                         )
@@ -1564,7 +1402,7 @@ class ReactiveEngine:
                             await self.conversation_state_manager.save(conversation_state)
                             # Rebuild request messages to stay in sync with the
                             # state (prevents orphaned tool_results)
-                            api_params["messages"] = conversation_state.get_messages_for_api()
+                            request.messages = conversation_state.get_messages_for_api()
                     except Exception as e:
                         logger.error(f"Failed to persist tool results to conversation state{log_suffix}: {e}", exc_info=True)
 
@@ -1581,9 +1419,10 @@ class ReactiveEngine:
 
                 if container_rebuilt:
                     container_id = None  # force a fresh container
-                    api_params.get("container", {}).pop("id", None)
-                if container_id and self.skills_manager and 'container' in api_params:
-                    api_params["container"]["id"] = container_id
+                    if request.container is not None:
+                        request.container.pop("id", None)
+                if container_id and self.skills_manager and request.container is not None:
+                    request.container["id"] = container_id
 
                 continue
 
@@ -1609,8 +1448,8 @@ class ReactiveEngine:
                         and not result.did_send
                         and loop_iteration < MAX_TOOL_LOOP_ITERATIONS):
                     logger.warning(f"Tools used but no text response{log_suffix} - reprompting (iteration {loop_iteration})")
-                    api_params["messages"].append({"role": "assistant", "content": response.content})
-                    api_params["messages"].append({
+                    request.messages.append({"role": "assistant", "content": response.content})
+                    request.messages.append({
                         "role": "user",
                         "content": [{"type": "text", "text": "Please provide a brief response confirming what you just did for the user."}]
                     })
@@ -1654,8 +1493,8 @@ class ReactiveEngine:
                             f"Response claims an attachment but no files are queued"
                             f"{log_suffix} - bounce {attachment_nudges}/2"
                         )
-                        api_params["messages"].append({"role": "assistant", "content": response.content})
-                        api_params["messages"].append({
+                        request.messages.append({"role": "assistant", "content": response.content})
+                        request.messages.append({
                             "role": "user",
                             "content": [{"type": "text", "text": note_text}]
                         })
@@ -1905,26 +1744,21 @@ class ReactiveEngine:
 
                     # One cached system block; per-request context rides the
                     # volatile tail so it never breaks the cached prefix
-                    system_blocks = [{
-                        "type": "text",
-                        "text": context["system_prompt"],
-                        "cache_control": {"type": "ephemeral"}
-                    }]
+                    system_blocks = [{"type": "text", "text": context["system_prompt"]}]
                     volatile_tail = await self._build_volatile_tail(
                         context.get("time_context", ""), conversation_state, message
                     )
 
-                    api_params = self._build_api_params(
+                    request = self._build_request(
                         system_blocks, conversation_state, context,
-                        is_dm=message.guild is None)
+                        is_dm=message.guild is None, volatile_tail=volatile_tail)
                     # Usage recorded later must match the session we measured
                     seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
                     try:
                         result = await self._run_tool_loop(
-                            api_params, message, conversation_state,
+                            request, message, conversation_state,
                             fallback_text="I'm not sure how to respond to that.",
-                            volatile_tail=volatile_tail,
                         )
                     except Exception as e:
                         # Must-reply path: one retry covers transient API
@@ -1932,9 +1766,8 @@ class ReactiveEngine:
                         logger.warning(f"Tool loop failed for @mention, retrying once: {e}")
                         await asyncio.sleep(3)
                         result = await self._run_tool_loop(
-                            api_params, message, conversation_state,
+                            request, message, conversation_state,
                             fallback_text="I'm not sure how to respond to that.",
-                            volatile_tail=volatile_tail,
                         )
 
             # Send response (outside semaphore to allow concurrent API calls
@@ -2036,22 +1869,18 @@ class ReactiveEngine:
                     conversation_state.add_message("user", intent)
                     conversation_state.enforce_message_cap()
 
-                system_blocks = [{
-                    "type": "text",
-                    "text": context["system_prompt"],
-                    "cache_control": {"type": "ephemeral"}
-                }]
+                system_blocks = [{"type": "text", "text": context["system_prompt"]}]
                 volatile_tail = await self._build_volatile_tail(
                     context.get("time_context", ""), conversation_state, synthetic)
 
-                api_params = self._build_api_params(
-                    system_blocks, conversation_state, context, is_dm=True)
+                request = self._build_request(
+                    system_blocks, conversation_state, context, is_dm=True,
+                    volatile_tail=volatile_tail)
                 seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
                 result = await self._run_tool_loop(
-                    api_params, synthetic, conversation_state,
+                    request, synthetic, conversation_state,
                     fallback_text="got it.",
-                    volatile_tail=volatile_tail,
                     memory_write_grant=str(user.id),
                 )
 
@@ -2527,9 +2356,9 @@ class ReactiveEngine:
                 message,
             )
 
-            api_params = self._build_api_params(
+            request = self._build_request(
                 system_blocks, conversation_state, context,
-                is_dm=message.guild is None)
+                is_dm=message.guild is None, volatile_tail=volatile_tail)
             # Usage recorded later must match the session we measured
             seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
@@ -2538,8 +2367,7 @@ class ReactiveEngine:
 
             try:
                 result = await self._run_tool_loop(
-                    api_params, message, conversation_state,
-                    volatile_tail=volatile_tail, log_suffix=" (periodic)",
+                    request, message, conversation_state, log_suffix=" (periodic)",
                 )
 
                 # Empty text and no tool sends = Claude decided to stay silent
@@ -2685,13 +2513,7 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
 
         # Single cached block; volatile values (timestamp, momentum) ride the
         # request-time tail built by the caller, never a system block
-        return [
-            {
-                "type": "text",
-                "text": context["system_prompt"] + decision_criteria,
-                "cache_control": {"type": "ephemeral"}
-            }
-        ]
+        return [{"type": "text", "text": context["system_prompt"] + decision_criteria}]
 
     def add_pending_message(self, channel_id: str, message_id: int):
         """

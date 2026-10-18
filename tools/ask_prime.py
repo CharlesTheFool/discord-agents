@@ -16,6 +16,7 @@ from core.internal_constants import (
     PRIME_ASKS_PER_SERVER_PER_DAY,
     PRIME_JUDGMENT_PROMPT,
 )
+from core.model.driver import ModelRequest
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,9 @@ JUDGMENT_SCHEMA = {
 class AskPrimeExecutor:
     """Executes ask_prime calls; constructed in on_ready (needs the client)."""
 
-    def __init__(self, anthropic, model: str, vault_ids, watch_manager,
+    def __init__(self, driver, model: str, vault_ids, watch_manager,
                  agentic_engine, discord_client, message_memory=None):
-        self.anthropic = anthropic
+        self.driver = driver
         self.model = model
         self.vaults = {str(v) for v in (vault_ids or [])}
         self.watch_manager = watch_manager
@@ -162,7 +163,7 @@ class AskPrimeExecutor:
         origin_guild = self.discord_client.get_guild(int(current_server_id))
         origin_name = origin_guild.name if origin_guild else "another server"
         try:
-            response = await self.anthropic.beta.messages.create(
+            response = await self.driver.generate(ModelRequest(
                 model=self.model,
                 max_tokens=600,
                 system=PRIME_JUDGMENT_PROMPT.format(
@@ -174,8 +175,9 @@ class AskPrimeExecutor:
                         f"Target: #{channel.name} in {guild.name}."
                     ),
                 }],
-                output_config={"format": {"type": "json_schema", "schema": JUDGMENT_SCHEMA}},
-            )
+                output_schema=JUDGMENT_SCHEMA,
+                beta=True,
+            ))
             import json as _json
             verdict = _json.loads(
                 next(b.text for b in response.content if b.type == "text"))

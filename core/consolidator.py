@@ -22,9 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from core.batch_client import BatchClient
 from core.internal_constants import (
-    model_supports_effort,
     CONSOLIDATION_INTERVAL_DAYS,
     CONSOLIDATION_CULTURE_EVERY_N_RUNS,
     CONSOLIDATION_ERA_AGE_DAYS,
@@ -33,6 +31,7 @@ from core.internal_constants import (
     CONSOLIDATION_EVIDENCE_EPISODES,
     CONSOLIDATION_MAX_TOKENS,
 )
+from core.model.driver import ModelRequest
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +108,21 @@ def as_self(task_prompt: str, personality: Optional[str],
     return out
 
 
-def memory_output_config(schema: dict, model: str) -> dict:
-    """Structured-output config for a distillation request, with medium thinking
-    effort on models that support it (the memory model reasons harder than the
-    API default of none)."""
-    cfg = {"format": {"type": "json_schema", "schema": schema}}
-    if model_supports_effort(model):
-        cfg["effort"] = "medium"
-    return cfg
+# The memory model reasons harder than the API default; the driver drops
+# effort on models that don't take it
+MEMORY_EFFORT = "medium"
+
+
+def memory_request(model: str, system: str, user_content: str, schema: dict) -> ModelRequest:
+    """One structured distillation request for the Batches API."""
+    return ModelRequest(
+        model=model,
+        max_tokens=CONSOLIDATION_MAX_TOKENS,
+        system=system,
+        messages=[{"role": "user", "content": user_content}],
+        output_schema=schema,
+        effort=MEMORY_EFFORT,
+    )
 
 
 # =============================================================================
@@ -265,14 +271,14 @@ def archive_to_history(fs_path: Path, keep: int = CONSOLIDATION_HISTORY_KEEP) ->
 
 class MemoryConsolidator:
     def __init__(self, bot_id, config, message_memory, memory_manager,
-                 user_cache, anthropic_client, vaults,
+                 user_cache, driver, vaults,
                  guild_name_resolver=None):
         self.bot_id = bot_id
         self.config = config
         self.message_memory = message_memory
         self.memory = memory_manager
         self.user_cache = user_cache
-        self.batch = BatchClient(anthropic_client)
+        self.driver = driver
         self.vaults = vaults
         self.guild_name_resolver = guild_name_resolver
         self._personality = read_personality(config)  # frame the writer AS the bot
@@ -368,7 +374,7 @@ class MemoryConsolidator:
         all_requests += self._build_refresh_requests(server_id)
 
         if all_requests:
-            results = await self.batch.run(all_requests)
+            results = await self.driver.batch(all_requests)
             report["compacted"] = 0
             for cid, result in results.items():
                 if result.type != "succeeded":
@@ -514,19 +520,12 @@ class MemoryConsolidator:
                 self._pending_era_files[key] = files
                 corpus = "\n\n---\n\n".join(
                     f.read_text(encoding="utf-8") for f in files)
-                requests.append({
-                    "custom_id": f"era_{ch_dir.name}_{month}",
-                    "params": {
-                        "model": self.config.api.consolidation_model,
-                        "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": as_self(ERA_SYSTEM_PROMPT, self._personality, character),
-                        "messages": [{"role": "user", "content":
-                            f"<episodes channel_id=\"{ch_dir.name}\" month=\"{month}\">\n"
-                            f"{corpus}\n</episodes>"}],
-                        "output_config": memory_output_config(
-                            ERA_DIGEST_SCHEMA, self.config.api.consolidation_model),
-                    },
-                })
+                requests.append((f"era_{ch_dir.name}_{month}", memory_request(
+                    self.config.api.consolidation_model,
+                    as_self(ERA_SYSTEM_PROMPT, self._personality, character),
+                    f"<episodes channel_id=\"{ch_dir.name}\" month=\"{month}\">\n"
+                    f"{corpus}\n</episodes>",
+                    ERA_DIGEST_SCHEMA)))
         return requests
 
     async def _apply_era_result(self, server_id: str, channel_id: str,
@@ -613,21 +612,14 @@ class MemoryConsolidator:
             gpath = self.memory.get_global_user_profile_path(uid)
             existing = self.memory.resolve_path(gpath)
             current = existing.read_text(encoding="utf-8") if existing.exists() else "(no profile yet)"
-            requests.append({
-                "custom_id": f"profile_{uid}",
-                "params": {
-                    "model": self.config.api.consolidation_model,
-                    "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": as_self(PROFILE_SYSTEM_PROMPT, self._personality, character),
-                    "messages": [{"role": "user", "content":
-                        f"This server's id: {server_id}\n\n"
-                        f"<current_profile>\n{current}\n</current_profile>\n\n"
-                        f"<recent_episodes>\n{episodes_blurb}\n</recent_episodes>\n\n"
-                        f"<recent_messages user_id=\"{uid}\">\n{transcript}\n</recent_messages>"}],
-                    "output_config": memory_output_config(
-                        PROFILE_SCHEMA, self.config.api.consolidation_model),
-                },
-            })
+            requests.append((f"profile_{uid}", memory_request(
+                self.config.api.consolidation_model,
+                as_self(PROFILE_SYSTEM_PROMPT, self._personality, character),
+                f"This server's id: {server_id}\n\n"
+                f"<current_profile>\n{current}\n</current_profile>\n\n"
+                f"<recent_episodes>\n{episodes_blurb}\n</recent_episodes>\n\n"
+                f"<recent_messages user_id=\"{uid}\">\n{transcript}\n</recent_messages>",
+                PROFILE_SCHEMA)))
         return requests
 
     def _recent_episode_blurb(self, server_id: str) -> str:
@@ -706,38 +698,24 @@ class MemoryConsolidator:
                     ep_files = ep_files[-CONSOLIDATION_EVIDENCE_EPISODES:]
                 episodes_text = "\n\n---\n\n".join(
                     f.read_text(encoding="utf-8") for f in ep_files) or "(none)"
-                requests.append({
-                    "custom_id": f"channel_{cid}",
-                    "params": {
-                        "model": self.config.api.consolidation_model,
-                        "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": as_self(REFRESH_SYSTEM_PROMPT, self._personality, character),
-                        "messages": [{"role": "user", "content":
-                            f"<channel_state channel_id=\"{cid}\">\n{body}\n</channel_state>\n\n"
-                            f"<recent_episodes>\n{episodes_text}\n</recent_episodes>"}],
-                        "output_config": memory_output_config(
-                            CHANNEL_BODY_SCHEMA, self.config.api.consolidation_model),
-                    },
-                })
+                requests.append((f"channel_{cid}", memory_request(
+                    self.config.api.consolidation_model,
+                    as_self(REFRESH_SYSTEM_PROMPT, self._personality, character),
+                    f"<channel_state channel_id=\"{cid}\">\n{body}\n</channel_state>\n\n"
+                    f"<recent_episodes>\n{episodes_text}\n</recent_episodes>",
+                    CHANNEL_BODY_SCHEMA)))
         # Culture request: current culture.md + all channel bodies
         culture_fs = self._servers_root() / server_id / "culture.md"
         culture_text = culture_fs.read_text(encoding="utf-8") if culture_fs.exists() else "(no culture file yet)"
         channels_summary = "\n\n".join(
             f"<channel id=\"{cid}\">\n{body}\n</channel>"
             for cid, body in channel_bodies.items())
-        requests.append({
-            "custom_id": "culture",
-            "params": {
-                "model": self.config.api.consolidation_model,
-                "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                "system": as_self(CULTURE_SYSTEM_PROMPT, self._personality, character),
-                "messages": [{"role": "user", "content":
-                    f"<culture>\n{culture_text}\n</culture>\n\n"
-                    f"<channels>\n{channels_summary}\n</channels>"}],
-                "output_config": memory_output_config(
-                    CULTURE_SCHEMA, self.config.api.consolidation_model),
-            },
-        })
+        requests.append(("culture", memory_request(
+            self.config.api.consolidation_model,
+            as_self(CULTURE_SYSTEM_PROMPT, self._personality, character),
+            f"<culture>\n{culture_text}\n</culture>\n\n"
+            f"<channels>\n{channels_summary}\n</channels>",
+            CULTURE_SCHEMA)))
         return requests
 
     def _apply_channel_refresh(self, server_id: str, channel_id: str, data: dict) -> None:

@@ -12,7 +12,6 @@ import json
 import logging
 from typing import Optional
 
-from core.batch_client import BatchClient
 from core.consolidator import (
     ERA_DIGEST_SCHEMA,
     PROFILE_SCHEMA,
@@ -23,14 +22,13 @@ from core.consolidator import (
     read_server_character,
     read_personality,
     as_self,
-    memory_output_config,
+    memory_request,
 )
 from core.internal_constants import (
-    CONSOLIDATION_MAX_TOKENS,
     INDUCTION_CHUNK_TOKENS,
     INDUCTION_OUTPUT_RATIO,
-    MODEL_BATCH_PRICES,
 )
+from core.model.catalog import spec_for
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +88,12 @@ LEDGER_CAP = 12
 
 def estimate_cost(model: str, input_tokens: int) -> Optional[float]:
     """Batch-rate dollar estimate; None for unpriced models."""
-    for marker, (in_price, out_price) in MODEL_BATCH_PRICES.items():
-        if marker in model:
-            output_tokens = input_tokens * INDUCTION_OUTPUT_RATIO
-            return (input_tokens * in_price + output_tokens * out_price) / 1_000_000
-    return None
+    prices = spec_for(model).batch_prices
+    if prices is None:
+        return None
+    in_price, out_price = prices
+    output_tokens = input_tokens * INDUCTION_OUTPUT_RATIO
+    return (input_tokens * in_price + output_tokens * out_price) / 1_000_000
 
 
 def chunk_messages(messages: list, chunk_tokens: int = INDUCTION_CHUNK_TOKENS) -> list:
@@ -115,13 +114,13 @@ class ServerInductor:
     """Distills a backfilled server's message history into starting memory."""
 
     def __init__(self, bot_id, config, message_memory, memory_manager,
-                 user_cache, anthropic_client, vaults):
+                 user_cache, driver, vaults):
         self.bot_id = bot_id
         self.config = config
         self.message_memory = message_memory
         self.memory = memory_manager
         self.user_cache = user_cache
-        self.batch = BatchClient(anthropic_client)
+        self.driver = driver
         self.vaults = vaults
         self._personality = read_personality(config)  # frame the writer AS the bot
 
@@ -167,24 +166,18 @@ class ServerInductor:
                     f"[{m.timestamp:%Y-%m-%d %H:%M}] {m.author_name} (id:{m.author_id})"
                     f"{' (bot)' if m.is_bot else ''}: {m.content or '[no text]'}"
                     for m in chunk)
-                requests.append({
-                    "custom_id": f"chunk_{cid}_{idx}",
-                    "params": {
-                        "model": model,
-                        "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                        "system": as_self(ARCHAEOLOGY_SYSTEM, self._personality, character, lived=False),
-                        "messages": [{"role": "user", "content":
-                            f"<backlog channel_id=\"{cid}\" chunk=\"{idx + 1}/{len(chunks)}\">\n"
-                            f"{transcript}\n</backlog>"}],
-                        "output_config": memory_output_config(CHUNK_DIGEST_SCHEMA, model),
-                    },
-                })
+                requests.append((f"chunk_{cid}_{idx}", memory_request(
+                    model,
+                    as_self(ARCHAEOLOGY_SYSTEM, self._personality, character, lived=False),
+                    f"<backlog channel_id=\"{cid}\" chunk=\"{idx + 1}/{len(chunks)}\">\n"
+                    f"{transcript}\n</backlog>",
+                    CHUNK_DIGEST_SCHEMA)))
 
         if not requests:
             return {"server": server_id, "channels": report_channels,
                     "profiles": 0, "culture": False}
 
-        results = await self.batch.run(requests)
+        results = await self.driver.batch(requests)
 
         # Collect: a channel survives only if EVERY chunk parsed - no partial files
         digests = {}
@@ -228,7 +221,7 @@ class ServerInductor:
         round2 = [] if server_vaulted else await self._build_round2(
             server_id, observations, state_bodies, character)
         if round2:
-            results2 = await self.batch.run(round2)
+            results2 = await self.driver.batch(round2)
             for key, result in results2.items():
                 if result.type != "succeeded":
                     logger.warning(f"Induction batch item {key} {result.type} - skipped")
@@ -339,35 +332,23 @@ class ServerInductor:
             current = (existing_fs.read_text(encoding="utf-8")
                        if existing_fs.exists() else "(no profile yet)")
             obs_text = "\n".join(f"- {o}" for o in obs)
-            requests.append({
-                "custom_id": f"profile_{uid}",
-                "params": {
-                    "model": model,
-                    "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": as_self(INDUCT_PROFILE_SYSTEM, self._personality, character, lived=False),
-                    "messages": [{"role": "user", "content":
-                        f"This server's id: {server_id}\n\n"
-                        f"<current_profile>\n{current}\n</current_profile>\n\n"
-                        f"<backlog_observations user_id=\"{uid}\">\n{obs_text}\n"
-                        f"</backlog_observations>"}],
-                    "output_config": memory_output_config(PROFILE_SCHEMA, model),
-                },
-            })
+            requests.append((f"profile_{uid}", memory_request(
+                model,
+                as_self(INDUCT_PROFILE_SYSTEM, self._personality, character, lived=False),
+                f"This server's id: {server_id}\n\n"
+                f"<current_profile>\n{current}\n</current_profile>\n\n"
+                f"<backlog_observations user_id=\"{uid}\">\n{obs_text}\n"
+                f"</backlog_observations>",
+                PROFILE_SCHEMA)))
         if state_bodies:
             channels_summary = "\n\n".join(
                 f"<channel id=\"{cid}\">\n{body}\n</channel>"
                 for cid, body in state_bodies.items())
-            requests.append({
-                "custom_id": f"culture_{server_id}",
-                "params": {
-                    "model": model,
-                    "max_tokens": CONSOLIDATION_MAX_TOKENS,
-                    "system": as_self(CULTURE_SYSTEM_PROMPT, self._personality, character, lived=False),
-                    "messages": [{"role": "user", "content":
-                        f"<channels>\n{channels_summary}\n</channels>"}],
-                    "output_config": memory_output_config(CULTURE_SCHEMA, model),
-                },
-            })
+            requests.append((f"culture_{server_id}", memory_request(
+                model,
+                as_self(CULTURE_SYSTEM_PROMPT, self._personality, character, lived=False),
+                f"<channels>\n{channels_summary}\n</channels>",
+                CULTURE_SCHEMA)))
         return requests
 
     def _apply_profile(self, uid: str, data: dict) -> None:

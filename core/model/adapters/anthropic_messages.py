@@ -217,7 +217,9 @@ def to_response(message) -> ModelResponse:
             output_tokens=usage.output_tokens or 0,
         ),
         model=message.model,
+        persistable=serialize_assistant_blocks(message.content),
         container_id=container.id if container else None,
+        container_file_ids=collect_container_output_file_ids(message),
         raw=message,
     )
 
@@ -225,12 +227,13 @@ def to_response(message) -> ModelResponse:
 class AnthropicMessagesDriver:
     """ModelDriver over the Anthropic Messages API (live and Batches)."""
 
-    def __init__(self, api_key: Optional[str] = None, client=None,
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None,
+                 client=None,
                  poll_interval_seconds: float = CONSOLIDATION_BATCH_POLL_SECONDS,
                  timeout_hours: float = CONSOLIDATION_BATCH_TIMEOUT_HOURS):
         # The raw client stays reachable for the Anthropic-only managers
         # outside the driver (Files API, Skills API)
-        self.client = client or AsyncAnthropic(api_key=api_key)
+        self.client = client or AsyncAnthropic(api_key=api_key, base_url=base_url)
         self.poll_interval = poll_interval_seconds
         self.timeout_seconds = timeout_hours * 3600
 
