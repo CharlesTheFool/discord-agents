@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.13.0 (Pre-release Beta)
+**Version:** 0.13.1 (Pre-release Beta)
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Discord.py](https://img.shields.io/badge/discord.py-2.3+-blue.svg)](https://discordpy.readthedocs.io/)
@@ -177,9 +177,20 @@ The bot posts through a `send_message` tool rather than only through its
 captured final text. Each call is one Discord message, and the tool result
 reports ground truth (message id, which files attached), so the model
 cannot sustain a false belief about its own output. Reply anchoring,
-multi-message turns and attachments by filename ride the same call. In 0.13.0
-plain final text still posts as well (compat mode); 0.13.1 adds the
-mechanical guard against posting both.
+multi-message turns and attachments by filename ride the same call. Plain
+final text still posts too, except right after a `send_message` call: that
+is the send-then-restate double post, so it is held back, never persisted,
+and counted on the turn's event.
+
+### Concurrency
+
+Turns in one channel run one at a time; turns in different channels run
+side by side, with at most three model calls in flight bot-wide. A turn
+holds its channel from loading the conversation state through saving its
+reply, and everything else that writes a channel's state (scan ingestion,
+relay notes, episode reseeds, proactive and follow-up messages) waits for
+the turn to finish, so nothing lands between a turn's tool calls and its
+answer.
 
 ---
 
@@ -402,11 +413,11 @@ The full policy, including how to report a vulnerability, is in
 
 ## Status
 
-0.13.0 is the first release of the plan in [ROADMAP.md](ROADMAP.md): the
-model layer landed alone so that the request bytes could be compared with
-nothing else changing. Next are 0.13.1 (per-channel concurrency) and 0.14
-(the workshop: a sandboxed, per-scope development environment with
-background jobs and workers).
+0.13.0 and 0.13.1 are the first two releases of the plan in
+[ROADMAP.md](ROADMAP.md): the model layer landed alone so that the request
+bytes could be compared with nothing else changing, then per-channel
+concurrency and three fixes. Next is 0.14, the workshop: a sandboxed,
+per-scope development environment with background jobs and workers.
 
 The codebase is about thirty core modules plus the supervisor package, with
 about 800 unit tests. Every release cycle also runs live scenario campaigns

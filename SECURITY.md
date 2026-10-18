@@ -58,14 +58,18 @@ every tool seam threads the current server and channel through it:
   from inside it;
 - repository saves are blocked from vaulted channels;
 - global user-profile writes are refused from inside a vault, so what is
-  learned there cannot land on a profile other servers read.
+  learned there cannot land on a profile other servers read;
+- since 0.13.1, every memory write from inside a vault must land in that
+  vault's own tree. The innermost vault wins: a vaulted channel inside a
+  vaulted server keeps its notes in the channel's tree, out of the rest of
+  the server's reach.
 
 Inside a vault the bot is fully itself. Threads inherit their parent's
 vault. A context with no server (a DM) counts as outside every vault.
 
-**Not enforced in 0.13.0:** a vaulted channel can still write into its own
-server's memory tree or another server's. 0.13.1 contains memory writes from
-inside a vault to that vault's own tree (see [ROADMAP.md](ROADMAP.md)).
+**Known residual:** `followups.json` stays writable from a vaulted channel.
+Follow-ups are server-level by design, so a follow-up the bot schedules
+inside a vault can be read from elsewhere in its server.
 
 ### DM privacy
 
@@ -78,6 +82,11 @@ global profile for that turn, matched structurally rather than by suffix so
 a crafted path cannot pass. DM messages and files never surface in search or
 attachment access from any other context. This check runs before the vault
 check and holds with zero vaults configured.
+
+Both checks judge the path the memory tool will actually touch: since
+0.13.1 every memory path is normalized (`..` resolved, Windows backslashes
+read as separators) before any rule sees it. Before that, a crafted path
+could pass a rule as written and resolve somewhere else.
 
 ### Cross-server coordination
 
@@ -142,10 +151,6 @@ into local microVMs with a default-deny egress policy; that design is in
   server, or to repeat what they said there, is governed by a mandatory
   prompt section, and a successful injection could make the bot cross that
   line. Put anything that must not travel in a vault.
-- **The double post.** The bot can send through `send_message` and also
-  emit trailing text that the compat-mode tail posts. In 0.13.0 only the
-  tool's description prevents the duplicate; 0.13.1 adds a mechanical
-  guard.
 - **External content.** Fetched pages, attachments and MCP tool results
   reach the model as text. Citations show where search results came from;
   review them before trusting a claim. Report patterns of injected behavior

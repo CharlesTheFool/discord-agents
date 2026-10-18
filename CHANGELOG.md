@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.1] - 2026-10-18
+
+**Status:** Pre-release (beta). Concurrency, plus fixes.
+
+### Security
+- **Memory paths could slip past vault and DM checks.** The checks read a
+  memory path as written, while the filesystem resolves it, so a path with
+  `..` segments (or Windows backslashes) could pass a rule and land
+  somewhere else. From a server channel that meant reading a DM's notes
+  (possible since 0.9), and from inside a vault, writing outside it. Paths
+  are now normalized before any check. Exploiting it needed the model to
+  write such a path, which an injected message could ask for.
+
+### Changed
+- **Channels no longer wait on each other.** One bot-wide lock used to run
+  every reply in turn, so a slow answer in one channel held up every other
+  channel. Now each channel has its own lock: turns in different channels
+  run side by side, with at most three model calls in flight bot-wide, and
+  turns in the same channel still run one at a time.
+- **A turn holds its channel until its reply is saved.** The mention path
+  used to send and save its reply after letting go, so the next message in
+  the channel could land in history ahead of the reply it came after.
+  Everything else that writes a channel's history now waits its turn too:
+  messages picked up by a scan, relay and watch notes, episode reseeds, the
+  echo of the bot's own attachments, and proactive, follow-up and
+  coordination messages (which therefore never land in the middle of a
+  reply being written).
+- **The double post is gone.** When the bot sends through `send_message`
+  and then restates the same thing as its final text, the restatement is
+  held back: not posted, not saved, counted on the turn's event as
+  `dropped_text_chars`. Text written after a send that failed, after other
+  work, or alongside a web search or code run still goes out. The tool's
+  description says so (the only change to any request).
+- **A mention can't overtake earlier messages.** Messages the scan hasn't
+  picked up yet are added to the conversation before the mention that came
+  after them, and a scan that waited behind another turn skips if the
+  conversation moved on meanwhile.
+
+### Fixed
+- **Turn costs were undercounted.** A turn that used tools makes several
+  model calls, but its event recorded only the last one, so the dashboard's
+  cost today and `scripts/cost_by_turn_kind.py` came out low. Events now
+  sum every call.
+- **Consolidation no longer overwrites what the bot just learned.** A
+  weekly batch can run for hours; if the bot edited a profile, a channel
+  note or the culture file meanwhile, applying the batch would erase the
+  edit. Those results are now skipped and rebuilt on the next cycle.
+- **Vaults now contain writes, as they always claimed to.** Only global
+  profile writes were blocked from inside a vault; a vaulted channel could
+  still write into its server's notes or another server's, where everyone
+  outside the vault reads them. Memory writes from inside a vault now stay
+  in that vault's own tree. Follow-ups remain server-level by design (see
+  SECURITY.md).
+- **Relayed messages could be sent twice.** Two coordination drains running
+  at once could both send the same message and skip the next one.
+
+### Verified
+- Live on the test server: mentions in two channels ran their model calls
+  side by side; a message posted mid-turn landed after the turn's tool calls
+  and reply; a send-then-restate turn posted once; a vaulted channel was
+  refused a write to the server's notes.
+
+---
+
 ## [0.13.0] - 2026-10-18
 
 **Status:** Pre-release (beta). An internal refactor with no change in

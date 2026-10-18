@@ -28,35 +28,17 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.13.0:** one model layer. Every model call goes through one driver and
   one request type; a model catalog and a tool registry replace hand-kept
   tables; golden tests prove the requests are byte-identical to 0.12.5.
+- **0.13.1:** per-channel concurrency (turns in different channels run side
+  by side; one channel's turn holds it from state load through the saved
+  reply), a send guard against the send-then-restate double post, turn
+  events that count every model call, consolidation that never overwrites a
+  file the bot edited meanwhile, and vault write containment.
 
 ## The active plan
 
 Each release below changes one thing, so a regression can be attributed.
 0.13.0 shipped alone for that reason: had concurrency changes ridden along,
 a cache regression would have had two suspects.
-
-### 0.13.1: concurrency
-
-- **Per-channel locks replace the bot-wide semaphore.** Turns in the same
-  channel stay serial; turns in different channels run concurrently, up to a
-  cap of three simultaneous resident model calls. The lock spans context
-  build through persist, because releasing before persist lets the next turn
-  append its user message ahead of this turn's reply. Everything that writes
-  into a channel's conversation state (proactive messages, follow-ups,
-  coordination sends, relay notes, episode reseeds) takes that channel's
-  lock, and scan ingestion buffers while a turn holds it.
-- **Send guard.** Trailing end-of-turn text is dropped only when the last
-  tool call before end of turn was `send_message` (the send-then-restate
-  double post). Dropped text is cleared before persist so history never
-  records unsent words, and logged so the rate can be measured.
-- **Consolidator lost-update fix.** The weekly pass reads a profile, awaits a
-  batch for up to hours, then overwrites it. It will store a content hash at
-  read time and re-queue any result whose target changed meanwhile.
-- **Vault write containment.** The vault doctrine says writes from inside
-  are contained; today only global-profile writes are blocked from inside a
-  vault, and a vaulted channel can still write into its server's tree or
-  another server's. From 0.13.1, memory writes from inside a vault are
-  allowed only within that vault's own tree.
 
 ### 0.14.0: the workshop
 
