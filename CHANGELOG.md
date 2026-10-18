@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.0] - 2026-10-18
+
+**Status:** Pre-release (beta). An internal refactor with no change in
+behavior: every request the bot sends is byte-for-byte what 0.12.5 sent.
+
+### Changed
+- **One model layer for every model call.** Chat turns, scans, `/memory`,
+  follow-ups, proactive messages, watch checks, coordination sends, episode
+  distillation, `ask_prime` and the consolidation and induction batches now
+  build one request type and go through one driver (`core/model/`). The
+  engines no longer touch the Anthropic SDK directly, which is what lets a
+  second provider plug in later without rewriting them.
+- **A model catalog replaces three hand-kept tables.** Effort support,
+  output ceilings and prices live in one entry per model family
+  (`core/model/catalog.py`), so a new model is one line instead of three
+  edits that could disagree.
+- **Tools are assembled in one place** (`core/model/registry.py`), filtered
+  first by what the context allows, then by what the model supports.
+- **Assistant messages remember which model wrote them** (a `model` field in
+  saved conversation state, stripped before every request). Older messages
+  count as the main model.
+
+### Added
+- `api.background_model` (default `claude-haiku-4-5`) for episode
+  distillation and watch checks, previously hardcoded.
+- `api.worker_model` and `api.provider` (wire API, base URL, key variable),
+  reserved for 0.14; only `anthropic_messages` is accepted for now.
+- `scripts/cost_by_turn_kind.py`: a read-only report of API spend by turn
+  kind from a bot's events table.
+
+### Fixed
+- **The installer can actually run bots now.** The self-contained bundle
+  left out the `tools/` package, so since 0.10.0 every bot started from a
+  fresh installer died on its first import (git-checkout installs were
+  unaffected). The bundle's smoke test now imports the framework itself,
+  not just its dependencies.
+- `app/package.json` had picked up a byte-order mark in 0.12.3, which broke
+  installer builds.
+- A missing API key variable is now a clear startup error instead of a
+  silent fallback to `ANTHROPIC_API_KEY`.
+
+### Rolling back
+Releases before 0.13.0 don't know the `model` field and send it to the API,
+which refuses the whole request. To go back to 0.12.x, stop the bot and run
+`python scripts/strip_model_stamps.py persistence/<bot>_conversation_states.db`
+first.
+
+### Verified
+- A golden test suite records the exact SDK request for twelve call-site
+  scenarios; all match the snapshots captured before the refactor.
+- Live on the test server, prompt caching behaves as before (the second
+  mention in a row reads the cached tools and system prompt).
+
+---
+
 ## [0.12.5] - 2026-10-18
 
 **Status:** Pre-release (beta). Security patch for the dashboard, plus the
