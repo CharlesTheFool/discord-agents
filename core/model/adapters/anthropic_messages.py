@@ -19,6 +19,7 @@ from anthropic import AsyncAnthropic, NotFoundError
 from core.internal_constants import (
     CONSOLIDATION_BATCH_POLL_SECONDS,
     CONSOLIDATION_BATCH_TIMEOUT_HOURS,
+    MODEL_CALL_SLOTS,
 )
 from core.model.catalog import ModelSpec, spec_for
 from core.model.driver import (
@@ -226,15 +227,20 @@ def to_response(message) -> ModelResponse:
 
 
 class AnthropicMessagesDriver:
-    """ModelDriver over the Anthropic Messages API (live and Batches)."""
+    """ModelDriver over the Anthropic Messages API (live and Batches).
+
+    max_concurrent caps the model calls in flight across the whole bot, so
+    turns in many channels at once can't fan out into a burst of parallel
+    requests; a call over the cap waits for a slot."""
 
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None,
-                 client=None,
+                 client=None, max_concurrent: int = MODEL_CALL_SLOTS,
                  poll_interval_seconds: float = CONSOLIDATION_BATCH_POLL_SECONDS,
                  timeout_hours: float = CONSOLIDATION_BATCH_TIMEOUT_HOURS):
         # The raw client stays reachable for the Anthropic-only managers
         # outside the driver (Files API, Skills API)
         self.client = client or AsyncAnthropic(api_key=api_key, base_url=base_url)
+        self._slots = asyncio.Semaphore(max_concurrent)
         self.poll_interval = poll_interval_seconds
         self.timeout_seconds = timeout_hours * 3600
 
@@ -250,14 +256,15 @@ class AnthropicMessagesDriver:
     async def generate(self, request: ModelRequest) -> ModelResponse:
         surface, kwargs = render(request)
         try:
-            if request.stream:
-                # Streamed so large max_tokens are allowed (the SDK refuses a
-                # non-streaming request it estimates could exceed 10 minutes),
-                # accumulated to the same Message create() would return
-                async with self._surface(surface)(**kwargs) as stream:
-                    message = await stream.get_final_message()
-            else:
-                message = await self._surface(surface)(**kwargs)
+            async with self._slots:
+                if request.stream:
+                    # Streamed so large max_tokens are allowed (the SDK refuses
+                    # a non-streaming request it estimates could exceed 10
+                    # minutes), accumulated to the Message create() would return
+                    async with self._surface(surface)(**kwargs) as stream:
+                        message = await stream.get_final_message()
+                else:
+                    message = await self._surface(surface)(**kwargs)
         except NotFoundError as e:
             file_id = stale_file_id(e)
             if file_id:
@@ -272,7 +279,8 @@ class AnthropicMessagesDriver:
         requests = [{"custom_id": custom_id, "params": render(request)[1]}
                     for custom_id, request in items]
         batches = self.client.beta.messages.batches
-        batch = await batches.create(requests=requests)
+        async with self._slots:   # the submit only - polling holds no slot
+            batch = await batches.create(requests=requests)
         logger.info(f"Batch {batch.id} submitted ({len(requests)} requests)")
 
         deadline = time.monotonic() + self.timeout_seconds

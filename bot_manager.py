@@ -22,6 +22,7 @@ import threading
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from core.channel_locks import ChannelLocks
 from core.config import BotConfig
 from core.model.factory import build_driver
 from core.rate_limiter import RateLimiter
@@ -107,6 +108,9 @@ class BotManager:
         # process goes through the one driver
         discord_token = os.getenv(self.config.discord.token_env_var)
         driver = build_driver(self.config.api)
+        # One lock per channel, shared by everything that writes a channel's
+        # conversation state (reactive turns, agentic sends, episode reseeds)
+        channel_locks = ChannelLocks()
 
         # Apply log level from config
         log_level = getattr(logging, self.config.logging.level)
@@ -159,6 +163,7 @@ class BotManager:
             memory_manager=memory_manager,
             driver=driver,
             conversation_logger=conversation_logger,
+            channel_locks=channel_locks,
             user_cache=user_cache,
         )
         logger.info("Reactive engine initialized")
@@ -173,6 +178,7 @@ class BotManager:
                 memory_manager=memory_manager,
                 message_memory=self.message_memory,
                 driver=driver,
+                channel_locks=channel_locks,
             )
             logger.info("Agentic engine initialized")
 

@@ -42,6 +42,7 @@ from .unified_attachment_manager import UnifiedAttachmentManager
 from .files_api_client import FilesAPIClient
 from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
+from .channel_locks import ChannelLocks
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size,
 )
@@ -129,6 +130,7 @@ class ReactiveEngine:
         memory_manager: "MemoryManager",
         driver: "ModelDriver",
         conversation_logger: "ConversationLogger",
+        channel_locks: ChannelLocks,
         user_cache: Optional["UserCache"] = None,
     ):
         """
@@ -141,6 +143,8 @@ class ReactiveEngine:
             memory_manager: Memory tool manager
             driver: Model driver every model call goes through
             conversation_logger: Conversation logger
+            channel_locks: Per-channel turn locks, shared with every other
+                writer of conversation state
             user_cache: User cache for DM channel registry (v0.9)
         """
         self.config = config
@@ -154,6 +158,7 @@ class ReactiveEngine:
         self.list_servers = None
 
         self.driver = driver
+        self.channel_locks = channel_locks
 
         # Cache internal config values (v0.6.0 - simplified config)
         self._rate_limiting_config = config.get_rate_limiting_config()
@@ -234,9 +239,6 @@ class ReactiveEngine:
         # Track background tasks for clean shutdown
         self._background_tasks = set()
 
-        # Prevent concurrent responses (fixes multiple responses to single mention)
-        self._response_semaphore = asyncio.Semaphore(1)
-
         # Track messages that have been responded to (prevent race condition)
         # Using deque with maxlen to automatically discard old entries
         self._responded_messages = deque(maxlen=1000)
@@ -289,6 +291,7 @@ class ReactiveEngine:
                 conversation_state_manager=self.conversation_state_manager,
                 driver=self.driver,
                 model=self.config.api.background_model,
+                channel_locks=self.channel_locks,
             )
 
         # Initialize MCP Manager (discover tools from servers)
@@ -337,6 +340,26 @@ class ReactiveEngine:
                 logger.error(f"Failed to initialize UnifiedAttachmentManager: {e}", exc_info=True)
                 self.attachment_manager = None  # Disable on failure
                 self.repository_manager = None
+
+    async def _load_conversation_state(self, channel_id: str,
+                                       exclude_message_ids: Optional[List[int]] = None):
+        """
+        The channel's conversation state, seeded from recent DB messages when
+        empty; None when there's no state manager or loading fails. Call it
+        with the channel's lock held - the seeding writes the state.
+        """
+        if not self.conversation_state_manager:
+            return None
+        try:
+            state = await self.conversation_state_manager.get_or_create(channel_id)
+            if len(state.messages) == 0:
+                await self._initialize_conversation_from_db(
+                    channel_id, state, exclude_message_ids=exclude_message_ids)
+            return state
+        except Exception as e:
+            logger.error(f"Failed to load conversation state for channel {channel_id}: {e}",
+                         exc_info=True)
+            return None
 
     async def _initialize_conversation_from_db(
         self,
@@ -1682,22 +1705,6 @@ class ReactiveEngine:
 
         channel_id = str(message.channel.id)
 
-        # Load or create conversation state for this channel (v0.5.0)
-        conversation_state = None
-        if self.conversation_state_manager:
-            try:
-                conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
-                # If state is empty, initialize with recent DB messages.
-                # In-flight mentions (incl. this one) get appended by their
-                # own handlers - seeding them here would duplicate them
-                if len(conversation_state.messages) == 0:
-                    await self._initialize_conversation_from_db(
-                        channel_id, conversation_state,
-                        exclude_message_ids=list(self._responded_messages)
-                    )
-            except Exception as e:
-                logger.error(f"Failed to load conversation state for channel {channel_id}: {e}", exc_info=True)
-
         # Log incoming message
         self.conversation_logger.log_user_message(
             author=message.author.display_name,
@@ -1718,8 +1725,15 @@ class ReactiveEngine:
         logger.info(f"Calling Claude API for @mention from {message.author.name}")
 
         try:
-            # Context is built inside the semaphore so each message gets isolated context
-            async with self._response_semaphore:
+            # One turn per channel, from reading the state to saving the
+            # reply: the next message in this channel waits, other channels
+            # don't
+            async with self.channel_locks.lock(channel_id):
+                # In-flight mentions (incl. this one) get appended by their
+                # own handlers - seeding them here would duplicate them
+                conversation_state = await self._load_conversation_state(
+                    channel_id, exclude_message_ids=list(self._responded_messages))
+
                 # Exclude messages currently being processed to prevent seeing
                 # other pending @mentions
                 context = await self.context_builder.build_context(
@@ -1770,27 +1784,26 @@ class ReactiveEngine:
                             fallback_text="I'm not sure how to respond to that.",
                         )
 
-            # Send response (outside semaphore to allow concurrent API calls
-            # while sending). Final text may be empty when the model already
-            # delivered everything via send_message (v0.12.0).
-            sent_message = None
-            if result.response_text.strip():
-                sent_message = await self._send_response_chunks(
-                    message.channel, result.response_text, result.pending_file_ids,
-                    reference=message,
-                )
-                if sent_message is None and not result.did_send:
-                    self.conversation_logger.log_separator()
-                    return
+                # Final text may be empty when the model already delivered
+                # everything via send_message (v0.12.0)
+                sent_message = None
+                if result.response_text.strip():
+                    sent_message = await self._send_response_chunks(
+                        message.channel, result.response_text, result.pending_file_ids,
+                        reference=message,
+                    )
+                    if sent_message is None and not result.did_send:
+                        self.conversation_logger.log_separator()
+                        return
 
-            # Log thinking trace (if present) and bot response
-            if result.thinking_text:
-                self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
-            self.conversation_logger.log_bot_response(
-                result.response_text or f"[Sent {len(result.sent_message_ids)} message(s) via send_message]",
-                len(result.response_text))
+                # Log thinking trace (if present) and bot response
+                if result.thinking_text:
+                    self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
+                self.conversation_logger.log_bot_response(
+                    result.response_text or f"[Sent {len(result.sent_message_ids)} message(s) via send_message]",
+                    len(result.response_text))
 
-            await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
+                await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
 
             await self._emit_turn_event(
                 "dm" if message.guild is None else "mention",
@@ -1847,21 +1860,13 @@ class ReactiveEngine:
         intent = memory_intent(kind, text, user.display_name)
         synthetic = _SyntheticDMMessage(channel=channel, author=user, content=intent)
 
-        conversation_state = None
-        if self.conversation_state_manager:
-            try:
-                conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
-                if len(conversation_state.messages) == 0:
-                    await self._initialize_conversation_from_db(channel_id, conversation_state)
-            except Exception as e:
-                logger.error(f"Failed to load conversation state for /memory: {e}", exc_info=True)
-
         self.conversation_logger.log_user_message(
             author=user.display_name, channel="DM",
             content=f"/memory {kind} {text}".strip(), is_mention=True)
 
         try:
-            async with self._response_semaphore:
+            async with self.channel_locks.lock(channel_id):
+                conversation_state = await self._load_conversation_state(channel_id)
                 context = await self.context_builder.build_context(synthetic)
 
                 if conversation_state:
@@ -1884,15 +1889,15 @@ class ReactiveEngine:
                     memory_write_grant=str(user.id),
                 )
 
-            if result.response_text.strip():
-                await self._send_response_chunks(channel, result.response_text,
-                                                 result.pending_file_ids)
+                if result.response_text.strip():
+                    await self._send_response_chunks(channel, result.response_text,
+                                                     result.pending_file_ids)
 
-            if result.thinking_text:
-                self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
-            self.conversation_logger.log_bot_response(result.response_text, len(result.response_text))
+                if result.thinking_text:
+                    self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
+                self.conversation_logger.log_bot_response(result.response_text, len(result.response_text))
 
-            await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
+                await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
 
             await self._emit_turn_event(
                 "memory", synthetic, result,
@@ -2080,25 +2085,8 @@ class ReactiveEngine:
                 if not self.pending_messages:
                     continue
 
-                # Get copy of pending messages to process
-                messages_to_check = self.pending_messages.copy()
-                self.pending_messages.clear()
-
-                logger.debug(f"Processing {len(messages_to_check)} pending messages")
-
                 # PHASE 1: Process all messages (add to conversation state)
-                # Collect the weighed messages per channel - they become the
-                # scan/silent turn-event triggers (v0.9)
-                channel_triggers: dict = {}
-                for channel_id, message_id in messages_to_check:
-                    try:
-                        trigger = await self._process_message_to_state(channel_id, message_id)
-                        if trigger:
-                            channel_triggers.setdefault(channel_id, []).append(trigger)
-                    except Exception as e:
-                        logger.error(f"Error processing message {message_id} in channel {channel_id}: {e}", exc_info=True)
-
-                logger.debug(f"Phase 1 complete: {len(channel_triggers)} channels with updates")
+                channel_triggers = await self._ingest_pending()
 
                 # PHASE 2: Make one response decision per channel
                 for channel_id, triggers in channel_triggers.items():
@@ -2111,6 +2099,36 @@ class ReactiveEngine:
             logger.info("Periodic check loop cancelled")
         except Exception as e:
             logger.error(f"Fatal error in periodic check loop: {e}", exc_info=True)
+
+    async def _ingest_pending(self) -> dict:
+        """
+        Phase 1 of a scan: add every pending message to its channel's state.
+        Returns {channel_id: [trigger, ...]} - the weighed messages, which
+        become the scan/silent turn-event triggers (v0.9).
+
+        A channel whose turn is still running keeps its messages pending for
+        the next tick, so nothing lands between the turn's persisted tool
+        pairs and its reply; ingestion holds the lock itself while it writes.
+        """
+        messages_to_check = self.pending_messages.copy()
+        self.pending_messages.clear()
+        logger.debug(f"Processing {len(messages_to_check)} pending messages")
+
+        channel_triggers: dict = {}
+        for channel_id, message_id in messages_to_check:
+            if self.channel_locks.busy(channel_id):
+                self.pending_messages.append((channel_id, message_id))
+                continue
+            try:
+                async with self.channel_locks.lock(channel_id):
+                    trigger = await self._process_message_to_state(channel_id, message_id)
+                if trigger:
+                    channel_triggers.setdefault(channel_id, []).append(trigger)
+            except Exception as e:
+                logger.error(f"Error processing message {message_id} in channel {channel_id}: {e}", exc_info=True)
+
+        logger.debug(f"Phase 1 complete: {len(channel_triggers)} channels with updates")
+        return channel_triggers
 
     async def _process_message_to_state(self, channel_id: str, message_id: int) -> bool:
         """
@@ -2322,19 +2340,6 @@ class ReactiveEngine:
         channel_id = str(message.channel.id)
         triggers = triggers or [self._trigger_from(message)]
 
-        # Load or create conversation state for this channel (v0.5.0)
-        conversation_state = None
-        if self.conversation_state_manager:
-            try:
-                conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
-                # Messages are already in state (with attachments) from Phase 1
-                # processing; only seed from the DB when the state is empty
-                if len(conversation_state.messages) == 0:
-                    await self._initialize_conversation_from_db(channel_id, conversation_state)
-            except Exception as e:
-                logger.error(f"Failed to load conversation state for periodic check: {e}", exc_info=True)
-                conversation_state = None
-
         # Log periodic check decision attempt
         self.conversation_logger.log_user_message(
             author="[PERIODIC CHECK]",
@@ -2345,8 +2350,11 @@ class ReactiveEngine:
         if context.get("stats"):
             self.conversation_logger.log_context_building(**context["stats"])
 
-        # Prevent concurrent responses
-        async with self._response_semaphore:
+        # One turn per channel, from reading the state to saving the reply
+        async with self.channel_locks.lock(channel_id):
+            # Messages are already in state (with attachments) from Phase 1
+            # processing; seeding only happens when the state is empty
+            conversation_state = await self._load_conversation_state(channel_id)
             system_blocks = self._build_response_decision_prompt(context)
             # Momentum is recomputed every check - volatile tail, not system
             volatile_tail = await self._build_volatile_tail(
@@ -2545,6 +2553,11 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
         try:
             await asyncio.sleep(delay)
 
+            # A turn holds the channel: the periodic loop picks these up
+            # once it's done
+            if self.channel_locks.busy(channel_id):
+                return
+
             # Claim this channel's pending entries (no await between the two
             # list operations - atomic on the event loop)
             mine = [p for p in self.pending_messages if p[0] == channel_id]
@@ -2553,13 +2566,14 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
             self.pending_messages = [p for p in self.pending_messages if p[0] != channel_id]
 
             triggers = []
-            for cid, message_id in mine:
-                try:
-                    trigger = await self._process_message_to_state(cid, message_id)
-                    if trigger:
-                        triggers.append(trigger)
-                except Exception as e:
-                    logger.error(f"Expedited scan: error processing message {message_id}: {e}", exc_info=True)
+            async with self.channel_locks.lock(channel_id):
+                for cid, message_id in mine:
+                    try:
+                        trigger = await self._process_message_to_state(cid, message_id)
+                        if trigger:
+                            triggers.append(trigger)
+                    except Exception as e:
+                        logger.error(f"Expedited scan: error processing message {message_id}: {e}", exc_info=True)
 
             if triggers:
                 await self._decide_channel_response(channel_id, triggers)

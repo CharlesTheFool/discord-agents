@@ -229,13 +229,15 @@ class EpisodeManager:
         conversation_state_manager,
         driver,
         model: str,
+        channel_locks,
     ):
         self.message_memory = message_memory
         self.memory_manager = memory_manager
         self.conversation_state_manager = conversation_state_manager
         self.driver = driver
         self.model = model  # the background model: distillation is a summarizing job
-        self._locks: dict = {}
+        self.channel_locks = channel_locks  # turn locks, shared with the engines
+        self._locks: dict = {}  # one distillation at a time per channel
         # Distillation-failure cooldowns: the usage trigger re-fires every
         # turn while over threshold, which would re-attempt (and re-bill) a
         # failing distillation once per message
@@ -311,11 +313,15 @@ class EpisodeManager:
             if distilled:
                 self._retry_after.pop(channel_id, None)
 
-            # Reseed the live session if its tail was episodized
+            # Reseed the live session if its tail was episodized. The reseed
+            # rewrites live state, so it waits for any turn in the channel to
+            # finish (episodization always runs as its own task, never inside
+            # a turn, so this can't deadlock)
             if distilled and tail_closed:
-                state = await self.conversation_state_manager.get_or_create(channel_id)
-                state.reseed(EPISODE_SEED_TAIL_MESSAGES)
-                await self.conversation_state_manager.save(state)
+                async with self.channel_locks.lock(channel_id):
+                    state = await self.conversation_state_manager.get_or_create(channel_id)
+                    state.reseed(EPISODE_SEED_TAIL_MESSAGES)
+                    await self.conversation_state_manager.save(state)
 
                 # Reseed turn-event (v0.9): the channel monitor's inline marker
                 try:

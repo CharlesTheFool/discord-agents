@@ -547,8 +547,6 @@ class DiscordClient(discord.Client):
         if message.author.id == self.user.id and processed_attachments and self.reactive_engine.conversation_state_manager:
             try:
                 channel_id = str(message.channel.id)
-                conversation_state = await self.reactive_engine.conversation_state_manager.get_or_create(channel_id)
-
                 # Extract attachment IDs
                 attachment_ids = [att["attachment_id"] for att in processed_attachments]
 
@@ -571,15 +569,16 @@ class DiscordClient(discord.Client):
                 # Use content blocks if we have attachments, otherwise just text
                 content = content_blocks if content_blocks else (message.content or "[File uploaded]")
 
-                # Add bot message with attachments to conversation state
-                conversation_state.add_message(
-                    role="assistant",  # Bot messages are assistant role
-                    content=content,
-                    attachment_ids=attachment_ids
-                )
-
-                # Save updated state
-                await self.reactive_engine.conversation_state_manager.save(conversation_state)
+                # The echo of a turn's own send waits for that turn to persist
+                states = self.reactive_engine.conversation_state_manager
+                async with self.reactive_engine.channel_locks.lock(channel_id):
+                    conversation_state = await states.get_or_create(channel_id)
+                    conversation_state.add_message(
+                        role="assistant",  # Bot messages are assistant role
+                        content=content,
+                        attachment_ids=attachment_ids
+                    )
+                    await states.save(conversation_state)
                 logger.info(f"Tracked {len(attachment_ids)} bot attachments in conversation state for testing")
 
             except Exception as e:

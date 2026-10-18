@@ -26,6 +26,10 @@ EPISODE_DISTILL_MAX_TOKENS = 4000
 EPISODE_RETRY_COOLDOWN_MINUTES = 10  # Backoff after a failed distillation
 
 TOOL_STUB_KEEP_TURNS = 3            # Turns whose tool results stay full
+
+# Model calls in flight at once, bot-wide (0.13.1): channels run turns in
+# parallel, but never more than this many requests at the provider
+MODEL_CALL_SLOTS = 3
 TOOL_STUB_MIN_CHARS = 500           # Results shorter than this are never stubbed
 TOOL_STUB_TEXT = "[tool result cleared at turn boundary - re-run the tool if the information is needed again]"
 

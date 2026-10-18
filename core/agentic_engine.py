@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
     from .model.driver import ModelDriver
+    from .channel_locks import ChannelLocks
 
 from .proactive_action import ProactiveAction
 from .engagement_tracker import EngagementTracker
@@ -107,6 +108,7 @@ class AgenticEngine:
         memory_manager: "MemoryManager",
         message_memory: "MessageMemory",
         driver: "ModelDriver",
+        channel_locks: "ChannelLocks",
     ):
         """
         Initialize agentic engine.
@@ -116,11 +118,13 @@ class AgenticEngine:
             memory_manager: Memory tool manager
             message_memory: Message storage
             driver: Model driver every model call goes through
+            channel_locks: Per-channel turn locks, shared with the reactive engine
         """
         self.config = config
         self.memory = memory_manager
         self.message_memory = message_memory
         self.driver = driver
+        self.channel_locks = channel_locks
         self.discord_client = None  # Set after Discord client initialization
 
         # Memory tool executor for the proactive tool loop (MemoryManager has
@@ -580,15 +584,17 @@ class AgenticEngine:
         """
         logger.info(f"Executing {action.type} action in channel {action.channel_id}")
 
-        if action.type == "followup":
-            await self._execute_followup(action)
-        elif action.type == "proactive":
-            await self._execute_proactive_message(action)
-        elif action.type == "coordination":
-            await self._execute_coordination_message(action)
-        elif action.type == "maintenance":
-            # Already handled in maintain_memories()
-            pass
+        if action.type == "maintenance":
+            return  # already handled in maintain_memories()
+        # An unprompted send is a turn in its channel: it never lands in the
+        # middle of a reply that's being written there
+        async with self.channel_locks.lock(action.channel_id):
+            if action.type == "followup":
+                await self._execute_followup(action)
+            elif action.type == "proactive":
+                await self._execute_proactive_message(action)
+            elif action.type == "coordination":
+                await self._execute_coordination_message(action)
 
     async def _execute_followup(self, action: ProactiveAction):
         """
@@ -1093,10 +1099,11 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
         if not self.conversation_state_manager:
             logger.warning("No conversation state manager - context note dropped")
             return
-        state = await self.conversation_state_manager.get_or_create(str(channel_id))
-        state.add_message("user", note)
-        state.enforce_message_cap()
-        await self.conversation_state_manager.save(state)
+        async with self.channel_locks.lock(channel_id):   # never between a turn's tool pairs
+            state = await self.conversation_state_manager.get_or_create(str(channel_id))
+            state.add_message("user", note)
+            state.enforce_message_cap()
+            await self.conversation_state_manager.save(state)
 
     def enqueue_coordination(self, action: ProactiveAction) -> None:
         """Queue a Prime-approved cross-server send (v0.9). Drained
@@ -1123,7 +1130,8 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
                 return
             self._coordination_queue.pop(0)
             try:
-                await self._execute_coordination_message(action)
+                async with self.channel_locks.lock(action.channel_id):
+                    await self._execute_coordination_message(action)
             except Exception as e:
                 logger.error(f"Coordination send failed: {e}", exc_info=True)
 
