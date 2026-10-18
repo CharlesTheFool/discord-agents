@@ -46,7 +46,7 @@ from .channel_locks import ChannelLocks
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size,
 )
-from .model.driver import ModelRequest, StaleFileError, total_input_tokens
+from .model.driver import ModelRequest, StaleFileError, Usage, total_input_tokens
 from .model.registry import ToolContext, assemble_tools
 from tools.skills_tool import SkillRequestExecutor
 
@@ -93,7 +93,10 @@ class ToolLoopResult:
     thinking_block: Any = None
     tools_were_used: bool = False
     model: str = ""  # the model that wrote this turn (stamped on persisted assistant messages)
-    usage: Any = None  # usage of the final response in the loop
+    usage: Any = None  # the final call's usage: its input is the live context size
+    total_usage: Usage = field(default_factory=Usage)  # every call this turn, for cost
+    last_tool_name: str = ""  # the last tool called before the turn ended
+    dropped_text_chars: int = 0  # trailing text the send guard held back
     container_file_ids: List[str] = field(default_factory=list)
     tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
     # Native messaging (v0.12.0): messages the model sent via send_message
@@ -1052,20 +1055,25 @@ class ReactiveEngine:
 
     @staticmethod
     def _event_payload(result: "ToolLoopResult", triggers: list, **extra) -> dict:
-        usage = result.usage
-        return {
+        # Every model call of the turn: a tool round is several calls, and
+        # recording only the last undercounted those turns' cost
+        usage = result.total_usage
+        payload = {
             "triggers": triggers,
             "thinking": result.thinking_text or "",
             "tool_calls": result.tool_calls,
             "response": result.response_text or None,
             "tokens": {
-                "uncached_in": getattr(usage, "input_tokens", 0) or 0,
-                "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
-                "cache_write": getattr(usage, "cache_creation_input_tokens", 0) or 0,
-                "out": getattr(usage, "output_tokens", 0) or 0,
-            } if usage else {},
+                "uncached_in": usage.input_tokens,
+                "cache_read": usage.cache_read_input_tokens,
+                "cache_write": usage.cache_creation_input_tokens,
+                "out": usage.output_tokens,
+            } if result.usage else {},
             **extra,
         }
+        if result.dropped_text_chars:
+            payload["dropped_text_chars"] = result.dropped_text_chars
+        return payload
 
     async def _emit_turn_event(self, kind: str, message, result: "ToolLoopResult",
                                triggers: list, **extra) -> None:
@@ -1331,6 +1339,7 @@ class ReactiveEngine:
                 raise
 
             result.usage = response.usage
+            result.total_usage = result.total_usage + response.usage
 
             # Multi-iteration turns must reuse the container (per Anthropic docs)
             if response.container_id:
@@ -1365,6 +1374,8 @@ class ReactiveEngine:
                         result.response_text = result.response_text or "I got stuck in a tool loop - try asking again."
                     break
                 result.tools_were_used = True
+                result.last_tool_name = [b.name for b in response.content
+                                         if getattr(b, "type", None) == "tool_use"][-1]
 
                 tool_results, pending_file_blocks, container_rebuilt = await self._execute_tool_blocks(
                     response, message, conversation_state, request,
@@ -1463,6 +1474,16 @@ class ReactiveEngine:
 
                 if citations_list:
                     result.response_text += "\n\n**Sources:**\n" + "\n".join(f"- {cite}" for cite in citations_list)
+
+                # Send guard (0.13.1): text right after a send_message call is
+                # the double-post pattern (send, then restate it). It's held
+                # back - never posted, never persisted - and counted. Text
+                # after other work still goes out as a normal message.
+                if result.last_tool_name == "send_message" and result.response_text.strip():
+                    logger.info(f"Dropped trailing text after send_message{log_suffix}: "
+                                f"{result.response_text[:120]!r}")
+                    result.dropped_text_chars = len(result.response_text)
+                    result.response_text = ""
 
                 # Tools ran but the model went quiet: reprompt once for a
                 # brief confirmation (unless it already sent via send_message

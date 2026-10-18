@@ -26,10 +26,11 @@ SEND_MESSAGE_TOOL = {
         "anything; files only ride a message through attach_outputs. Keep "
         "each message texting-sized, no blank lines. The result reports the "
         "sent message's id and exactly which "
-        "files actually attached - trust it over your own intentions. Plain "
-        "text you output at the end of your turn still gets posted as "
-        "ordinary messages too, so once you've said everything through this "
-        "tool, end your turn without restating it."
+        "files actually attached - trust it over your own intentions. If "
+        "you end your turn right after a send_message call, any extra text "
+        "is not posted, so say everything through the tool. Text you write "
+        "after other work, without a send right before it, still goes out "
+        "as a normal message."
     ),
     "input_schema": {
         "type": "object",
