@@ -1,7 +1,7 @@
 /* Per-bot dashboard: Monitor / Configure / Memories / Repository. */
 
 import {
-  apiGet, apiSend,
+  apiGet, apiSend, apiFetch,
   clockTime, agoInWords, uptimeInWords, tokens, modelShort, esc,
 } from "./app.js";
 
@@ -299,28 +299,45 @@ function avatarColor(name) {
 const initials = (name) => name.replace(/^@/, "").slice(0, 2).toUpperCase();
 
 // Live log tail over the backend's SSE endpoint (replays the last lines, then
-// streams appended ones). Closed whenever the raw view isn't showing.
-let logES = null;
+// streams appended ones). Closed whenever the raw view isn't showing. Read via
+// fetch rather than EventSource: EventSource can't send the API token header.
+// A dropped stream clears logTail, so the next refresh tick reconnects.
+let logTail = null;   // AbortController of the live stream
 let logPane = null;
 function stopLogTail() {
-  if (logES) logES.close();
-  logES = null;
+  if (logTail) logTail.abort();
+  logTail = null;
   logPane = null;
 }
-function startLogTail(pane) {
+async function startLogTail(pane) {
   if (!pane) return;
   stopLogTail();
   logPane = pane;
-  logES = new EventSource(A("/logs?file=main&follow=1"));
-  logES.onmessage = (e) => {
-    const nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
-    const line = document.createElement("div");
-    line.className = "rawline";
-    line.textContent = e.data;
-    pane.appendChild(line);
-    while (pane.childElementCount > 2000) pane.removeChild(pane.firstChild);  // bound memory
-    if (nearBottom) pane.scrollTop = pane.scrollHeight;   // stay pinned unless scrolled up
-  };
+  const ctl = (logTail = new AbortController());
+  try {
+    const r = await apiFetch(A("/logs?file=main&follow=1"), { signal: ctl.signal });
+    if (!r.ok) throw new Error(`log tail -> ${r.status}`);
+    const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      const events = buf.split("\n\n");   // one "data: <line>" event per log line
+      buf = events.pop();
+      for (const ev of events) appendRawLine(pane, ev.replace(/^data: ?/, ""));
+    }
+  } catch (e) { /* aborted by stopLogTail, or the stream dropped */ }
+  if (logTail === ctl) logTail = null;
+}
+function appendRawLine(pane, text) {
+  const nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
+  const line = document.createElement("div");
+  line.className = "rawline";
+  line.textContent = text;
+  pane.appendChild(line);
+  while (pane.childElementCount > 2000) pane.removeChild(pane.firstChild);  // bound memory
+  if (nearBottom) pane.scrollTop = pane.scrollHeight;   // stay pinned unless scrolled up
 }
 
 function ensureLogTailRunning() {
@@ -328,7 +345,7 @@ function ensureLogTailRunning() {
   if (!(document.getElementById("raw-follow")?.checked ?? true)) return;
   const pane = document.getElementById("rawlog-live");
   if (!pane) return;
-  if (!logES || logPane !== pane) startLogTail(pane);
+  if (!logTail || logPane !== pane) startLogTail(pane);
 }
 
 function captureChannelScroll(enabled) {
@@ -1113,7 +1130,7 @@ async function saveToken(field) {
   if (!input.value.trim()) return;
   btn.disabled = true; btn.textContent = "Checking…";
   try {
-    const r = await fetch(A("/token"), {
+    const r = await apiFetch(A("/token"), {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: input.value.trim() }),
     });
@@ -1313,7 +1330,7 @@ async function saveConfig() {
 
   const candidate = collectFormValues();
   document.getElementById("cfg-save").disabled = true;
-  const r = await fetch(A("/config"), {
+  const r = await apiFetch(A("/config"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(candidate),
@@ -1582,7 +1599,7 @@ async function startInduct(dryRun) {
   out.hidden = false;
   out.textContent = dryRun ? "previewing…" : "induction starting…";
   try {
-    const r = await fetch(A("/induct"), {
+    const r = await apiFetch(A("/induct"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ server, dry_run: dryRun }),
     });
@@ -1791,7 +1808,7 @@ function wireRepo(panel, tree) {
     btn.disabled = true; btn.textContent = "Uploading…";
     try {
       for (const f of files) {
-        const r = await fetch(A(`/repository/file?path=${encodeURIComponent(joinPath(repoSel, f.name))}`),
+        const r = await apiFetch(A(`/repository/file?path=${encodeURIComponent(joinPath(repoSel, f.name))}`),
           { method: "PUT", body: f });
         if (!r.ok) {
           const b = await r.json().catch(() => ({}));
@@ -1982,8 +1999,8 @@ function openSkillDialog() {
     err.style.display = "none";
     if (sub) { sub.disabled = true; sub.textContent = "Uploading…"; }
     try {
-      const r = await fetch(A(`/skills?name=${encodeURIComponent(id)}`),
-                           { method: "POST", body: file });
+      const r = await apiFetch(A(`/skills?name=${encodeURIComponent(id)}`),
+                              { method: "POST", body: file });
       if (!r.ok) {
         const b = await r.json().catch(() => ({}));
         throw new Error(b.error || `upload failed (${r.status})`);

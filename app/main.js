@@ -62,6 +62,9 @@ function readConfig() {
   return { root: path.join(__dirname, ".."), python: "python" };
 }
 
+// Health check: GET /api/supervisor is the one API route the daemon leaves
+// open, so this works against daemons with and without the token gate
+// (the framework updates before the launcher does).
 function daemonUp() {
   return new Promise((resolve) => {
     const req = http.get(`${BASE}/api/supervisor`, (res) => {
@@ -70,6 +73,25 @@ function daemonUp() {
     });
     req.on("error", () => resolve(false));
     req.setTimeout(1500, () => { req.destroy(); resolve(false); });
+  });
+}
+
+// The daemon gates the rest of /api/ behind a per-install token embedded in
+// the dashboard page it serves (supervisor.py _render_html). Null when the
+// page has none, e.g. a daemon from before the gate existed.
+function fetchDaemonToken() {
+  return new Promise((resolve) => {
+    const req = http.get(`${BASE}/`, (res) => {
+      let html = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { html += chunk; });
+      res.on("end", () => {
+        const m = res.statusCode === 200 && html.match(/<meta name="da-token" content="([^"]+)"/);
+        resolve(m ? m[1] : null);
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.setTimeout(1500, () => { req.destroy(); resolve(null); });
   });
 }
 
@@ -115,9 +137,11 @@ async function ensureDaemon() {
 // Closing the window means closing the app: bots stop cleanly (their desired
 // state is kept, so they come back on next launch). Only a daemon WE spawned
 // is stopped - one the operator runs from a terminal is left alone.
-function requestShutdown() {
+async function requestShutdown() {
+  const token = await fetchDaemonToken();
   return new Promise((resolve) => {
-    const req = http.request(`${BASE}/api/supervisor/shutdown`, { method: "POST" },
+    const req = http.request(`${BASE}/api/supervisor/shutdown`,
+      { method: "POST", headers: token ? { "X-DA-Token": token } : {} },
       (res) => { res.resume(); resolve(res.statusCode === 200); });
     req.on("error", () => resolve(false));
     req.setTimeout(3000, () => { req.destroy(); resolve(false); });

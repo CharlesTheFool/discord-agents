@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.5] - 2026-10-18
+
+**Status:** Pre-release (beta). Security patch for the dashboard, plus the
+fixes that landed after 0.12.4.
+
+### Security
+- **The dashboard API now requires a per-install token.** The supervisor only
+  listens on `127.0.0.1`, but any web page open in your browser could still
+  send it requests: a plain form-style POST needs no CORS preflight, so a
+  hostile page could start, stop or shut down bots, or spend API credit on an
+  induction run. DNS rebinding reached the config and key routes too. Now:
+  - every `/api/` route needs a token the daemon generates on first run
+    (`persistence/supervisor_token`) and embeds in the pages it serves;
+  - requests with a `Host` other than `127.0.0.1:<port>` or
+    `localhost:<port>` are refused (no DNS rebinding);
+  - writes from a foreign `Origin` are refused;
+  - nothing the daemon serves can be framed (no clickjacking).
+
+  The dashboard's live log view moved from `EventSource`, which can't send
+  the token, to a streamed `fetch`. `GET /api/supervisor` stays open as the
+  launcher's read-only health check.
+
+### Fixed
+- **Haiku 4.5 is no longer offered as a main model.** Bots send adaptive
+  thinking by default and Haiku 4.5 doesn't support it, so picking it 400'd
+  every request. Startup validation now rejects it for hand-edited configs.
+  Its background uses (episode distillation, watch checks) are unaffected.
+- **Dashboard assets bust caches on their own.** Every `assets/` reference in
+  the served pages carries a hash of the assets folder, replacing the
+  hand-maintained `?v=N` that kept falling out of date. Covers scripts,
+  styles, images and fonts.
+
+### Upgrade note
+The desktop launcher sends the token when it shuts the daemon down. A
+launcher older than 0.12.5 can't, so closing the app falls back to killing
+the daemon and its bots keep running until the next launch, which cleans
+them up. Installing the 0.12.5 app (it auto-updates from this release)
+fixes it.
+
+---
+
 ## [0.12.4] - 2026-07-05
 
 **Status:** Pre-release (beta). Default model bump only - no behavioral changes.

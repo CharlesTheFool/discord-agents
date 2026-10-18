@@ -1,7 +1,7 @@
 /* Fleet dashboard — dense, color-telegraphed board. */
 
 import {
-  apiGet, apiSend,
+  apiGet, apiSend, apiFetch,
   clockTime, agoInWords, uptimeInWords, tokens, modelShort, esc,
 } from "./app.js";
 
@@ -150,7 +150,7 @@ function openKeyDialog() {
     const btn = dlg.querySelector(".btn.primary");
     btn.disabled = true; btn.textContent = "Checking…";
     try {
-      const r = await fetch("/api/setup/anthropic", {
+      const r = await apiFetch("/api/setup/anthropic", {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key }),
       });

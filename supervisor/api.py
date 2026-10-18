@@ -2,9 +2,15 @@
 The supervisor's localhost HTTP API. Binds 127.0.0.1 only; the path jail
 is the security boundary for every file route; bot YAMLs hold no secrets
 and .env is unreachable by construction (outside every jailed root).
+
+Binding to loopback doesn't keep out the operator's own browser, so the
+`guard` middleware defends against hostile web pages (CSRF, DNS rebinding):
+Host/Origin allowlists plus a per-install token header on every /api/ route.
+Every response also forbids framing (clickjacking).
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import re
@@ -30,6 +36,10 @@ from .paths import PathJailError, SupervisorRoot
 from .process_manager import ProcessManager
 
 logger = logging.getLogger(__name__)
+
+# Custom header => any cross-origin caller needs a CORS preflight, which this
+# server never approves. The UI reads the token from the page it was served.
+TOKEN_HEADER = "X-DA-Token"
 
 BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 
@@ -65,6 +75,7 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     env = EnvStore(root.env_file())
     health = health or MCPHealthPoller(lambda: load_mcp_servers(root))
     app = web.Application()
+    app["api_token"] = root.api_token()
     app["health"] = health
     app["started"] = datetime.now(timezone.utc).isoformat()
     app["inducts"] = {}  # bot_id -> {proc, lines, dry_run, started, done}
@@ -104,6 +115,45 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             return json_response({"error": "internal error"}, status=500)
 
     app.middlewares.append(errors)
+
+    @web.middleware
+    async def guard(request, handler):
+        port = request.transport.get_extra_info("sockname")[1]
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        # Host must be our own loopback address: under DNS rebinding the
+        # attacker's domain resolves here but arrives as Host: attacker.example
+        if request.headers.get("Host", "").lower() not in hosts:
+            return json_response({"error": "host not allowed"}, status=403)
+        # Browsers attach Origin to cross-origin writes (even no-cors ones)
+        origin = request.headers.get("Origin")
+        if (origin is not None and request.method not in ("GET", "HEAD")
+                and origin.lower() not in {f"http://{h}" for h in hosts}):
+            return json_response({"error": "cross-origin request refused"}, status=403)
+        # GET /api/supervisor stays open: it's the launcher's health check, and
+        # the app updates the framework before its own launcher, so a launcher
+        # one release behind must still see the new daemon as up. Read-only,
+        # unreadable cross-origin (no CORS headers), rebinding-proof via Host.
+        launcher_health = (request.method in ("GET", "HEAD")
+                           and request.path == "/api/supervisor")
+        if request.path.startswith("/api/") and not launcher_health:
+            supplied = request.headers.get(TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied.encode("utf-8", "replace"),
+                                       app["api_token"].encode("utf-8")):
+                return json_response({"error": "missing or invalid API token"},
+                                     status=401)
+        return await handler(request)
+
+    app.middlewares.append(guard)
+
+    # Nothing we serve is meant to be framed. Otherwise a hostile page could
+    # load the dashboard in an iframe (Host passes, the token loads inside
+    # it) and trick the operator into clicking Stop or Start (clickjacking).
+    # A prepare hook, not a middleware, so static files and SSE get it too.
+    async def deny_framing(request, response):
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+
+    app.on_response_prepare.append(deny_framing)
 
     def bot_or_404(request) -> str:
         bot_id = request.match_info["bot_id"]

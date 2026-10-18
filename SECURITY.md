@@ -6,9 +6,8 @@ We actively support the following versions with security updates:
 
 | Version | Supported |
 | ------- | --------- |
-| 0.4.1 | ✅ |
-| 0.4.0-beta | ✅ |
-| < 0.4.0 | ❌ |
+| 0.12.x (latest) | ✅ |
+| < 0.12 | ❌ |
 
 **Note:** Beta versions receive security patches on a best-effort basis. A formal security support policy will be established with v1.0.0.
 
@@ -115,6 +114,25 @@ Provide as much detail as possible:
 - Ignoring dependency security warnings from GitHub or pip
 
 ## Known Security Considerations
+
+### The Supervisor Dashboard
+The supervisor (and the desktop app built on it) listens on `127.0.0.1` only,
+but loopback doesn't keep out the operator's own browser: any web page you
+visit can send requests to `127.0.0.1`. Since 0.12.5 the dashboard API
+defends against that:
+- every `/api/` route requires a per-install token, generated on first run
+  into `persistence/supervisor_token` and embedded in the pages the daemon
+  serves (a cross-origin page can't read it, and a custom header forces a
+  CORS preflight the daemon never approves);
+- requests whose `Host` isn't `127.0.0.1:<port>` or `localhost:<port>` are
+  refused, which defeats DNS rebinding;
+- state-changing requests from a foreign `Origin` are refused;
+- every response forbids framing, so a hostile page can't overlay the
+  dashboard and trick clicks.
+
+The one open route is `GET /api/supervisor`, a read-only health check the
+desktop launcher uses. Treat `supervisor_token` like a password: anything
+holding it can drive the dashboard.
 
 ### Message History Access
 The bot can search and access full message history in channels with appropriate permissions. Sensitive conversations should occur in channels the bot cannot access. Use Discord's permission system to restrict bot visibility.

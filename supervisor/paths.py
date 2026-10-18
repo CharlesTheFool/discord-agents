@@ -9,6 +9,8 @@ In the git-checkout model both are the same directory and behavior is
 byte-identical to before.
 """
 
+import os
+import secrets
 from pathlib import Path
 from typing import List, Optional
 
@@ -57,6 +59,9 @@ class SupervisorRoot:
     def supervisor_state(self) -> Path:
         return self.persistence_dir() / "supervisor_state.json"
 
+    def api_token_file(self) -> Path:
+        return self.persistence_dir() / "supervisor_token"
+
     def memories_dir(self, bot_id: str) -> Path:
         return self.root / "memories" / bot_id
 
@@ -101,6 +106,22 @@ class SupervisorRoot:
         if not self.mcp_servers_json().exists():
             self.mcp_servers_json().write_text('{"servers": []}\n',
                                                encoding="utf-8")
+
+    def api_token(self) -> str:
+        """The per-install secret every /api/ request must carry (see the
+        guard middleware in api.py). Generated on first use, then stable
+        across restarts so an open dashboard survives a daemon bounce."""
+        path = self.api_token_file()
+        if path.exists():
+            token = path.read_text(encoding="utf-8").strip()
+            if token:
+                return token
+        token = secrets.token_urlsafe(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # owner-only on POSIX
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(token)
+        return token
 
     # --- the jail --------------------------------------------------------
 

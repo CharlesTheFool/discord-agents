@@ -6,6 +6,15 @@
 const API_BASE = "";
 const MOCK = false;
 
+/* The daemon embeds a per-install token in every page it serves; /api/
+   rejects requests without it, so a hostile web page can't drive the
+   dashboard's backend. ALL /api/ calls must go through apiFetch. */
+const API_TOKEN = document.querySelector('meta[name="da-token"]')?.content ?? "";
+
+function apiFetch(url, opts = {}) {
+  return fetch(url, { ...opts, headers: { ...opts.headers, "X-DA-Token": API_TOKEN } });
+}
+
 /* Map a real route to its static mock file:
    /api/bots                        -> /api/bots.json
    /api/bots/x/logs?file=main&...   -> /api/bots/x/logs-main.json */
@@ -18,7 +27,7 @@ function mockUrl(path) {
 
 async function apiGet(path) {
   const url = MOCK ? mockUrl(path) : API_BASE + path;
-  const r = await fetch(url);
+  const r = await apiFetch(url);
   if (!r.ok) throw new Error(`GET ${path} -> ${r.status}`);
   return r.json();
 }
@@ -27,7 +36,7 @@ async function apiGet(path) {
    after a short beat so the UI's pending states are visible. */
 async function apiSend(method, path, body) {
   if (MOCK) return new Promise((res) => setTimeout(() => res({ ok: true }), 350));
-  const r = await fetch(API_BASE + path, {
+  const r = await apiFetch(API_BASE + path, {
     method,
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
@@ -91,6 +100,6 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 export {
-  apiGet, apiSend, MOCK,
+  apiGet, apiSend, apiFetch, MOCK,
   numWord, clockTime, longDate, agoInWords, uptimeInWords, tokens, modelShort, esc,
 };

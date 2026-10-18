@@ -64,13 +64,19 @@ def _assets_fingerprint(assets_dir: Path) -> str:
     return digest.hexdigest()[:10]
 
 
-def _render_html(path: Path, assets_dir: Path) -> str:
+def _render_html(path: Path, assets_dir: Path, api_token: str = "") -> str:
     """Serve an HTML page with every assets/ reference (js/css/images/fonts -
     see _ASSET_EXTENSIONS) tagged with the live content fingerprint,
-    replacing any ?v=N already in the source."""
+    replacing any ?v=N already in the source. A non-empty api_token is
+    embedded as <meta name="da-token"> for the UI (assets/app.js apiFetch)
+    and the desktop launcher (app/main.js) to send on /api/ calls."""
     html = path.read_text(encoding="utf-8")
     version = _assets_fingerprint(assets_dir)
-    return _ASSET_REF_RE.sub(rf"\1?v={version}", html)
+    html = _ASSET_REF_RE.sub(rf"\1?v={version}", html)
+    if api_token:
+        html = html.replace(
+            "<head>", f'<head>\n<meta name="da-token" content="{api_token}">', 1)
+    return html
 
 
 async def main(root_path: Path, port: int, code_root: Path = None) -> None:
@@ -106,10 +112,14 @@ async def main(root_path: Path, port: int, code_root: Path = None) -> None:
 
         def html_page(filename):
             async def handler(request):
-                html = _render_html(ui_dir / filename, ui_dir / "assets")
+                html = _render_html(ui_dir / filename, ui_dir / "assets",
+                                    request.app["api_token"])
                 return web.Response(text=html, content_type="text/html")
             return handler
         app.router.add_get("/", html_page("index.html"))
+        # The masthead links here; left to add_static it would be served raw
+        # (no token, no asset fingerprints).
+        app.router.add_get("/index.html", html_page("index.html"))
         app.router.add_get("/bot.html", html_page("bot.html"))
         app.router.add_static("/", ui_dir)
 
