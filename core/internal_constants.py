@@ -407,3 +407,37 @@ CONSOLIDATION_BATCH_TIMEOUT_HOURS = 12
 CONSOLIDATION_EVIDENCE_MESSAGES = 80   # message sample per user for profile rewrites
 CONSOLIDATION_EVIDENCE_EPISODES = 3    # recent episode files folded into profile evidence
 CONSOLIDATION_MAX_TOKENS = 12000  # output cap; headroom so dense induction chunks don't truncate
+
+
+# =============================================================================
+# WORKSHOP (0.14, spec 5.10 - internal, tunable)
+# =============================================================================
+WORKSHOP_IMAGE = "python:3.12-slim-bookworm"
+WORKSHOP_GUEST_CPUS = 2
+WORKSHOP_GUEST_MEMORY_MIB = 2048
+WORKSHOP_VOLUME_MIB = 10240            # /workspace, a fixed-size disk volume
+WORKSHOP_ROOT_DISK_MIB = 10240         # the root filesystem cap
+WORKSHOP_FREE_SPACE_FLOOR_BYTES = 5 * 1024**3   # refuse new work below this on the host drive
+WORKSHOP_IDLE_STOP_SECONDS = 30 * 60   # the runtime's idle_timeout; running jobs count as activity
+WORKSHOP_RUNNING_SANDBOXES = 4         # per bot, least recently used stopped first
+WORKSHOP_COMMIT_PER_SANDBOX_BYTES = int(2.5 * 1024**3)  # V7: ~guest memory + overhead
+WORKSHOP_BACKGROUND_PER_SCOPE = 3      # background jobs + workers, combined
+WORKSHOP_FOREGROUND_CEILING_SECONDS = 180   # then the command becomes a job
+WORKSHOP_TURN_WALL_CLOCK_SECONDS = 20 * 60
+WORKSHOP_SHELL_JOB_MAX_SECONDS = 6 * 3600
+WORKSHOP_TOOL_OUTPUT_CHARS = 30_000    # head + tail beyond this; the full log stays in the workspace
+WORKSHOP_APPROVAL_EXPIRY_HOURS = 24
+WORKSHOP_PENDING_APPROVALS_PER_SCOPE = 5
+
+# Egress (spec 5.6): exact host names, CONNECT to port 443 only
+WORKSHOP_DOWNLOAD_PRESET = (
+    "pypi.org", "files.pythonhosted.org", "codeload.github.com",
+    "objects.githubusercontent.com", "deb.debian.org", "security.debian.org",
+)
+# Template provisioning only (one-shot credential, never a scope's)
+WORKSHOP_PROVISIONING_ALLOWLIST = (
+    "deb.debian.org", "nodejs.org", "pypi.org", "files.pythonhosted.org",
+)
+WORKSHOP_PROXY_HEAD_LIMIT = 8192        # request head bytes
+WORKSHOP_PROXY_HANDSHAKE_SECONDS = 15   # request head, ClientHello, upstream connect
+WORKSHOP_PROXY_IDLE_SECONDS = 600       # a tunnel with no traffic either way closes
