@@ -99,6 +99,10 @@ Upgrading).
   when configuration validation failed.
 - **The fleet board showed a bot as running right after Start,** with a
   made-up PID, before the daemon said so. It now asks the daemon.
+- **The monitor said "Nothing here needed a reply" on every reply sent
+  through `send_message`** (since 0.12), because those turns recorded no
+  response. They record what was sent now, and a finished workshop job
+  shows as one.
 
 ### Release review
 Two independent reviews (security, correctness) ran over the release
