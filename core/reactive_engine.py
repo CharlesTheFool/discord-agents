@@ -38,9 +38,8 @@ if TYPE_CHECKING:
 from .memory_tool_executor import MemoryToolExecutor
 from .context_builder import ContextBuilder
 from .mcp_manager import MCPManager
-from .skills_manager import SkillsManager
+from .skills import SkillCatalog
 from .unified_attachment_manager import UnifiedAttachmentManager
-from .files_api_client import FilesAPIClient
 from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
@@ -49,7 +48,10 @@ from .internal_constants import (
 )
 from .model.driver import ModelRequest, StaleFileError, Usage, total_input_tokens
 from .model.registry import ToolContext, assemble_tools
-from tools.skills_tool import SkillRequestExecutor
+from tools.bash_tool import run_bash
+from tools.editor_tool import EDITOR_NAME, run_editor
+from tools.network_access_tool import run_request_network_access
+from tools.skills_tool import run_request_skill
 
 logger = logging.getLogger(__name__)
 
@@ -98,23 +100,17 @@ class ToolLoopResult:
     total_usage: Usage = field(default_factory=Usage)  # every call this turn, for cost
     ended_on_send: bool = False  # the turn's last tool call was a send that posted
     dropped_text_chars: int = 0  # trailing text the send guard held back
-    container_file_ids: List[str] = field(default_factory=list)
+    attached_files: int = 0  # files send_message actually attached this turn
     tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
     # Native messaging (v0.12.0): messages the model sent via send_message
     sent_message_ids: List[str] = field(default_factory=list)
     last_sent_message: Any = None  # discord.Message, for engagement tracking
-    consumed_file_ids: set = field(default_factory=set)  # tool-attached, don't re-send
 
     @property
     def did_send(self) -> bool:
         """True when the model already delivered messages via send_message."""
         return bool(self.sent_message_ids)
 
-    @property
-    def pending_file_ids(self) -> List[str]:
-        """Container outputs not yet delivered via a tool send."""
-        return [fid for fid in self.container_file_ids
-                if fid not in self.consumed_file_ids]
 
 
 class ReactiveEngine:
@@ -212,33 +208,13 @@ class ReactiveEngine:
             self.mcp_manager = MCPManager(config_path=Path(mcp_config["config_file"]))
             logger.info("MCP manager initialized")
 
-        # Skills Manager (always enabled - skills require code_execution tool)
-        skills_config = config.get_skills_config()
-        self.skills_manager = SkillsManager(
-            skills_dir=Path(skills_config["skills_dir"]),
-            cache_file=Path(skills_config["cache_file"]),
-            anthropic_client=driver.client,
-        )
-        logger.info(f"Skills manager initialized with directory: {skills_config['skills_dir']}")
-
-        # Pass skills_manager to ContextBuilder for skills catalog in system prompt
-        self.context_builder.skills_manager = self.skills_manager
-
-        # Skill Request Executor (v0.5.0 Progressive Disclosure)
-        self.skill_request_executor = SkillRequestExecutor(
-            skills_manager=self.skills_manager,
-            max_skills=self.skills_manager.MAX_SKILLS_PER_REQUEST
-        )
-        logger.info("Skill request executor initialized")
+        # Skills (0.14): local folders, listed where the workshop runs
+        self.skills = SkillCatalog(Path(config.get_skills_config()["skills_dir"]),
+                                   config.skills.default_skills)
 
         # Unified Attachment Manager (replaces multimedia_processor)
         self.attachment_manager = None  # Initialized in async_initialize
         self.repository_manager = None  # v0.6.1, initialized in async_initialize
-
-        # Files API access for container output delivery. Independent of the
-        # attachments feature: code execution is always available, and the
-        # system prompt promises $OUTPUT_DIR files ride on the reply.
-        self.files_api_client = FilesAPIClient(driver.client)
 
         # Conversation State Manager (v0.5.0 - dual-cap context management)
         self.conversation_state_manager = None  # Initialized in async_initialize
@@ -312,15 +288,6 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Failed to initialize MCP manager: {e}", exc_info=True)
                 self.mcp_manager = None  # Disable on failure
-
-        # Initialize Skills Manager (scan and upload skills)
-        if self.skills_manager:
-            try:
-                await self.skills_manager.initialize()
-                logger.info("Skills manager initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Skills manager: {e}", exc_info=True)
-                self.skills_manager = None  # Disable on failure
 
         # Initialize Unified Attachment Manager (replaces multimedia_processor)
         if self.config.attachments.enabled:
@@ -579,31 +546,46 @@ class ReactiveEngine:
             await self.conversation_state_manager.save(conversation_state)
         return touched > 0
 
-    async def _container_files_for_discord(self, file_ids: list) -> list:
-        """
-        Download container-created files and wrap them as discord.File objects
-        so deliverables (pptx, charts, ...) ride on the bot's reply.
-        """
-        if not file_ids:
-            return []
+    def _workspace_for(self, message, server_id, channel_id):
+        """This turn's /workspace (WorkspaceFiles), or None with the workshop off here."""
+        from core.workshop.service import WorkshopUnavailable, WorkspaceFiles
+        if self.workshop is None:
+            return None
+        channel = getattr(message, "channel", None)
+        try:
+            scope = self.workshop.scope_for_turn(
+                server_id, channel_id, parent_id=getattr(channel, "parent_id", None),
+                is_thread=isinstance(channel, discord.Thread))
+        except WorkshopUnavailable:
+            return None
+        return WorkspaceFiles(self.workshop, scope)
 
-        files = []
-        seen_digests = set()  # the same output can surface under two file_ids
-        for file_id in dict.fromkeys(file_ids):  # dedupe by id, keep order
-            meta = await self.files_api_client.retrieve(file_id)
-            data = await self.files_api_client.content(file_id)
-            if not data:
-                logger.warning(f"Could not download container output {file_id}, skipping")
+    async def _workspace_attachments(self, paths: list, message, server_id, channel_id):
+        """(discord.File list, notes): workspace files read as bytes, checked
+        against Discord's size limit - the tool result says exactly what made it."""
+        from core.workshop.backend import SandboxUnavailable
+        from core.workshop.service import WorkshopUnavailable
+        workspace = self._workspace_for(message, server_id, channel_id)
+        if workspace is None:
+            return [], ["the workshop isn't running here, so nothing was attached"]
+        guild = getattr(message, "guild", None)
+        limit = getattr(guild, "filesize_limit", None) or 10 * 1024 * 1024
+        files, notes = [], []
+        for path in list(dict.fromkeys(paths))[:10]:
+            try:
+                data = await workspace.read(path)
+            except FileNotFoundError:
+                notes.append(f"'{path}' doesn't exist in your workshop - it was not attached")
                 continue
-            filename = (meta or {}).get("filename") or f"{file_id}.bin"
-            digest = hashlib.sha256(data).digest()
-            if digest in seen_digests:
-                logger.info(f"Skipping duplicate container output {filename} ({file_id}: identical bytes)")
+            except (WorkshopUnavailable, SandboxUnavailable, IsADirectoryError) as e:
+                notes.append(f"'{path}' couldn't be read ({e}) - it was not attached")
                 continue
-            seen_digests.add(digest)
-            files.append(discord.File(io.BytesIO(data), filename=filename))
-            logger.info(f"Container output ready for Discord: {filename} ({len(data)} bytes)")
-        return files[:10]  # Discord cap per message
+            if len(data) > limit:
+                notes.append(f"'{path}' is {format_size(len(data))}, over Discord's "
+                             f"{format_size(limit)} limit here - it was not attached")
+                continue
+            files.append(discord.File(io.BytesIO(data), filename=path.rsplit("/", 1)[-1]))
+        return files, notes
 
     async def _execute_send_message(self, tool_input: dict,
                                     message: discord.Message,
@@ -630,30 +612,14 @@ class ReactiveEngine:
             except (ValueError, discord.NotFound, discord.HTTPException):
                 notes.append(f"reply target {reply_to} not found - sent standalone")
 
-        # Resolve requested attachments against THIS turn's container outputs
+        # Workspace files to attach, read as bytes (never a mount)
         outgoing_files = []
         requested = tool_input.get("attach_outputs") or []
         if requested:
-            available = {}  # filename -> file_id, first occurrence wins
-            for file_id in dict.fromkeys(loop_result.container_file_ids):
-                if file_id in loop_result.consumed_file_ids:
-                    continue
-                meta = await self.files_api_client.retrieve(file_id)
-                filename = (meta or {}).get("filename")
-                if filename and filename not in available:
-                    available[filename] = file_id
-
-            matched_ids = []
-            for name in requested:
-                if name in available:
-                    matched_ids.append(available[name])
-                else:
-                    notes.append(
-                        f"'{name}' was NOT found among this turn's "
-                        f"code-execution outputs - it was not attached"
-                    )
-            outgoing_files = await self._container_files_for_discord(matched_ids)
-            loop_result.consumed_file_ids.update(matched_ids)
+            server_id = str(message.guild.id) if message.guild else None
+            outgoing_files, file_notes = await self._workspace_attachments(
+                requested, message, server_id, str(channel.id))
+            notes += file_notes
 
         # Deliver, fragmented texting-style; files ride the first fragment
         from .discord_client import fragment_message
@@ -680,6 +646,7 @@ class ReactiveEngine:
 
         loop_result.sent_message_ids.append(str(sent.id))
         loop_result.last_sent_message = sent
+        loop_result.attached_files += len(outgoing_files)
 
         attached = [f.filename for f in outgoing_files]
         report = f"Sent (message id {sent.id})."
@@ -883,9 +850,11 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Failed to generate attachment index: {e}", exc_info=True)
 
-        if conversation_state and self.repository_manager and message is not None:
+        # The repository is per server: DMs have none (0.14 - their workshop
+        # is their private drive)
+        if conversation_state and self.repository_manager and message is not None and message.guild:
             try:
-                repo_server_id = str(message.guild.id) if message.guild else "DM"
+                repo_server_id = str(message.guild.id)
                 in_context_ids = set()
                 for msg in conversation_state.messages:
                     in_context_ids.update(msg.get("attachment_ids", []))
@@ -952,21 +921,35 @@ class ReactiveEngine:
             + "\n</context_update>"
         )
 
+    def _workshop_on(self, message) -> bool:
+        """Does this conversation's scope run the workshop (container setting)?"""
+        if getattr(self, "workshop", None) is None or message is None:
+            return False
+        channel = message.channel
+        server_id = str(message.guild.id) if message.guild else None
+        parent_id = getattr(channel, "parent_id", None)
+        scope = self.workshop.scope(server_id, str(channel.id), parent_id=parent_id,
+                                    is_thread=isinstance(channel, discord.Thread))
+        return self.workshop.setting(scope, server_id=server_id, channel_id=str(channel.id),
+                                     parent_id=parent_id) == "container"
+
     def _build_request(self, system_blocks: list, conversation_state, context,
-                          is_dm: bool = False, volatile_tail: str = "") -> ModelRequest:
+                          is_dm: bool = False, volatile_tail: str = "",
+                          message=None) -> ModelRequest:
         """
         Assemble the request shared by both response paths: tools from the
-        registry, message history, skills container, thinking and effort.
-        The skills catalog joins the cached system prefix (it changes only
-        when active skills change); per-request context rides volatile_tail.
+        registry, message history, thinking and effort. Where the workshop
+        runs, the skills catalog joins the cached system prefix (it changes
+        only when the skills folder does); per-request context rides
+        volatile_tail.
 
         is_dm (v0.9): DM requests don't get ask_prime - a DM already IS the
-        Prime. Tool sets stay stable per channel, so the cache holds.
+        Prime - nor the repository, which is per server. Tool sets stay
+        stable per channel, so the cache holds.
         """
-        if self.skills_manager and conversation_state:
-            skills_prompt = self.context_builder.build_skills_prompt(
-                conversation_state.get_active_skills()
-            )
+        workshop = self._workshop_on(message)
+        if workshop:
+            skills_prompt = self.skills.prompt()
             if skills_prompt:
                 system_blocks[0]["text"] += "\n\n" + skills_prompt
 
@@ -981,15 +964,13 @@ class ReactiveEngine:
         tools, betas = assemble_tools(ToolContext(
             is_dm=is_dm,
             discord_tools=self.discord_tool_executor is not None,
-            repository=self.repository_manager is not None,
+            repository=self.repository_manager is not None and not is_dm,
             ask_prime=self.ask_prime_executor is not None,
             web_search=self.web_search_enabled,
             web_citations=self.config.get_web_search_config()["citations_enabled"],
             mcp_tools=mcp_tools,
-            skills=self.skills_manager is not None,
-            # Persisted state may carry file_id references even when fresh
-            # uploads are disabled, so the files beta rides whenever the
-            # manager exists
+            workshop=workshop,
+            # Documents resolve to Files API ids whenever the manager exists
             files=self.attachment_manager is not None,
         ), spec)
 
@@ -999,21 +980,6 @@ class ReactiveEngine:
         else:
             messages = context["messages"].copy()
             logger.warning("Conversation state not available, falling back to context builder")
-
-        # Skills container with progressive disclosure (v0.5.0)
-        container = None
-        if self.skills_manager:
-            active_skill_names = conversation_state.get_active_skills() if conversation_state else []
-            if not active_skill_names:
-                active_skill_names = self.config.skills.default_skills
-                if conversation_state:
-                    conversation_state.set_active_skills(
-                        active_skill_names, self.skills_manager.MAX_SKILLS_PER_REQUEST
-                    )
-            skills_list = self.skills_manager.select_skills(active_skill_names)
-            if skills_list:
-                container = {"skills": skills_list}
-                logger.debug(f"Container skills: {active_skill_names}")
 
         return ModelRequest(
             model=model,
@@ -1027,7 +993,6 @@ class ReactiveEngine:
             volatile_tail=volatile_tail,
             tools=tools,
             betas=betas,
-            container=container,
             thinking=self.config.api.thinking.enabled,
             effort=self.config.api.effort,
             stream=True,
@@ -1044,10 +1009,6 @@ class ReactiveEngine:
 
             if hasattr(block, 'text'):
                 logger.debug(f"    Text preview: {block.text[:200]}")
-
-            if block.type == "container_upload":
-                logger.debug(f"    container_upload: file_id={getattr(block, 'file_id', 'unknown')}, "
-                             f"filename={getattr(block, 'filename', 'unknown')}")
 
             if block.type == "web_fetch_tool_result":
                 if hasattr(block, 'content') and hasattr(block.content, 'content'):
@@ -1112,17 +1073,15 @@ class ReactiveEngine:
 
     async def _execute_tool_blocks(self, response, message: discord.Message,
                                    conversation_state, request: ModelRequest,
-                                   container_file_ids: list = None,
                                    tool_calls_log: list = None,
                                    memory_write_grant: Optional[str] = None,
                                    loop_result: Optional[ToolLoopResult] = None):
         """
         Execute the client-side tool_use blocks in a response.
 
-        Returns (tool_results, pending_file_blocks, container_rebuilt):
-        pending_file_blocks are document/container_upload blocks from
-        get_attachment that ride in the same user message AFTER the results;
-        container_rebuilt signals request_skill replaced the skills container.
+        Returns (tool_results, pending_file_blocks): pending_file_blocks are
+        document refs from get_attachment that ride in the same user message
+        AFTER the results.
         tool_calls_log (v0.9): caller-owned accumulator; every dispatched
         block lands there as {tool, action, detail} and (memory excepted -
         it has its richer line) in the conversations log.
@@ -1132,7 +1091,9 @@ class ReactiveEngine:
 
         tool_results = []
         pending_file_blocks = []
-        container_rebuilt = False
+        channel = message.channel
+        parent_id = getattr(channel, "parent_id", None)
+        is_thread = isinstance(channel, discord.Thread)
 
         def note(tool: str, action: str, detail: str = ""):
             detail = detail[:120]
@@ -1184,22 +1145,7 @@ class ReactiveEngine:
                             "replace": block.input.get("replace"),
                         },
                     )
-                if conversation_state:
-                    result = self.skill_request_executor.execute(block.input, conversation_state)
-                    await self.conversation_state_manager.save(conversation_state)
-                    # Rebuild container so the NEXT iteration ships the new
-                    # skill set; skills load at container creation, so the id
-                    # is dropped to force a fresh container (files written in
-                    # the old container are lost; message container_upload
-                    # blocks re-mount automatically)
-                    new_skills = self.skills_manager.select_skills(
-                        conversation_state.get_active_skills()
-                    )
-                    if new_skills:
-                        request.container = {"skills": new_skills}
-                        container_rebuilt = True
-                else:
-                    result = "Error: Conversation state not available"
+                result = run_request_skill(self.skills, block.input)
 
                 tool_results.append({
                     "type": "tool_result",
@@ -1241,7 +1187,7 @@ class ReactiveEngine:
                     result = await self.repository_manager.execute(
                         block.input, current_server_id=server_id,
                         current_channel_id=channel_id,
-                        container_file_ids=container_file_ids,
+                        workspace=self._workspace_for(message, server_id, channel_id),
                     )
                 else:
                     result = "Error: repository feature not enabled"
@@ -1250,6 +1196,33 @@ class ReactiveEngine:
                     "tool_use_id": block.id,
                     "content": result
                 })
+
+            # The workshop (0.14) - MUST precede the MCP "_" fallthrough
+            # (str_replace_based_edit_tool and request_network_access hold
+            # underscores). Each runs the workshop's own gate first.
+            elif block.name == "bash":
+                note("workshop", "bash", (block.input.get("command") or "")[:120])
+                result = (await run_bash(self.workshop, block.input, server_id=server_id,
+                                         channel_id=channel_id, parent_id=parent_id,
+                                         is_thread=is_thread)
+                          if self.workshop else "The workshop isn't available here.")
+                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
+
+            elif block.name == EDITOR_NAME:
+                note("workshop", block.input.get("command", "edit"), block.input.get("path", ""))
+                result = (await run_editor(self.workshop, block.input, server_id=server_id,
+                                           channel_id=channel_id, parent_id=parent_id,
+                                           is_thread=is_thread)
+                          if self.workshop else "The workshop isn't available here.")
+                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
+
+            elif block.name == "request_network_access":
+                note("workshop", "request_network_access", block.input.get("host", ""))
+                result = (await run_request_network_access(
+                    self.approvals, self.workshop, block.input, server_id=server_id,
+                    channel_id=channel_id, parent_id=parent_id, is_thread=is_thread)
+                          if self.workshop else "The workshop isn't available here.")
+                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
 
             # ask_prime (v0.9) - MUST precede the MCP "_" fallthrough
             elif block.name == "ask_prime":
@@ -1311,7 +1284,7 @@ class ReactiveEngine:
                         "is_error": True
                     })
 
-        return tool_results, pending_file_blocks, container_rebuilt
+        return tool_results, pending_file_blocks
 
     async def _run_tool_loop(
         self,
@@ -1336,7 +1309,6 @@ class ReactiveEngine:
         cached conversation prefix. It is never persisted.
         """
         result = ToolLoopResult(model=request.model)
-        container_id = None
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         loop_iteration = 0
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
@@ -1349,8 +1321,6 @@ class ReactiveEngine:
 
             logger.debug(f"Request{log_suffix}: model={request.model}, betas={request.betas}")
             logger.debug(f"  Tools: {[t.name for t in request.tools]}")
-            if request.container is not None:
-                logger.debug(f"  Container/Skills: {request.container}")
 
             try:
                 response = await self.driver.generate(request)
@@ -1371,13 +1341,6 @@ class ReactiveEngine:
 
             result.usage = response.usage
             result.total_usage = result.total_usage + response.usage
-
-            # Multi-iteration turns must reuse the container (per Anthropic docs)
-            if response.container_id:
-                container_id = response.container_id
-
-            # Collect files written by code execution for Discord delivery
-            result.container_file_ids.extend(response.container_file_ids)
 
             self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_detail)
             self._log_response_blocks(response, log_suffix)
@@ -1415,9 +1378,8 @@ class ReactiveEngine:
                     break
                 result.tools_were_used = True
 
-                tool_results, pending_file_blocks, container_rebuilt = await self._execute_tool_blocks(
+                tool_results, pending_file_blocks = await self._execute_tool_blocks(
                     response, message, conversation_state, request,
-                    container_file_ids=result.container_file_ids,
                     tool_calls_log=result.tool_calls,
                     memory_write_grant=memory_write_grant,
                     loop_result=result,
@@ -1478,24 +1440,6 @@ class ReactiveEngine:
                     except Exception as e:
                         logger.error(f"Failed to persist tool results to conversation state{log_suffix}: {e}", exc_info=True)
 
-                # A container_upload fetched mid-loop only mounts into a NEW
-                # container (files mount at creation) - drop the captured id
-                # so the next iteration rebuilds with every file block in
-                # messages (same trade as request_skill: old container files
-                # are lost, message blocks re-mount)
-                if any(
-                    isinstance(b, dict) and b.get("type") == "container_upload"
-                    for b in pending_file_blocks
-                ):
-                    container_rebuilt = True
-
-                if container_rebuilt:
-                    container_id = None  # force a fresh container
-                    if request.container is not None:
-                        request.container.pop("id", None)
-                if container_id and self.skills_manager and request.container is not None:
-                    request.container["id"] = container_id
-
                 continue
 
             elif response.stop_reason == "end_turn":
@@ -1545,7 +1489,7 @@ class ReactiveEngine:
                 # trusts its own claim next turn. Bounce up to twice with
                 # escalating notes; a third strike never ships the claim on
                 # the periodic path (silence beats a lie).
-                if (result.response_text and not result.container_file_ids
+                if (result.response_text and not result.attached_files
                         and not result.did_send
                         and re.search(r"\battach(?:ed|ment|ments|ing)?\b",
                                       result.response_text, re.IGNORECASE)):
@@ -1554,24 +1498,22 @@ class ReactiveEngine:
                         if attachment_nudges == 0:
                             note_text = (
                                 "<system_note>Your reply mentions an attached file, "
-                                "but no files are queued to send with this message - "
-                                "nothing will be attached. Files only exist if created "
-                                "by code execution during THIS turn, and the reliable "
-                                "way to deliver one is the send_message tool with "
-                                "attach_outputs. Either actually produce the file now, "
-                                "or reword your reply so it doesn't claim an "
-                                "attachment.</system_note>"
+                                "but nothing is attached to it - a plain reply carries "
+                                "no files. A file reaches Discord only through the "
+                                "send_message tool, with its /workspace path in "
+                                "attach_outputs. Either send it that way now, or reword "
+                                "your reply so it doesn't claim an attachment.</system_note>"
                             )
                         else:
                             note_text = (
-                                "<system_note>Reality check: you have produced no "
-                                "files this turn, so zero files exist, and your reply "
-                                "still claims an attachment. Earlier messages of yours "
-                                "may also claim attachments that never happened - the "
-                                "<recent_messages> map shows what actually attached. "
-                                "Do not describe a file as attached. Either generate "
-                                "it now and deliver it via send_message attach_outputs, "
-                                "or say plainly that you don't have it.</system_note>"
+                                "<system_note>Reality check: nothing has been attached "
+                                "this turn, and your reply still claims an attachment. "
+                                "Earlier messages of yours may also claim attachments "
+                                "that never happened - the <recent_messages> map shows "
+                                "what actually attached. Do not describe a file as "
+                                "attached. Either deliver it via send_message "
+                                "attach_outputs, or say plainly that you don't have "
+                                "it.</system_note>"
                             )
                         attachment_nudges += 1
                         logger.warning(
@@ -1634,27 +1576,23 @@ class ReactiveEngine:
         self,
         channel,
         response_text: str,
-        container_file_ids: list,
         reference: Optional[discord.Message] = None,
     ) -> Optional[discord.Message]:
         """
-        Send a response to Discord, split to the message-length limit, with
-        container-created deliverables riding on the first chunk.
+        Send a response to Discord, split to the message-length limit. Files
+        never ride here: they go out through send_message (0.14).
 
         Returns the last successfully sent message, or None if the first
         chunk could not be delivered at all.
         """
         from .discord_client import fragment_message
         message_chunks = fragment_message(response_text)
-        outgoing_files = await self._container_files_for_discord(container_file_ids)
 
         sent_message = None
         for i, chunk in enumerate(message_chunks):
             try:
                 if i == 0:
-                    sent_message = await channel.send(
-                        chunk, reference=reference, files=outgoing_files or None
-                    )
+                    sent_message = await channel.send(chunk, reference=reference)
                 else:
                     sent_message = await channel.send(chunk)
                 # Register the DM surface on the first successful outbound send (v0.9)
@@ -1665,9 +1603,7 @@ class ReactiveEngine:
                     # Reply target may have been deleted - retry standalone
                     try:
                         logger.warning(f"Failed to send reply, trying standalone: {e}")
-                        # discord.File objects are single-use; rebuild for the retry
-                        outgoing_files = await self._container_files_for_discord(container_file_ids)
-                        sent_message = await channel.send(chunk, files=outgoing_files or None)
+                        sent_message = await channel.send(chunk)
                     except discord.HTTPException as e2:
                         logger.error(f"Failed to send response to Discord: {e2}")
                         self.conversation_logger.log_error(f"Discord send failed: {str(e2)}")
@@ -1830,7 +1766,7 @@ class ReactiveEngine:
 
                     request = self._build_request(
                         system_blocks, conversation_state, context,
-                        is_dm=message.guild is None, volatile_tail=volatile_tail)
+                        is_dm=message.guild is None, volatile_tail=volatile_tail, message=message)
                     # Usage recorded later must match the session we measured
                     seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
@@ -1854,8 +1790,7 @@ class ReactiveEngine:
                 sent_message = None
                 if result.response_text.strip():
                     sent_message = await self._send_response_chunks(
-                        message.channel, result.response_text, result.pending_file_ids,
-                        reference=message,
+                        message.channel, result.response_text, reference=message,
                     )
                     if sent_message is None and not result.did_send:
                         self.conversation_logger.log_separator()
@@ -1915,11 +1850,10 @@ class ReactiveEngine:
                 content = ""
             if content:
                 await self._send_response_chunks(
-                    channel, f"here's everything I have on you, verbatim:\n```\n{content}\n```",
-                    [])
+                    channel, f"here's everything I have on you, verbatim:\n```\n{content}\n```")
             else:
                 await self._send_response_chunks(
-                    channel, "nothing written down about you yet - we're starting fresh.", [])
+                    channel, "nothing written down about you yet - we're starting fresh.")
             return
 
         intent = memory_intent(kind, text, user.display_name)
@@ -1945,7 +1879,7 @@ class ReactiveEngine:
 
                 request = self._build_request(
                     system_blocks, conversation_state, context, is_dm=True,
-                    volatile_tail=volatile_tail)
+                    volatile_tail=volatile_tail, message=synthetic)
                 seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
                 result = await self._run_tool_loop(
@@ -1955,8 +1889,7 @@ class ReactiveEngine:
                 )
 
                 if result.response_text.strip():
-                    await self._send_response_chunks(channel, result.response_text,
-                                                     result.pending_file_ids)
+                    await self._send_response_chunks(channel, result.response_text)
 
                 if result.thinking_text:
                     self.conversation_logger.log_thinking(result.thinking_text, len(result.thinking_text))
@@ -2495,7 +2428,7 @@ class ReactiveEngine:
 
             request = self._build_request(
                 system_blocks, conversation_state, context,
-                is_dm=message.guild is None, volatile_tail=volatile_tail)
+                is_dm=message.guild is None, volatile_tail=volatile_tail, message=message)
             # Usage recorded later must match the session we measured
             seed_epoch = conversation_state.seed_epoch if conversation_state else 0
 
@@ -2554,7 +2487,7 @@ class ReactiveEngine:
                 sent_message = None
                 if result.response_text.strip():
                     sent_message = await self._send_response_chunks(
-                        message.channel, result.response_text, result.pending_file_ids,
+                        message.channel, result.response_text,
                     )
                     if sent_message is None and not result.did_send:
                         return

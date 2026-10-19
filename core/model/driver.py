@@ -46,7 +46,6 @@ class ModelRequest:
     # Anthropic transport. None means "don't send the parameter at all",
     # which differs from an empty list on the wire.
     betas: Optional[list] = None
-    container: Optional[dict] = None   # skills container (removed in 0.14.0)
     stream: bool = False
     beta: bool = False
 
@@ -77,9 +76,6 @@ class ModelResponse:
     model: str
     stop_detail: str = ""              # the provider's own stop reason, for logs
     persistable: list = field(default_factory=list)   # content as dicts safe to store
-    # Provider extras: the code-execution container (removed in 0.14.0)
-    container_id: Optional[str] = None
-    container_file_ids: list = field(default_factory=list)
     raw: Any = None                    # the provider's own object, for logging only
 
 

@@ -422,10 +422,8 @@ class BotData:
                                 if r["server_id"] else None),
                 "skill": "request_skill",
                 "name": p.get("skill_name", "?"),
-                "container": "fresh",  # request_skill always rebuilds (v0.5 rule)
-                "trigger": p.get("replace") and f"replacing {p['replace']}" or "",
-                "outcome": "loaded",
-                "tokens": p.get("tokens", {}),
+                "trigger": "",
+                "outcome": "read its instructions",
             })
         return out
 

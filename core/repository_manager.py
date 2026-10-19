@@ -218,13 +218,12 @@ class RepositoryManager:
     # ========== TOOL ACTIONS ==========
 
     async def execute(self, tool_input: dict, current_server_id: str,
-                      current_channel_id: str = None,
-                      container_file_ids: Optional[list] = None) -> str:
+                      current_channel_id: str = None, workspace=None) -> str:
         """
         Execute a repository tool action. Always returns a string for the
         tool_result; never raises. Scans first so views match the disk.
-        container_file_ids: Files API ids of this turn's code-exec outputs,
-        used to resolve save_output when the model passes a container path.
+        workspace: this turn's WorkspaceFiles (the bench), or None when the
+        workshop is off here - for save_output and copy_to_workshop.
         """
         action = tool_input.get("action", "")
         try:
@@ -244,7 +243,9 @@ class RepositoryManager:
             elif action == "save_attachment":
                 return await self._save_attachment(current_server_id, tool_input, current_channel_id)
             elif action == "save_output":
-                return await self._save_output(current_server_id, tool_input, container_file_ids)
+                return await self._save_output(current_server_id, tool_input, workspace)
+            elif action == "copy_to_workshop":
+                return await self._copy_to_workshop(current_server_id, tool_input, workspace)
             elif action == "delete":
                 return await self._delete(current_server_id, tool_input)
             elif action == "rename":
@@ -307,7 +308,9 @@ class RepositoryManager:
         if not self.root.exists():
             return "No repositories exist yet."
 
-        server_dirs = sorted(p.name for p in self.root.iterdir() if p.is_dir())
+        # Server folders only: a leftover DM/ folder (DMs never had a
+        # working repository) must not show up from a server
+        server_dirs = sorted(p.name for p in self.root.iterdir() if p.is_dir() and p.name.isdigit())
         if not server_dirs:
             return "No repositories exist yet."
 
@@ -396,32 +399,18 @@ class RepositoryManager:
         return (f"Copied {row['filename']} into your repository as {rel} "
                 f"({format_size(len(data))}). Attachment ID: {new_row['attachment_id']}")
 
-    async def _save_output(self, server_id: str, tool_input: dict,
-                           container_file_ids: Optional[list] = None) -> str:
-        file_id = tool_input.get("file_id", "")
-        candidates = list(dict.fromkeys(container_file_ids or []))
-
-        # The model often passes the container path ('/tmp/chart.png') instead
-        # of the Files API id - resolve unambiguously from this turn's outputs
-        if not file_id.startswith("file_"):
-            if len(candidates) == 1:
-                file_id = candidates[0]
-            else:
-                hint = (f" This turn's output file ids: {', '.join(candidates)}."
-                        if candidates else
-                        " No code-execution outputs were produced this turn.")
-                return (f"Error: save_output needs the Files API id of a code-execution "
-                        f"output (looks like 'file_...'), got {file_id!r}.{hint}")
-
-        meta = await self.files_api.retrieve(file_id)
-        data = await self.files_api.content(file_id)
-        if not data:
-            hint = f" This turn's output file ids: {', '.join(candidates)}." if candidates else ""
-            return (f"Error: Could not download {file_id}. Only files created by "
-                    f"code execution or skills are downloadable from the Files API.{hint}")
-
-        default_name = (meta or {}).get("filename") or f"{file_id}.bin"
-        rel_path = tool_input.get("path") or Path(default_name).name
+    async def _save_output(self, server_id: str, tool_input: dict, workspace) -> str:
+        """A file from the workshop (the bench) onto the shelf, as bytes."""
+        source = tool_input.get("source", "")
+        if workspace is None:
+            return "Error: the workshop isn't available here, so there's no file to save from it."
+        if not source:
+            return "Error: save_output needs 'source', a path under /workspace."
+        try:
+            data = await workspace.read(source)
+        except FileNotFoundError:
+            return f"Error: {source} doesn't exist in your workshop."
+        rel_path = tool_input.get("path") or Path(source).name
         full = self._resolve(server_id, rel_path)
         full.parent.mkdir(parents=True, exist_ok=True)
         async with aiofiles.open(full, "wb") as f:
@@ -430,8 +419,24 @@ class RepositoryManager:
         await self.scan(server_id)
         new_row = await self._row_for_path(server_id, full)
         rel = self._relpath(server_id, str(full))
-        return (f"Saved container output to your repository as {rel} "
+        return (f"Saved {source} to your repository as {rel} "
                 f"({format_size(len(data))}). Attachment ID: {new_row['attachment_id']}")
+
+    async def _copy_to_workshop(self, server_id: str, tool_input: dict, workspace) -> str:
+        """A repository file onto the bench, as bytes (no mounts, spec 5.5)."""
+        if workspace is None:
+            return "Error: the workshop isn't available here."
+        rel_path = tool_input.get("path", "")
+        if not rel_path:
+            return "Error: copy_to_workshop requires 'path' (the file inside the repository)."
+        full = self._resolve(server_id, rel_path)
+        if not full.is_file():
+            return f"Error: {rel_path} isn't a file in the repository."
+        async with aiofiles.open(full, "rb") as f:
+            data = await f.read()
+        dest = tool_input.get("to") or f"/workspace/{full.name}"
+        written = await workspace.write(dest, data)
+        return f"Copied {rel_path} into your workshop at {written} ({format_size(len(data))})."
 
     async def _delete(self, server_id: str, tool_input: dict) -> str:
         rel_path = tool_input.get("path", "")

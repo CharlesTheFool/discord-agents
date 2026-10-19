@@ -20,7 +20,6 @@ from core.internal_constants import (
     PROACTIVE_INTENSITY_PRESETS,
     ENGAGEMENT_TRACKING_DELAY_SECONDS,
     IGNORE_THRESHOLD,
-    SKILLS_CACHE_FILE,
     MCP_CONFIG_FILE,
     WEB_SEARCH_CITATIONS_ENABLED,
     PROACTIVE_LEARNING_WINDOW_DAYS,
@@ -669,7 +668,6 @@ class BotConfig:
         return {
             "enabled": True,  # Always enabled (Bug #14 fix)
             "skills_dir": "skills",  # Standardized
-            "cache_file": SKILLS_CACHE_FILE,
         }
 
     def get_mcp_config(self):

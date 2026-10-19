@@ -89,26 +89,6 @@ def serialize_assistant_blocks(content) -> list:
     return serialized
 
 
-def collect_container_output_file_ids(response) -> list:
-    """
-    File IDs of files written by code execution in this response.
-    Output blocks ride inside code_execution / bash_code_execution tool
-    results; error results have no output list (getattr returns None).
-    """
-    file_ids = []
-    for block in response.content:
-        if getattr(block, "type", None) in (
-            "code_execution_tool_result",
-            "bash_code_execution_tool_result",
-        ):
-            result_content = getattr(block, "content", None)
-            for output in (getattr(result_content, "content", None) or []):
-                file_id = getattr(output, "file_id", None)
-                if file_id:
-                    file_ids.append(file_id)
-    return file_ids
-
-
 def with_message_cache_breakpoint(messages: list) -> list:
     """
     Copy of messages with cache_control on the last cacheable block, so each
@@ -190,11 +170,11 @@ def render(request: ModelRequest) -> Tuple[str, dict]:
     kwargs["messages"] = messages
 
     if request.tools:
-        kwargs["tools"] = [tool.anthropic for tool in request.tools]
+        typed = spec_for(request.model).typed_tools
+        kwargs["tools"] = [tool.anthropic if typed or tool.schema is None else tool.plain()
+                           for tool in request.tools]
     if request.betas is not None:
         kwargs["betas"] = request.betas
-    if request.container is not None:
-        kwargs["container"] = request.container
     if request.thinking:
         kwargs["thinking"] = {"type": "adaptive"}
     output_config = _render_output_config(request)
@@ -208,7 +188,6 @@ def render(request: ModelRequest) -> Tuple[str, dict]:
 def to_response(message) -> ModelResponse:
     """An SDK Message as a ModelResponse; content stays the SDK's own blocks."""
     usage = message.usage
-    container = getattr(message, "container", None)   # beta messages only
     return ModelResponse(
         content=message.content,
         stop_reason=_STOP_REASONS.get(message.stop_reason, "other"),
@@ -221,8 +200,6 @@ def to_response(message) -> ModelResponse:
         ),
         model=message.model,
         persistable=serialize_assistant_blocks(message.content),
-        container_id=container.id if container else None,
-        container_file_ids=collect_container_output_file_ids(message),
         raw=message,
     )
 

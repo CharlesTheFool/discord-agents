@@ -15,13 +15,15 @@ from typing import List, Optional, Tuple
 
 from core.model.catalog import ModelSpec
 from tools.ask_prime import ASK_PRIME_TOOL
+from tools.bash_tool import BASH_TOOL
 from tools.discord_tools import get_discord_tools
+from tools.editor_tool import EDITOR_DECLARATION, EDITOR_DESCRIPTION, EDITOR_NAME, EDITOR_SCHEMA
+from tools.network_access_tool import NETWORK_ACCESS_TOOL
 from tools.repository_tool import get_repository_tool
 from tools.send_message import SEND_MESSAGE_TOOL
-from tools.skills_tool import get_skill_request_tool
+from tools.skills_tool import SKILL_REQUEST_TOOL
 from tools.web_search import get_web_search_tools
 
-SKILLS_BETA = "skills-2025-10-02"
 FILES_BETA = "files-api-2025-04-14"
 
 
@@ -31,11 +33,17 @@ class ToolDef:
     mode: str                         # "client": we run it; "server": the provider does
     anthropic: dict                   # Anthropic declaration, sent as is
     requires: Tuple[str, ...] = ()    # ModelSpec flags a server tool needs
+    schema: Optional[dict] = None     # our own input schema, for a typed declaration
+    description: str = ""             # ...and the words that go with it
 
     @property
     def json_schema(self) -> Optional[dict]:
         """Input schema for wire APIs without Anthropic's typed tools."""
-        return self.anthropic.get("input_schema")
+        return self.schema or self.anthropic.get("input_schema")
+
+    def plain(self) -> dict:
+        """A typed tool as a plain client tool, for models without typed tools."""
+        return {"name": self.name, "description": self.description, "input_schema": self.schema}
 
 
 def client_tool(declaration: dict) -> ToolDef:
@@ -43,9 +51,13 @@ def client_tool(declaration: dict) -> ToolDef:
 
 
 MEMORY = ToolDef("memory", "client", {"type": "memory_20250818", "name": "memory"})
-# Server-side code execution rides the skills container (removed in 0.14.0)
-CODE_EXECUTION = ToolDef("code_execution", "server",
-                         {"type": "code_execution_20260120", "name": "code_execution"})
+# The workshop (0.14): ours to run, on every driver; the editor rides
+# Anthropic's typed text editor where the model has it
+BASH = client_tool(BASH_TOOL)
+EDITOR = ToolDef(EDITOR_NAME, "client", EDITOR_DECLARATION, schema=EDITOR_SCHEMA,
+                 description=EDITOR_DESCRIPTION)
+NETWORK_ACCESS = client_tool(NETWORK_ACCESS_TOOL)
+REQUEST_SKILL = client_tool(SKILL_REQUEST_TOOL)
 
 
 @dataclass
@@ -58,8 +70,8 @@ class ToolContext:
     web_search: bool = False
     web_citations: bool = True
     mcp_tools: list = field(default_factory=list)   # declarations from MCPManager
-    skills: bool = False
-    files: bool = False               # persisted file ids may ride the request
+    workshop: bool = False            # this conversation's scope runs a sandbox
+    files: bool = False               # documents may ride as Files API ids
 
 
 def assemble_tools(ctx: ToolContext, spec: ModelSpec) -> Tuple[List[ToolDef], list]:
@@ -78,10 +90,10 @@ def assemble_tools(ctx: ToolContext, spec: ModelSpec) -> Tuple[List[ToolDef], li
                   for t in get_web_search_tools(citations_enabled=ctx.web_citations)]
     tools += [client_tool(t) for t in ctx.mcp_tools]
 
+    if ctx.workshop:
+        tools += [BASH, EDITOR, NETWORK_ACCESS, REQUEST_SKILL]
+
     betas = []
-    if ctx.skills:
-        tools += [CODE_EXECUTION, client_tool(get_skill_request_tool())]
-        betas.append(SKILLS_BETA)
     if ctx.files:
         betas.append(FILES_BETA)
 

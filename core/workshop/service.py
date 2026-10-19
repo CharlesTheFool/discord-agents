@@ -11,6 +11,7 @@ import hmac
 import logging
 import os
 import pathlib
+import posixpath
 import secrets
 import shutil
 import socket
@@ -112,6 +113,33 @@ def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+class WorkspaceFiles:
+    """One scope's /workspace, for tools that move bytes between it and the
+    host (send_message attachments, the repository). Paths are judged after
+    normalization; the sandbox starts only when bytes actually move."""
+
+    def __init__(self, workshop: "Workshop", scope: Scope):
+        self.workshop = workshop
+        self.scope = scope
+
+    @staticmethod
+    def jail(path: str) -> str:
+        norm = posixpath.normpath(path or "")
+        if not norm.startswith("/workspace/"):
+            raise WorkshopUnavailable(f"{path!r} isn't a file under /workspace")
+        return norm
+
+    async def read(self, path: str) -> bytes:
+        name = await self.workshop.sandbox(self.scope)
+        return await self.workshop.backend.read_file(name, self.jail(path))
+
+    async def write(self, path: str, data: bytes) -> str:
+        path = self.jail(path)
+        name = await self.workshop.sandbox(self.scope)
+        await self.workshop.backend.write_file(name, path, data)
+        return path
 
 
 class Workshop:

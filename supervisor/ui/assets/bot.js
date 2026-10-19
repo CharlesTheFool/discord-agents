@@ -457,7 +457,7 @@ function skillStream(s) {
           <span class="ts">${clockTime(new Date(s.ts))}</span></div>
         <div class="atrigger">${esc(s.trigger)}</div>
         <div class="atext">${esc(s.outcome)}</div>
-        <div class="ameta">${s.container === "fresh" ? "fresh container" : "reused container"} · ${s.tokens.out} tokens out</div>
+        <div class="ameta">request_skill</div>
       </div>
     </div>`;
 }
@@ -580,7 +580,7 @@ function skillsHTML(rows) {
       <div class="what">
         <div class="evt-head">
           <span class="badge skill">${esc(s.name)}</span>
-          <span class="evt-meta">${s.container === "fresh" ? "fresh container" : "reused container"} · ${s.tokens.out} out</span>
+          <span class="evt-meta">request_skill</span>
         </div>
         <div class="evt-trigger">${esc(s.trigger)}</div>
         <div class="evt-body">${esc(s.outcome)}</div>

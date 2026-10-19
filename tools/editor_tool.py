@@ -15,6 +15,12 @@ from core.workshop.backend import SandboxUnavailable
 from core.workshop.service import WorkshopUnavailable
 
 EDITOR_NAME = "str_replace_based_edit_tool"
+EDITOR_DESCRIPTION = (
+    "View and edit files in your workshop: view a file (or list a folder), "
+    "create a new file, replace one exact snippet with str_replace, or insert "
+    "lines after a given line. Paths are absolute, under /workspace; skills "
+    "under /skills can be read."
+)
 EDITOR_DECLARATION = {"type": "text_editor_20250728", "name": EDITOR_NAME,
                       "max_characters": WORKSHOP_TOOL_OUTPUT_CHARS}
 EDITOR_SCHEMA = {

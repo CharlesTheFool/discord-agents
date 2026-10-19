@@ -26,11 +26,9 @@ if TYPE_CHECKING:
     from .message_memory import MessageMemory
     from .memory_manager import MemoryManager
     from .unified_attachment_manager import UnifiedAttachmentManager
-    from .skills_manager import SkillsManager
 
 from tools.image_processor import ImageProcessor
 from .attachment_classifier import AttachmentClassifier
-from tools.skills_tool import build_skills_catalog_prompt
 from .internal_constants import (
     MANDATORY_RESPONSE_JUDGMENT_PROMPT,
     MANDATORY_DISCRETION_PROMPT,
@@ -74,35 +72,15 @@ class ContextBuilder:
         message_memory: "MessageMemory",
         memory_manager: "MemoryManager",
         attachment_manager: Optional["UnifiedAttachmentManager"] = None,
-        skills_manager: Optional["SkillsManager"] = None
     ):
         self.config = config
         self.message_memory = message_memory
         self.memory_manager = memory_manager
         self.attachment_manager = attachment_manager
-        self.skills_manager = skills_manager
         self._mention_names: Dict[int, str] = {}  # id -> display name memo
         self.image_processor = ImageProcessor()
 
         logger.info(f"ContextBuilder initialized for bot '{config.bot_id}'")
-
-    def build_skills_prompt(self, active_skills: List[str]) -> str:
-        """
-        Build the skills catalog section for system prompt.
-
-        Enables progressive disclosure - Claude sees all available skills
-        and knows which ones are currently loaded.
-
-        Args:
-            active_skills: List of currently active skill names
-
-        Returns:
-            Formatted XML section for system prompt, or empty string if no skills_manager
-        """
-        if not self.skills_manager:
-            return ""
-
-        return build_skills_catalog_prompt(self.skills_manager, active_skills)
 
     @staticmethod
     def _trim_episode_index(state_content: str, keep_last: int = None) -> str:
