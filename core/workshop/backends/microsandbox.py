@@ -37,6 +37,7 @@ from core.workshop.backend import (DirEntry, JobOutcome, SandboxInfo, SandboxSpe
 logger = logging.getLogger(__name__)
 
 DEFAULT_HOME = pathlib.Path.home() / ".discord-agents" / "msb"
+SDK_CALL_SECONDS = 120.0   # file ops on large files included
 # The runtime's Unix socket path is MSB_HOME + ~50 bytes and must fit sun_path
 _SOCKET_LIMIT = {"darwin": 104, "linux": 108}
 _KINDS = {"file": "file", "directory": "dir", "symlink": "link"}
@@ -199,16 +200,21 @@ class MicrosandboxBackend:
         self._live[name] = sb
         return sb
 
-    async def _call(self, name: str, op):
+    async def _call(self, name: str, op, timeout_s: float = SDK_CALL_SECONDS):
         """Run one SDK call; a stopped or vanished sandbox becomes
-        SandboxUnavailable and is forgotten so the next ensure() reconnects."""
+        SandboxUnavailable and is forgotten so the next ensure() reconnects.
+        A call that doesn't answer in time counts as unavailable too: a hung
+        runtime call must never hang a turn."""
         from microsandbox.errors import SandboxNotRunningError
         sb = await self._sandbox(name)
         try:
-            return await op(sb)
+            return await asyncio.wait_for(op(sb), timeout_s)
         except SandboxNotRunningError as e:
             self._live.pop(name, None)
             raise SandboxUnavailable(str(e)) from None
+        except asyncio.TimeoutError:
+            self._live.pop(name, None)
+            raise SandboxUnavailable(f"{name} didn't answer within {timeout_s:.0f}s") from None
 
     async def start_job(self, name: str, argv: List[str], *, env: Dict[str, str],
                         cwd: str = "/workspace", timeout_s: Optional[int] = None) -> str:
@@ -232,9 +238,16 @@ class MicrosandboxBackend:
         await job.kill()
 
     async def read_file(self, name: str, path: str) -> bytes:
+        """Stat first: the SDK's fs.read never returns on a directory."""
         from microsandbox.errors import FilesystemError, PathNotFoundError
+
+        async def op(sb):
+            meta = await sb.fs.stat(path)
+            if str(meta.kind) == "directory":
+                raise IsADirectoryError(path)
+            return await sb.fs.read(path)
         try:
-            return await self._call(name, lambda sb: sb.fs.read(path))
+            return await self._call(name, op)
         except (PathNotFoundError, FilesystemError) as e:
             if isinstance(e, PathNotFoundError) or "no such file" in str(e).lower():
                 raise FileNotFoundError(path) from None

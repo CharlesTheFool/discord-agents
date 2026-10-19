@@ -57,7 +57,8 @@ class ExecutorBackend(Protocol):
 
     async def kill_job(self, name: str, job_id: str) -> None: ...
 
-    async def read_file(self, name: str, path: str) -> bytes: ...
+    async def read_file(self, name: str, path: str) -> bytes:
+        """Raises FileNotFoundError, or IsADirectoryError for a directory."""
 
     async def write_file(self, name: str, path: str, data: bytes) -> None: ...
 

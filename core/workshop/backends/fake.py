@@ -111,6 +111,8 @@ class FakeBackend:
         try:
             return sb.store(path)[path]
         except KeyError:
+            if any(p.startswith(path.rstrip("/") + "/") for p in sb.files):
+                raise IsADirectoryError(path) from None
             raise FileNotFoundError(path) from None
 
     async def write_file(self, name: str, path: str, data: bytes) -> None:
