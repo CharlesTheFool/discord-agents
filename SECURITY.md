@@ -130,7 +130,8 @@ the API reports whether a key is set and never returns its value.
   silence.
 - Deleting a Discord message purges it from the bot's history, search index
   and attachment pipeline. The handlers use raw gateway events, so messages
-  older than the running process are covered.
+  older than the running process are covered. Copies already in a workshop
+  stay (see the workshop's residuals).
 - Web search and fetch are capped per request.
 - The `send_message` tool reports ground truth about what it posted (message
   id, which files attached), so the model cannot claim an attachment that
@@ -171,27 +172,33 @@ boundaries are the VM and the network policy, never the model's judgment.
 except TCP to one port on the host: the bot's egress proxy. The proxy:
 
 - accepts only `CONNECT` to port 443 (no plain HTTP, no SSH, no SMTP);
-- identifies the scope by a random per-scope credential, so one scope can
-  never use another's allowlist;
+- identifies the scope by a random per-scope credential, so a sandbox gets
+  only its own scope's allowlist (unless it obtains another scope's
+  credential; see the residuals);
 - allows exact host names only: a download preset (`pypi.org`,
   `files.pythonhosted.org`, `codeload.github.com`,
   `objects.githubusercontent.com`, `deb.debian.org`,
-  `security.debian.org`) plus hosts an operator approved for that scope;
-- resolves names itself, refuses any address that isn't globally routable
-  (private, loopback, link-local, multicast, and the IPv6 forms that wrap
-  them: IPv4-mapped, NAT64, 6to4, Teredo), and connects to the exact address
-  it checked, so DNS rebinding can't redirect a tunnel;
-- requires the TLS ClientHello's SNI to name the host the `CONNECT` asked
-  for.
+  `security.debian.org`), the operator's `workshop.allowlist`, and hosts an
+  operator approved for that scope;
+- resolves names itself and refuses any address that isn't globally
+  routable (private, loopback, link-local, multicast, reserved, and the IPv6
+  forms that wrap them: IPv4-mapped, IPv4-translated, NAT64, 6to4, Teredo),
+  or that belongs to the host itself or its IPv6 LAN (a global IPv6
+  address on your network is "public", so the host's own /64 prefixes are
+  refused by name); then it connects to the exact address it checked, so DNS
+  rebinding can't redirect a tunnel;
+- requires the TLS ClientHello to name exactly one server, the host the
+  `CONNECT` asked for.
 
 `github.com` and `registry.npmjs.org` are not in the preset: both accept
 uploads, so each needs an approval. `request_network_access` DMs the
 bot's operators: the ids in `workshop.operators`, or else the Discord
 application's owner (for a team-owned app, the team's owner and admins). The DM shows the host and where the request came
 from; the model's stated reason sits behind a Details button, so text a
-model wrote never lands in the DM's preview. The first decision wins, and a
-request expires after 24 hours. An operator can also open a scope to any
-public host, still port 443 only.
+model wrote never lands in the DM's preview. The first decision wins, a
+request expires after 24 hours, and a host an operator declined can't be
+asked for again from that scope for 24 hours. An operator can also open a
+scope to any public host, still port 443 only.
 
 **Residuals**, stated as they are:
 
@@ -216,6 +223,19 @@ public host, still port 443 only.
 - **Disk only grows.** Deleting files inside a sandbox doesn't return host
   disk (`fstrim` is refused under the restricted profile), so a scope's host
   footprint ratchets up to its caps, 20 GiB at most.
+- **A scope's proxy credential is visible to its model.** It rides each
+  command's environment, so the model can read it (and, steered, post it).
+  Another server's sandbox that obtains it could use the first scope's
+  approved hosts. Vaulted scopes are out of reach (their messages never
+  surface elsewhere); between ordinary servers, an approval is only as
+  private as that server's channels. Credentials don't rotate yet.
+- **Your router's public IPv4.** A name resolving to the network's own
+  public IPv4 address passes the check and, through NAT hairpinning, could
+  reach a service you forward on port 443. Open-internet scopes only; IPv6
+  LAN addresses are refused as above.
+- **Deleting a Discord message doesn't reach the workshop.** A file the bot
+  copied into `/workspace` (a fetched attachment, a repository copy) stays
+  there after the message is deleted.
 - **The hypervisor is the boundary.** The VM monitor runs as the operator's
   user. A VM escape would land with that user's privileges, which is one
   more reason to run the app under an account that isn't an administrator.

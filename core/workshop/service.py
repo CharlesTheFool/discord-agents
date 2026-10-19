@@ -30,8 +30,9 @@ from core.internal_constants import (
     WORKSHOP_PROVISIONING_ALLOWLIST,
     WORKSHOP_RUNNING_SANDBOXES,
     WORKSHOP_SHELL_JOB_MAX_SECONDS,
+    WORKSHOP_TOOL_OUTPUT_CHARS,
 )
-from core.workshop.backend import ExecutorBackend, JobOutcome, SandboxSpec, SandboxUnavailable
+from core.workshop.backend import ExecutorBackend, FileTooLarge, JobOutcome, SandboxSpec, SandboxUnavailable
 from core.workshop.jobs import DONE, FAILED, JobRecord, JobStore
 from core.workshop.proxy import EgressGrant, EgressProxy
 from core.workshop.scopes import Scope, setting_for
@@ -48,13 +49,21 @@ set -e
 sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources
 apt-get update -q >/dev/null
 apt-get install -y -q --no-install-recommends git ffmpeg ripgrep build-essential curl xz-utils ca-certificates >/dev/null
-F=$(curl -fsS https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt | grep -o 'node-v[0-9.]*-linux-x64.tar.xz' | head -1)
-curl -fsSL https://nodejs.org/dist/latest-v24.x/$F | tar -xJ -C /usr/local --strip-components=1
+cd /tmp
+curl -fsSO https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt
+F=$(grep -o 'node-v[0-9.]*-linux-x64.tar.xz' SHASUMS256.txt | head -1)
+curl -fsSLO https://nodejs.org/dist/latest-v24.x/$F
+grep " $F\$" SHASUMS256.txt | sha256sum -c - >/dev/null
+tar -xJf $F -C /usr/local --strip-components=1
+rm -f $F SHASUMS256.txt
+cd /
 pip install -q --no-cache-dir --disable-pip-version-check --root-user-action=ignore python-docx python-pptx openpyxl pypdf reportlab matplotlib pandas pillow requests
 apt-get clean && rm -rf /var/lib/apt/lists/*
 mkdir -p /workspace /skills
 """
 _SECRET_NAMES = (".env", "id_rsa", "id_ed25519")
+SKILLS_MARKER = "/skills/.da-fingerprint"   # which skills/ version this sandbox holds
+TEMPLATE_RETRY_SECONDS = 300
 _SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
 
 
@@ -131,9 +140,9 @@ class WorkspaceFiles:
             raise WorkshopUnavailable(f"{path!r} isn't a file under /workspace")
         return norm
 
-    async def read(self, path: str) -> bytes:
+    async def read(self, path: str, *, max_bytes: Optional[int] = None) -> bytes:
         name = await self.workshop.sandbox(self.scope)
-        return await self.workshop.backend.read_file(name, self.jail(path))
+        return await self.workshop.backend.read_file(name, self.jail(path), max_bytes=max_bytes)
 
     async def write(self, path: str, data: bytes) -> str:
         path = self.jail(path)
@@ -160,6 +169,8 @@ class Workshop:
         self.last_used: Dict[str, float] = {}
         self._ensure_locks = defaultdict(asyncio.Lock)
         self._template_task: Optional[asyncio.Task] = None
+        self._template_tried = 0.0                  # monotonic time of the last build attempt
+        self._skills_seen: Dict[str, str] = {}      # sandbox -> skills fingerprint it holds
         self._one_shot: Optional[tuple] = None
         self.on_background: Optional[Callable[[JobRecord], None]] = None   # the job watcher
 
@@ -237,12 +248,34 @@ class Workshop:
     def template_fingerprint(self) -> str:
         return hashlib.sha256(f"{WORKSHOP_IMAGE}\n{PROVISION_SCRIPT}".encode()).hexdigest()
 
+    def template_ready(self) -> bool:
+        current = self.state.template
+        return bool(current and current.get("fingerprint") == self.template_fingerprint()
+                    and self.backend.template == current["ref"])
+
+    def _retry_template(self) -> None:
+        """A failed build (a network blip mid-provisioning) tries again,
+        at most every TEMPLATE_RETRY_SECONDS."""
+        if (self._template_task is None or self._template_task.done()) and \
+                time.monotonic() - self._template_tried > TEMPLATE_RETRY_SECONDS:
+            self._template_task = asyncio.ensure_future(self._ensure_template())
+
     async def _ensure_template(self) -> None:
+        self._template_tried = time.monotonic()
         fingerprint = self.template_fingerprint()
         current = self.state.template
+        # state.json can outlive the snapshot it names (a restored backup, a
+        # deleted runtime home): trust it only if the runtime still has it
         if current and current.get("fingerprint") == fingerprint:
-            self.backend.use_template(current["ref"])
-            return
+            try:
+                present = await self.backend.has_snapshot(current["ref"])
+            except SandboxUnavailable as e:
+                logger.error(f"workshop template check failed: {e}")
+                return
+            if present:
+                self.backend.use_template(current["ref"])
+                return
+            logger.warning(f"workshop template {current['ref']} is gone from the runtime; rebuilding")
         self._one_shot = ("p" + secrets.token_hex(6), secrets.token_urlsafe(32))
         name = f"{self.install_id}-{self.bot_id}-template"
         try:
@@ -251,7 +284,7 @@ class Workshop:
                                              "DEBIAN_FRONTEND": "noninteractive"},
                 proxy_port=self.proxy_port, snapshot=f"tpl-{fingerprint[:12]}")
         except Exception as e:
-            logger.error(f"workshop template build failed, scopes use the plain image for now: {e}")
+            logger.error(f"workshop template build failed; new scopes wait for a retry: {e}")
             return
         finally:
             self._one_shot = None   # revoked: the proxy refuses it from here on
@@ -269,6 +302,13 @@ class Workshop:
         if self._template_task and not self._template_task.done():
             await asyncio.shield(self._template_task)
         spec = self.spec(scope)
+        # A scope made without the template would keep the bare image for
+        # good (sandboxes are reused, never re-provisioned): new ones wait
+        if not self.template_ready() and not await self.backend.has_sandbox(spec.name):
+            self._retry_template()
+            raise WorkshopUnavailable(
+                "the workshop is still being set up (its base image didn't finish building); "
+                "it retries on its own - try again in a few minutes")
         async with self._ensure_locks[spec.name]:
             await self._make_room(spec.name)
             await self.backend.ensure(spec)
@@ -331,10 +371,22 @@ class Workshop:
             return CommandResult(
                 f"Started in the background as {job.id}; a note lands here when it finishes. "
                 f"Its output goes to {log}.", job.id, True)
-        outcome = await self.backend.wait_job(name, sandbox_job, min(ceiling_s, limit + 5))
+        try:
+            outcome = await self.backend.wait_job(name, sandbox_job, min(ceiling_s, limit + 5))
+        except SandboxUnavailable as e:
+            # the job may still be running: the watcher settles it either way,
+            # so the row never sits in `running` with nobody following it
+            await self.jobs.to_background(job.id)
+            self._followed(await self.jobs.get(job.id))
+            return CommandResult(
+                f"Lost track of it while waiting ({e}); it's handed to the background as {job.id}, "
+                f"and a note lands here when it's settled. Output so far: {log}.", job.id, True)
         if outcome is None:
             if await self.jobs.background_count(scope.key) >= WORKSHOP_BACKGROUND_PER_SCOPE:
-                await self.backend.kill_job(name, sandbox_job)
+                try:
+                    await self.backend.kill_job(name, sandbox_job)
+                except SandboxUnavailable as e:
+                    logger.warning(f"couldn't stop {job.id} at the ceiling: {e}")
                 await self.jobs.mark_finished(
                     job.id, FAILED, notified=True,
                     result="stopped at the foreground ceiling: the scope was at its background cap")
@@ -365,11 +417,11 @@ class Workshop:
     async def preview(self, name: str, log: str) -> bytes:
         """The head and tail of a job's log, computed in the guest."""
         path = f"/tmp/{log.rsplit('/', 1)[-1]}.preview"
-        job = await self.backend.start_job(name, preview_argv(log, path), env={})
-        await self.backend.wait_job(name, job, 60)
         try:
-            return await self.backend.read_file(name, path)
-        except FileNotFoundError:
+            job = await self.backend.start_job(name, preview_argv(log, path), env={})
+            await self.backend.wait_job(name, job, 60)
+            return await self.backend.read_file(name, path, max_bytes=4 * WORKSHOP_TOOL_OUTPUT_CHARS)
+        except (FileNotFoundError, FileTooLarge, SandboxUnavailable, OSError):
             return b"0\n[the output couldn't be read back]"
 
     # --- boot reconciliation -------------------------------------------------
@@ -438,12 +490,22 @@ class Workshop:
 
     async def _sync_skills(self, name: str) -> None:
         """Copy skills/ into /skills as bytes (no mount, spec principle 5),
-        when the folder changed since this sandbox last got it."""
-        fingerprint = self.skills_fingerprint()
-        if self.state.skills_synced(name) == fingerprint:
+        when the folder changed since this sandbox last got it. Which
+        version a sandbox holds is written inside it, so a recreated
+        sandbox can't be mistaken for a synced one."""
+        if not self.skills_dir:
             return
-        job = await self.backend.start_job(name, ["rm", "-rf", "/skills"], env={})
-        await self.backend.wait_job(name, job, 60)
-        for rel, path in self._skill_files():
-            await self.backend.write_file(name, f"/skills/{rel}", path.read_bytes())
-        self.state.mark_skills_synced(name, fingerprint)
+        fingerprint = self.skills_fingerprint()
+        if self._skills_seen.get(name) == fingerprint:
+            return
+        try:
+            held = (await self.backend.read_file(name, SKILLS_MARKER, max_bytes=256)).decode().strip()
+        except (FileNotFoundError, FileTooLarge, OSError):
+            held = None
+        if held != fingerprint:
+            job = await self.backend.start_job(name, ["rm", "-rf", "/skills"], env={})
+            await self.backend.wait_job(name, job, 60)
+            for rel, path in self._skill_files():
+                await self.backend.write_file(name, f"/skills/{rel}", path.read_bytes())
+            await self.backend.write_file(name, SKILLS_MARKER, fingerprint.encode())
+        self._skills_seen[name] = fingerprint

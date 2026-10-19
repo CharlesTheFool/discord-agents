@@ -96,10 +96,18 @@ class ApprovalBook:
 
     def create(self, *, scope_key: str, host: str, reason: str, server_id, channel_id) -> dict:
         """A new pending request, or the identical one already waiting
-        (`duplicate` set). Raises ValueError when the scope has too many."""
+        (`duplicate` set). Raises ValueError when the scope has too many, or
+        when an operator declined this host for this scope within the expiry
+        window (a deny isn't an invitation to keep asking)."""
         for r in self.pending(scope_key):
             if r["host"] == host:
                 return {**r, "duplicate": True}
+        recent = timedelta(hours=WORKSHOP_APPROVAL_EXPIRY_HOURS)
+        if any(r["scope_key"] == scope_key and r["host"] == host and r["decision"] == "denied"
+               and _now() - datetime.fromisoformat(r["decided_at"]) < recent
+               for r in self._records.values()):
+            raise ValueError(f"an operator declined {host} for this workshop in the last "
+                             f"{WORKSHOP_APPROVAL_EXPIRY_HOURS} hours")
         if len(self.pending(scope_key)) >= WORKSHOP_PENDING_APPROVALS_PER_SCOPE:
             raise ValueError(f"{WORKSHOP_PENDING_APPROVALS_PER_SCOPE} requests from this workshop "
                              f"are already waiting for the operator")

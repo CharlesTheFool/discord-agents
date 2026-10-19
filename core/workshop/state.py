@@ -16,7 +16,7 @@ class WorkshopState:
         self.data: Dict[str, Any] = {}
         if path.exists():
             self.data = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("credentials", "approved_hosts", "pending_approvals", "skills_synced"):
+        for key in ("credentials", "approved_hosts", "pending_approvals"):
             self.data.setdefault(key, {})
 
     def save(self) -> None:
@@ -71,9 +71,3 @@ class WorkshopState:
         self.data["template"] = value
         self.save()
 
-    def skills_synced(self, sandbox: str) -> Optional[str]:
-        return self.data["skills_synced"].get(sandbox)
-
-    def mark_skills_synced(self, sandbox: str, fingerprint: str) -> None:
-        self.data["skills_synced"][sandbox] = fingerprint
-        self.save()

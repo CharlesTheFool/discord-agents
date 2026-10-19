@@ -12,8 +12,8 @@ import shlex
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
-from core.workshop.backend import (DirEntry, JobOutcome, SandboxInfo, SandboxSpec,
-                                   SandboxUnavailable, TemplateFailed)
+from core.workshop.backend import (BootFailure, DirEntry, FileTooLarge, JobOutcome, SandboxInfo,
+                                   SandboxSpec, SandboxUnavailable, TemplateFailed)
 
 
 @dataclass
@@ -58,6 +58,7 @@ class FakeBackend:
         self.template_error = template_error
         self.template: Optional[str] = None
         self.template_builds: List[dict] = []
+        self.snapshots: set = set()
         self.sandboxes: Dict[str, FakeSandbox] = {}
         self.volumes: Dict[str, Dict[str, bytes]] = {}   # survive remove(keep_volume=True)
         self._ids = itertools.count(1)
@@ -106,14 +107,17 @@ class FakeBackend:
     async def kill_job(self, name: str, job_id: str) -> None:
         self._running(name).jobs[job_id].cancel()
 
-    async def read_file(self, name: str, path: str) -> bytes:
+    async def read_file(self, name: str, path: str, *, max_bytes: Optional[int] = None) -> bytes:
         sb = self._running(name)
         try:
-            return sb.store(path)[path]
+            data = sb.store(path)[path]
         except KeyError:
             if any(p.startswith(path.rstrip("/") + "/") for p in sb.files):
                 raise IsADirectoryError(path) from None
             raise FileNotFoundError(path) from None
+        if max_bytes is not None and len(data) > max_bytes:
+            raise FileTooLarge(path, len(data))
+        return data
 
     async def write_file(self, name: str, path: str, data: bytes) -> None:
         self._running(name).write(path, data)
@@ -146,8 +150,14 @@ class FakeBackend:
         return [SandboxInfo(n, "running" if sb.running else "stopped", dict(sb.spec.labels))
                 for n, sb in self.sandboxes.items()]
 
-    async def test_boot(self) -> Optional[str]:
-        return self.boot_error
+    async def has_sandbox(self, name: str) -> bool:
+        return name in self.sandboxes
+
+    async def has_snapshot(self, ref: str) -> bool:
+        return ref in self.snapshots
+
+    async def test_boot(self) -> Optional[BootFailure]:
+        return BootFailure(self.boot_error) if self.boot_error else None
 
     async def build_template(self, name: str, script: str, *, env: Dict[str, str],
                              proxy_port: int, snapshot: str) -> str:
@@ -155,6 +165,7 @@ class FakeBackend:
                                      "proxy_port": proxy_port, "snapshot": snapshot})
         if self.template_error:
             raise TemplateFailed(self.template_error)
+        self.snapshots.add(f"{name}:{snapshot}")
         return f"{name}:{snapshot}"
 
     def use_template(self, ref: Optional[str]) -> None:

@@ -36,15 +36,17 @@ class JobWatcher:
         self._running_wakes: Set[str] = set()
         self._held: Set[str] = set()
         self._held_task = None
+        self._delivering: Set[str] = set()   # job ids with a note being written
 
     async def start(self) -> None:
         """Settle the jobs table against the runtime, then follow what still runs
-        and deliver what finished while the bot was away."""
+        and deliver what finished while the bot was away. The held-turn loop
+        starts first, so a failure below can't leave quiet-hours holds stuck."""
+        self._held_task = asyncio.ensure_future(self._release_held_loop())
         for job in await self.workshop.reconcile():
             self.follow(job)
         for job in await self.workshop.jobs.unnotified_finished():
             await self.deliver(job.id)
-        self._held_task = asyncio.ensure_future(self._release_held_loop())
 
     async def close(self) -> None:
         for task in list(self._tasks) + ([self._held_task] if self._held_task else []):
@@ -88,14 +90,22 @@ class JobWatcher:
         return "\n".join(text.rstrip().splitlines()[-TAIL_LINES:])
 
     async def deliver(self, job_id: str) -> None:
-        """The completion note, its event, then a wake-up turn."""
-        job = await self.workshop.jobs.get(job_id)
-        if job is None or job.notified or job.state == RUNNING:
+        """The completion note, its event, then a wake-up turn. Once per job:
+        the boot catch-up and a watch that just finished can both get here,
+        and the tail takes a moment, so the claim is taken up front."""
+        if job_id in self._delivering:
             return
-        note = completion_note(job, await self._tail(job))
-        if not await self.notes.write(job.home_channel_id, note):
-            return
-        await self.workshop.jobs.mark_notified(job.id)
+        self._delivering.add(job_id)
+        try:
+            job = await self.workshop.jobs.get(job_id)
+            if job is None or job.notified or job.state == RUNNING:
+                return
+            note = completion_note(job, await self._tail(job))
+            if not await self.notes.write(job.home_channel_id, note):
+                return
+            await self.workshop.jobs.mark_notified(job.id)
+        finally:
+            self._delivering.discard(job_id)
         await self._event(job)
         self.request_turn(job.home_channel_id)
 
@@ -118,12 +128,14 @@ class JobWatcher:
             return
         self._wanted[channel_id] = True
         if channel_id not in self._running_wakes:
+            # claimed here, not in the task: two requests before the task first
+            # runs must coalesce into one loop, not start two
+            self._running_wakes.add(channel_id)
             task = asyncio.ensure_future(self._run_wakes(channel_id))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
 
     async def _run_wakes(self, channel_id: str) -> None:
-        self._running_wakes.add(channel_id)
         try:
             while self._wanted.pop(channel_id, False):
                 try:

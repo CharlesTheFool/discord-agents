@@ -25,6 +25,9 @@ from .paths import SupervisorRoot
 logger = logging.getLogger(__name__)
 
 DEFAULT_HOME = Path.home() / ".discord-agents" / "msb"   # the bot's MSB_HOME
+_PASS_THROUGH = {"PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP",
+                 "TMPDIR", "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "PROGRAMDATA",
+                 "USERNAME", "USER", "LANG", "LC_ALL"}
 STOP_SECONDS = 30      # msb's graceful budget; the client gets 10 s more, then is killed
 
 
@@ -41,8 +44,10 @@ def runtime_env(home: Path = DEFAULT_HOME) -> Optional[Dict[str, str]]:
     libs = sorted((bundled / "lib").glob("libkrunfw*"))
     if not exe.exists() or not libs:
         return None
-    return {**os.environ, "MSB_PATH": str(exe), "MSB_LIBKRUNFW_PATH": str(libs[0]),
-            "MSB_HOME": str(home)}
+    # only what a Windows or POSIX process needs to run: the daemon's own
+    # environment carries the bots' API keys and tokens, which msb has no use for
+    keep = {k: v for k, v in os.environ.items() if k.upper() in _PASS_THROUGH}
+    return {**keep, "MSB_PATH": str(exe), "MSB_LIBKRUNFW_PATH": str(libs[0]), "MSB_HOME": str(home)}
 
 
 def install_label(root: SupervisorRoot, bot_id: str) -> Optional[str]:

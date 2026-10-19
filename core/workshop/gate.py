@@ -36,7 +36,8 @@ def write_status(root: pathlib.Path, bot_id: str, state: str, reason: Optional[s
     outlive a later start that came back off or blocked.
     `kind` (when blocked) is what the app can act on: "missing" (the
     runtime isn't installed), "boot" (it is, and a VM won't start - on
-    Windows, the virtualization popup), "proxy" (the proxy port is taken)."""
+    Windows, the virtualization popup), "network" (the base image couldn't
+    be downloaded), "proxy" (the proxy port is taken)."""
     path = status_path(root, bot_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -71,9 +72,9 @@ async def open_workshop(config, bot_id: str, *, root: pathlib.Path, vaults, db,
         backend = msb.MicrosandboxBackend()
     except (msb.RuntimeMissing, ImportError) as e:
         raise blocked(root, bot_id, msb.remediation(e), "missing") from None
-    error = await backend.test_boot()
-    if error:
-        raise blocked(root, bot_id, error, "boot")
+    failure = await backend.test_boot()
+    if failure:
+        raise blocked(root, bot_id, failure.reason, failure.kind)
 
     jobs = JobStore(db, bot_id)
     await jobs.create_schema()

@@ -47,7 +47,8 @@ def preview_argv(log_path: str, preview_path: str) -> List[str]:
     """Size, head and tail of a log, without pulling a huge log off the VM.
     Written to the root filesystem: with /workspace full the log itself may
     be empty, and that is worth saying."""
-    script = (f'f="$1"; n=$(wc -c < "$f" 2>/dev/null || echo 0); echo "$n"; '
+    script = (f'f="$1"; [ -f "$f" ] || {{ echo 0; echo "[the output log is gone]"; exit 0; }}; '
+              f'n=$(wc -c < "$f" 2>/dev/null || echo 0); echo "$n"; '
               f'avail=$(df -Pk /workspace 2>/dev/null | awk "NR==2 {{print \\$4}}"); '
               f'[ "${{avail:-1024}}" -lt 1024 ] && echo "[/workspace is full - output may be missing]"; '
               f'if [ "$n" -le {WORKSHOP_TOOL_OUTPUT_CHARS} ]; then cat "$f" 2>/dev/null; '
@@ -59,7 +60,9 @@ def parse_preview(raw: bytes) -> Tuple[int, str, bool]:
     """(total bytes, text, truncated) from preview_argv's output."""
     text = raw.decode("utf-8", errors="replace")
     first, _, rest = text.partition("\n")
-    total = int(first.strip() or 0)
+    if not first.strip().isdigit():   # the size line went missing: show what came back
+        return 0, text, False
+    total = int(first.strip())
     truncated = _SPLIT in rest
     if truncated:
         head, _, tail = rest.partition(f"\n{_SPLIT}\n")

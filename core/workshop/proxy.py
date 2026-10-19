@@ -7,9 +7,10 @@ the host. Here every connection must:
   - name a host, not an IP literal, on the scope's allowlist (exact match)
     unless the scope is open-internet;
   - resolve, through OUR resolver, only to public addresses (IPv4-mapped,
-    NAT64, 6to4 and Teredo forms of private addresses refused too); the
-    tunnel then goes to the exact address that was checked, so a second
-    DNS answer can't swap in a private one;
+    NAT64, 6to4 and Teredo forms of private addresses refused too) that
+    aren't the host's own or on its IPv6 LAN; the tunnel then goes to the
+    exact address that was checked, so a second DNS answer can't swap in a
+    private one;
   - open TLS with an SNI equal to the CONNECT host, so a tunnel to an
     allowed host can't ask the same CDN edge for a different name.
 The proxy decides; who holds which credential and allowlist is the
@@ -20,6 +21,7 @@ import base64
 import ipaddress
 import logging
 import socket
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Awaitable, Callable, FrozenSet, List, Optional, Tuple
@@ -39,6 +41,7 @@ _REFUSED_NETS = [ipaddress.ip_network(n) for n in (
     "2002::/16",                         # 6to4
     "2001::/32",                         # Teredo
     "::/96",                             # IPv4-compatible (deprecated)
+    "::ffff:0:0:0/96",                   # IPv4-translated (SIIT)
     "0.0.0.0/8",
 )]
 
@@ -68,7 +71,36 @@ def address_ok(ip: str) -> bool:
         addr = addr.ipv4_mapped
     if any(addr in net for net in _REFUSED_NETS if net.version == addr.version):
         return False
-    return addr.is_global and not addr.is_multicast
+    # is_global's edges moved between Python versions; the classes are explicit
+    if (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast
+            or addr.is_reserved or addr.is_unspecified):
+        return False
+    return addr.is_global
+
+
+def host_networks() -> List[ipaddress._BaseNetwork]:
+    """The host's own addresses, and for IPv6 the /64 each sits in. A global
+    IPv6 LAN address passes is_global, so without this a name resolving to
+    the router's or the host's own address would reach it. Best effort: the
+    addresses the host's name resolves to, plus the source address it would
+    use toward the internet (a UDP connect sends nothing)."""
+    addrs = set()
+    try:
+        addrs.update(info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None))
+    except OSError:
+        pass
+    for family, probe in ((socket.AF_INET, "8.8.8.8"), (socket.AF_INET6, "2001:4860:4860::8888")):
+        try:
+            with socket.socket(family, socket.SOCK_DGRAM) as udp:
+                udp.connect((probe, 53))
+                addrs.add(udp.getsockname()[0])
+        except OSError:
+            pass
+    nets = []
+    for a in addrs:
+        addr = ipaddress.ip_address(a.split("%")[0])
+        nets.append(ipaddress.ip_network(f"{addr}/{64 if addr.version == 6 else 32}", strict=False))
+    return list(dict.fromkeys(nets))
 
 
 def parse_connect_target(target: str) -> Tuple[str, int]:
@@ -122,6 +154,9 @@ def parse_sni(hello: bytes) -> Optional[str]:
                     name_type = body[q]
                     name_len = int.from_bytes(body[q + 1:q + 3], "big")
                     if name_type == 0:
+                        rest = body[q + 3 + name_len:]
+                        if rest:   # a second name: TLS stacks disagree on which wins, so neither does
+                            return None
                         return body[q + 3:q + 3 + name_len].decode("ascii").lower().rstrip(".")
                     q += 3 + name_len
                 return None
@@ -169,13 +204,19 @@ async def _default_resolve(host: str) -> List[str]:
     return list(dict.fromkeys(info[4][0] for info in infos))
 
 
+LOCAL_NETS_SECONDS = 300   # how long the host's own addresses are trusted not to have moved
+
+
 class EgressProxy:
     def __init__(self, authorize: Authorize, *,
                  resolve: Callable[[str], Awaitable[List[str]]] = _default_resolve,
-                 connect=asyncio.open_connection):
+                 connect=asyncio.open_connection,
+                 local_networks: Callable[[], List] = host_networks):
         self.authorize = authorize
         self.resolve = resolve
         self.connect = connect
+        self.local_networks = local_networks
+        self._local = ([], 0.0)
         self.decisions = deque(maxlen=500)   # (label, verdict, detail) for the dashboard
         self._server: Optional[asyncio.AbstractServer] = None
 
@@ -187,9 +228,16 @@ class EgressProxy:
         return self._server.sockets[0].getsockname()[1]
 
     async def close(self) -> None:
+        """Stop listening and drop open tunnels: wait_closed() waits for every
+        connection, and a background pip or clone would hold shutdown up."""
         if self._server:
             self._server.close()
-            await self._server.wait_closed()
+            if hasattr(self._server, "close_clients"):   # Python 3.13+
+                self._server.close_clients()
+            try:
+                await asyncio.wait_for(self._server.wait_closed(), 5)
+            except asyncio.TimeoutError:
+                logger.warning("egress proxy: tunnels still open at shutdown")
 
     def _decide(self, label: str, verdict: str, detail: str) -> None:
         self.decisions.append((label, verdict, detail))
@@ -276,7 +324,18 @@ class EgressProxy:
             raise Refused("502 Bad Gateway", f"{host}: lookup failed ({e})")
         if not ips or not all(address_ok(ip) for ip in ips):
             raise Refused("403 Forbidden", f"{host} -> {ips}: not every address is public")
+        local = self._local_nets()
+        if any(ipaddress.ip_address(ip.split("%")[0]) in net for ip in ips for net in local
+               if net.version == ipaddress.ip_address(ip.split("%")[0]).version):
+            raise Refused("403 Forbidden", f"{host} -> {ips}: the host's own network")
         return ips
+
+    def _local_nets(self) -> List:
+        nets, at = self._local
+        if time.monotonic() - at > LOCAL_NETS_SECONDS:
+            nets = self.local_networks()
+            self._local = (nets, time.monotonic())
+        return nets
 
     async def _open_upstream(self, host: str, ips: List[str]):
         for ip in ips:

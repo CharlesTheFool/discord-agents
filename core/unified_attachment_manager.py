@@ -386,7 +386,14 @@ class UnifiedAttachmentManager:
         if row is None:
             return {"type": "text", "text": "\n[An attachment that is no longer available]"}
         filename, size = row["filename"], row.get("size_bytes") or 0
-        if row.get("attachment_type") == "image" or self.should_use_document_block(filename, size):
+        document = row.get("attachment_type") != "image" and self.should_use_document_block(filename, size)
+        if document and row.get("file_id"):
+            # the cached id as is: checking it costs a GET per document per
+            # model call, and a transient failure there would re-upload and
+            # move the cached prefix. A truly expired id 404s as
+            # StaleFileError, which forgets it and retries (the tool loop).
+            return {"type": "document", "source": {"type": "file", "file_id": row["file_id"]}}
+        if row.get("attachment_type") == "image" or document:
             data = await self.get_attachment_for_processing(attachment_id)
             if data and data["method"] == "file_id":
                 return {"type": "document", "source": {"type": "file", "file_id": data["data"]}}

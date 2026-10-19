@@ -209,8 +209,13 @@ def _is_ref(block) -> bool:
 
 
 def _has_ref(message: dict) -> bool:
+    """Top level or inside a tool_result: old states heal file blocks there
+    too (0.5-era get_attachment put documents in tool results)."""
     content = message.get("content")
-    return isinstance(content, list) and any(_is_ref(b) for b in content)
+    return isinstance(content, list) and any(
+        _is_ref(b) or (isinstance(b, dict) and b.get("type") == "tool_result"
+                       and isinstance(b.get("content"), list) and any(_is_ref(c) for c in b["content"]))
+        for b in content)
 
 
 class AnthropicMessagesDriver:
@@ -251,10 +256,17 @@ class AnthropicMessagesDriver:
         messages = []
         for m in request.messages:
             if _has_ref(m):
-                m = {**m, "content": [await self._resolve_block(b) if _is_ref(b) else b
-                                      for b in m["content"]]}
+                m = {**m, "content": [await self._resolve_any(b) for b in m["content"]]}
             messages.append(m)
         return replace(request, messages=messages)
+
+    async def _resolve_any(self, block):
+        if _is_ref(block):
+            return await self._resolve_block(block)
+        if isinstance(block, dict) and block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+            return {**block, "content": [await self._resolve_block(c) if _is_ref(c) else c
+                                         for c in block["content"]]}
+        return block
 
     async def _resolve_block(self, block: dict) -> dict:
         if self.resolve_attachment is None:

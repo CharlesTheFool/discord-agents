@@ -226,6 +226,10 @@ class RepositoryManager:
         workshop is off here - for save_output and copy_to_workshop.
         """
         action = tool_input.get("action", "")
+        # The tool isn't offered in DMs, but a model can name any tool: a DM
+        # has no repository, and a DM's workshop files must never land in one
+        if current_server_id in (None, "DM"):
+            return "Error: There's no repository in DMs - your workshop's /workspace is the drive here."
         try:
             if (self.vaults and action in ("save_file", "save_attachment", "save_output")
                     and self.vaults.blocks_repository_save(current_server_id, current_channel_id)):

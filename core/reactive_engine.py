@@ -57,6 +57,9 @@ from tools.skills_tool import run_request_skill
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_LOOP_ITERATIONS = 10
+# Work in the workshop is steps (install, write, run, fix, run, send): its
+# turns get more iterations; the turn wall clock still bounds them
+WORKSHOP_TOOL_LOOP_ITERATIONS = 25
 
 
 def memory_intent(kind: str, text: str, display_name: str) -> str:
@@ -334,7 +337,15 @@ class ReactiveEngine:
                 ContextNoteWriter(self.conversation_state_manager, self.channel_locks),
                 wake=self.run_note_turn, config=self.config, events=self.message_memory)
             self.workshop.on_background = self.job_watcher.follow
+            # its own task: reconciling jobs (and their tails) talks to the
+            # runtime, which must never hold up the rest of on_ready
+            self._track_task(asyncio.ensure_future(self._start_watcher()))
+
+    async def _start_watcher(self) -> None:
+        try:
             await self.job_watcher.start()
+        except Exception:
+            logger.exception("the job watcher couldn't settle jobs at boot")
 
     async def _load_conversation_state(self, channel_id: str,
                                        exclude_message_ids: Optional[List[int]] = None):
@@ -562,8 +573,7 @@ class ReactiveEngine:
     async def _workspace_attachments(self, paths: list, message, server_id, channel_id):
         """(discord.File list, notes): workspace files read as bytes, checked
         against Discord's size limit - the tool result says exactly what made it."""
-        from core.workshop.backend import SandboxUnavailable
-        from core.workshop.service import WorkshopUnavailable
+        from core.workshop.backend import FileTooLarge
         workspace = self._workspace_for(message, server_id, channel_id)
         if workspace is None:
             return [], ["the workshop isn't running here, so nothing was attached"]
@@ -572,16 +582,17 @@ class ReactiveEngine:
         files, notes = [], []
         for path in list(dict.fromkeys(paths))[:10]:
             try:
-                data = await workspace.read(path)
+                data = await workspace.read(path, max_bytes=limit)   # sized before it's pulled
             except FileNotFoundError:
                 notes.append(f"'{path}' doesn't exist in your workshop - it was not attached")
                 continue
-            except (WorkshopUnavailable, SandboxUnavailable, IsADirectoryError) as e:
-                notes.append(f"'{path}' couldn't be read ({e}) - it was not attached")
-                continue
-            if len(data) > limit:
-                notes.append(f"'{path}' is {format_size(len(data))}, over Discord's "
+            except FileTooLarge as e:
+                notes.append(f"'{path}' is {format_size(e.size)}, over Discord's "
                              f"{format_size(limit)} limit here - it was not attached")
+                continue
+            except Exception as e:   # the workshop's problem, reported - never a lost message
+                logger.warning(f"attaching {path} failed: {e!r}")
+                notes.append(f"'{path}' couldn't be read ({e}) - it was not attached")
                 continue
             files.append(discord.File(io.BytesIO(data), filename=path.rsplit("/", 1)[-1]))
         return files, notes
@@ -717,6 +728,9 @@ class ReactiveEngine:
             await self.workshop.backend.write_file(sandbox, f"/workspace/inbox/{name}", data)
         except (WorkshopUnavailable, SandboxUnavailable) as e:
             return f"Couldn't put it in the workshop ({e})."
+        except Exception as e:   # a broken sandbox must not break reading the file itself
+            logger.warning(f"inbox copy of {name} failed: {e!r}")
+            return f"Couldn't put it in the workshop ({type(e).__name__}: {e})."
         return f"Saved into your workshop at /workspace/inbox/{name}."
 
     # ========== SHARED RESPONSE PIPELINE ==========
@@ -924,6 +938,23 @@ class ReactiveEngine:
             + "\n\n".join(parts)
             + "\n</context_update>"
         )
+
+    async def _workshop_tool(self, block, call) -> dict:
+        """A workshop tool's result, whatever happens in it: an unexpected
+        error is the model's to see (and the log's), never a crashed turn."""
+        if self.workshop is None:
+            content, error = "The workshop isn't available here.", False
+        else:
+            try:
+                content, error = await call(), False
+            except Exception as e:
+                logger.error(f"{block.name} failed unexpectedly: {e!r}", exc_info=True)
+                content, error = (f"{block.name} hit an unexpected error ({type(e).__name__}: {e}). "
+                                  f"Trying a different way may work; if it keeps happening, say so."), True
+        result = {"type": "tool_result", "tool_use_id": block.id, "content": content}
+        if error:
+            result["is_error"] = True
+        return result
 
     def _workshop_on(self, message) -> bool:
         """Does this conversation's scope run the workshop (container setting)?"""
@@ -1207,29 +1238,20 @@ class ReactiveEngine:
             # The workshop (0.14) - MUST precede the MCP "_" fallthrough
             # (str_replace_based_edit_tool and request_network_access hold
             # underscores). Each runs the workshop's own gate first.
-            elif block.name == "bash":
-                note("workshop", "bash", (block.input.get("command") or "")[:120])
-                result = (await run_bash(self.workshop, block.input, server_id=server_id,
-                                         channel_id=channel_id, parent_id=parent_id,
-                                         is_thread=is_thread)
-                          if self.workshop else "The workshop isn't available here.")
-                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
-
-            elif block.name == EDITOR_NAME:
-                note("workshop", block.input.get("command", "edit"), block.input.get("path", ""))
-                result = (await run_editor(self.workshop, block.input, server_id=server_id,
-                                           channel_id=channel_id, parent_id=parent_id,
-                                           is_thread=is_thread)
-                          if self.workshop else "The workshop isn't available here.")
-                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
-
-            elif block.name == "request_network_access":
-                note("workshop", "request_network_access", block.input.get("host", ""))
-                result = (await run_request_network_access(
-                    self.approvals, self.workshop, block.input, server_id=server_id,
-                    channel_id=channel_id, parent_id=parent_id, is_thread=is_thread)
-                          if self.workshop else "The workshop isn't available here.")
-                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
+            elif block.name in ("bash", EDITOR_NAME, "request_network_access"):
+                runner, label, detail = {
+                    "bash": (run_bash, "bash", (block.input.get("command") or "")[:120]),
+                    EDITOR_NAME: (run_editor, block.input.get("command", "edit"), block.input.get("path", "")),
+                    "request_network_access": (
+                        lambda workshop, tool_input, **kw: run_request_network_access(
+                            self.approvals, workshop, tool_input, **kw),
+                        "request_network_access", block.input.get("host", "")),
+                }[block.name]
+                note("workshop", label, detail)
+                tool_results.append(await self._workshop_tool(
+                    block, lambda: runner(self.workshop, block.input, server_id=server_id,
+                                          channel_id=channel_id, parent_id=parent_id,
+                                          is_thread=is_thread)))
 
             # ask_prime (v0.9) - MUST precede the MCP "_" fallthrough
             elif block.name == "ask_prime":
@@ -1322,6 +1344,8 @@ class ReactiveEngine:
         repeat_sig = None  # repeat-call guard: identical consecutive tool calls
         repeat_count = 0
         started = time.monotonic()
+        workshop_turn = any(getattr(t, "name", None) == "bash" for t in (request.tools or []))
+        cap = WORKSHOP_TOOL_LOOP_ITERATIONS if workshop_turn else MAX_TOOL_LOOP_ITERATIONS
 
         while True:
             loop_iteration += 1
@@ -1369,8 +1393,8 @@ class ReactiveEngine:
 
             if response.stop_reason == "tool_use":
                 # Safety cap: a model that keeps requesting tools must not loop unbounded
-                if loop_iteration >= MAX_TOOL_LOOP_ITERATIONS:
-                    logger.warning(f"Tool use loop exceeded {MAX_TOOL_LOOP_ITERATIONS} iterations{log_suffix}")
+                if loop_iteration >= cap:
+                    logger.warning(f"Tool use loop exceeded {cap} iterations{log_suffix}")
                     if fallback_text and not result.did_send:
                         result.response_text = result.response_text or "I got stuck in a tool loop - try asking again."
                     break
@@ -1482,7 +1506,7 @@ class ReactiveEngine:
                 # - sending WAS the response)
                 if (not result.response_text.strip() and result.tools_were_used
                         and not result.did_send
-                        and loop_iteration < MAX_TOOL_LOOP_ITERATIONS):
+                        and loop_iteration < cap):
                     logger.warning(f"Tools used but no text response{log_suffix} - reprompting (iteration {loop_iteration})")
                     request.messages.append({"role": "assistant", "content": response.content})
                     request.messages.append({
@@ -1501,7 +1525,7 @@ class ReactiveEngine:
                         and re.search(r"\battach(?:ed|ment|ments|ing)?\b",
                                       result.response_text, re.IGNORECASE)):
                     if (attachment_nudges < 2
-                            and loop_iteration < MAX_TOOL_LOOP_ITERATIONS):
+                            and loop_iteration < cap):
                         if attachment_nudges == 0:
                             note_text = (
                                 "<system_note>Your reply mentions an attached file, "

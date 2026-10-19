@@ -65,7 +65,7 @@ function renderNameplate(s) {
   document.getElementById("np-meta").innerHTML = s.running
     ? `PID ${s.pid} · up ${uptimeInWords(s.uptime_s)}<span class="sub">${sub}</span>`
     : `<span class="sub">${sub}</span>` +
-      (blocked ? `<span class="blocked-reason">${esc(blocked)}</span>` : "");
+      (blocked ? `<span class="blocked-reason">${esc(blocked)} It tries again on its own every 10 minutes.</span>` : "");
   document.getElementById("np-ops").innerHTML = s.running
     ? `<button class="op" data-act="restart">Restart</button><button class="op no" data-act="stop">Stop</button>`
     : `<button class="op go" data-act="start">${blocked ? "Try again" : "Start"}</button>`;

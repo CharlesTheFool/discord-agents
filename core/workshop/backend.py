@@ -38,7 +38,25 @@ class SandboxInfo:
 
 
 class SandboxUnavailable(Exception):
-    """The runtime can't serve this sandbox (not running, crashed, no runtime)."""
+    """The runtime can't serve this sandbox (not running, crashed, no
+    runtime, didn't answer in time). Every runtime failure surfaces as this
+    or as an ordinary file error, never as an SDK type."""
+
+
+class FileTooLarge(Exception):
+    def __init__(self, path: str, size: int):
+        super().__init__(f"{path} is {size} bytes")
+        self.path = path
+        self.size = size
+
+
+@dataclass(frozen=True)
+class BootFailure:
+    """Why a test boot failed, said to the operator, and what kind of
+    failure it was: "boot" (a VM won't start: virtualization) or "network"
+    (the base image couldn't be downloaded)."""
+    reason: str
+    kind: str = "boot"
 
 
 class ExecutorBackend(Protocol):
@@ -57,8 +75,9 @@ class ExecutorBackend(Protocol):
 
     async def kill_job(self, name: str, job_id: str) -> None: ...
 
-    async def read_file(self, name: str, path: str) -> bytes:
-        """Raises FileNotFoundError, or IsADirectoryError for a directory."""
+    async def read_file(self, name: str, path: str, *, max_bytes: Optional[int] = None) -> bytes:
+        """Raises FileNotFoundError, IsADirectoryError for a directory, or
+        FileTooLarge past max_bytes (checked before anything is read)."""
 
     async def write_file(self, name: str, path: str, data: bytes) -> None: ...
 
@@ -74,7 +93,13 @@ class ExecutorBackend(Protocol):
 
     async def status(self) -> List[SandboxInfo]: ...
 
-    async def test_boot(self) -> Optional[str]:
+    async def has_sandbox(self, name: str) -> bool: ...
+
+    async def has_snapshot(self, ref: str) -> bool:
+        """Does the runtime still hold this template snapshot? (state.json
+        can outlive it: a restored backup, a deleted runtime home.)"""
+
+    async def test_boot(self) -> Optional[BootFailure]:
         """None if a throwaway sandbox boots; else what the operator must do."""
 
     async def build_template(self, name: str, script: str, *, env: Dict[str, str],

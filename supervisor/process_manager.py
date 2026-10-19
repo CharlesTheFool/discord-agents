@@ -6,7 +6,9 @@ root, remember which bots SHOULD be running (supervisor_state.json), and
 restart crashes with exponential backoff (cap 5 retries/hour, then mark
 crashed and wait for the operator). A bot that exits with
 START_BLOCKED_EXIT_CODE (its workshop can't start) is held as blocked
-instead: restarting can't fix a missing hypervisor.
+instead, and retried every BLOCKED_RETRY_SECONDS: fast restarts can't fix a
+missing hypervisor, but a registry hiccup or a reboot that turned
+virtualization on shouldn't need the operator either.
 """
 
 import asyncio
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 CRASH_RETRY_CAP_PER_HOUR = 5
 BACKOFF_BASE_SECONDS = 60  # 1, 2, 4, 8, 16 minutes
+BLOCKED_RETRY_SECONDS = 600
 
 
 def find_orphan_pids(bot_id: str, owned: Optional[List[int]] = None) -> List[int]:
@@ -224,13 +227,23 @@ class ProcessManager:
         for bot_id in list(self._desired):
             proc = self._procs.get(bot_id)
             if proc is None or proc.returncode is None:
+                if proc is not None:
+                    self._blocked.pop(bot_id, None)   # a retry got past its start gate
                 continue  # never started here, or still alive
-            if self._crashed.get(bot_id) or self._blocked.get(bot_id):
+            if self._crashed.get(bot_id):
                 continue
             if proc.returncode == START_BLOCKED_EXIT_CODE:
-                logger.error(f"{bot_id} can't start (its workshop is blocked) - "
-                             f"holding it until the operator starts it")
-                self._blocked[bot_id] = True
+                if not self._blocked.get(bot_id):
+                    logger.error(f"{bot_id} can't start (its workshop is blocked) - "
+                                 f"retrying every {BLOCKED_RETRY_SECONDS // 60} minutes")
+                    self._blocked[bot_id] = True
+                    self._next_retry[bot_id] = now + BLOCKED_RETRY_SECONDS
+                    continue
+                if now < self._next_retry.get(bot_id, 0):
+                    continue
+                self._next_retry[bot_id] = now + BLOCKED_RETRY_SECONDS
+                self._procs[bot_id] = await self._spawner(bot_id)   # not a crash: no backoff count
+                self._started_at[bot_id] = now
                 continue
             if now < self._next_retry.get(bot_id, 0):
                 continue

@@ -11,7 +11,7 @@ import posixpath
 from typing import Optional
 
 from core.internal_constants import WORKSHOP_TOOL_OUTPUT_CHARS
-from core.workshop.backend import SandboxUnavailable
+from core.workshop.backend import FileTooLarge, SandboxUnavailable
 from core.workshop.service import WorkshopUnavailable
 
 EDITOR_NAME = "str_replace_based_edit_tool"
@@ -57,10 +57,19 @@ def jail(path: Optional[str], *, write: bool) -> str:
     return norm
 
 
-def _text(data: bytes, path: str) -> str:
+EDITOR_MAX_BYTES = 10 * 1024 * 1024   # past this, bash (head, tail, grep) is the tool
+
+
+def _text(data: bytes, path: str, *, edit: bool) -> str:
     if b"\x00" in data[:8192]:
         raise EditorError(f"{path} is a binary file ({len(data):,} bytes) - use bash to inspect it")
-    return data.decode("utf-8", errors="replace")
+    if not edit:
+        return data.decode("utf-8", errors="replace")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:   # writing back replaced characters would corrupt the file
+        raise EditorError(f"{path} isn't UTF-8 text, so editing it here would damage it - "
+                          f"use bash (iconv converts it)") from None
 
 
 def _numbered(lines, start: int) -> str:
@@ -80,16 +89,26 @@ class Editor:
             raise EditorError(f"unknown command {command!r} (view, create, str_replace, insert)")
         return await handler(tool_input)
 
-    async def _read(self, path: str) -> str:
+    async def _read(self, path: str, *, edit: bool = True) -> str:
+        """The file's text. A directory raises IsADirectoryError for view to
+        list; for an edit it's just an error."""
         try:
-            return _text(await self.backend.read_file(self.name, path), path)
+            data = await self.backend.read_file(self.name, path, max_bytes=EDITOR_MAX_BYTES)
         except FileNotFoundError:
             raise EditorError(f"{path} doesn't exist") from None
+        except FileTooLarge as e:
+            raise EditorError(f"{path} is {e.size:,} bytes, too big to open here - use bash "
+                              f"(head, tail, grep)") from None
+        except IsADirectoryError:
+            if edit:
+                raise EditorError(f"{path} is a directory") from None
+            raise
+        return _text(data, path, edit=edit)
 
     async def view(self, tool_input: dict) -> str:
         path = jail(tool_input.get("path"), write=False)
         try:
-            text = await self._read(path)
+            text = await self._read(path, edit=False)
         except IsADirectoryError:
             entries = await self.backend.list_dir(self.name, path)
             lines = [f"{e.name}/" if e.kind == "dir" else e.name for e in entries]
