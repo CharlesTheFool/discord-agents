@@ -8,7 +8,9 @@ vocabulary; an adapter for another provider translates to and from it.
 
 Message dict:
     role            "user" | "assistant"
-    content         str, or a list of blocks (PERSISTED_BLOCK_TYPES)
+    content         str, or a list of blocks (PERSISTED_BLOCK_TYPES); files are
+                    {"type": "attachment_ref", "attachment_id": our id},
+                    resolved per request by the adapter (0.14)
     message_type    internal: discord_user | discord_assistant | tool_use |
                     tool_result (the message cap counts discord_* only)
     attachment_ids  internal: attachments carried by this message
@@ -21,8 +23,10 @@ Internal fields are stripped before a request is built.
 ROLES = ("user", "assistant")
 
 PERSISTED_BLOCK_TYPES = frozenset({
-    "text", "image", "document", "container_upload",
+    "text", "image", "attachment_ref",
     "tool_use", "tool_result", "thinking", "redacted_thinking",
+    # Before 0.14 only: provider file ids, healed into attachment_ref on load
+    "document", "container_upload",
 })
 
 INTERNAL_FIELDS = frozenset({"message_type", "attachment_ids", "model"})

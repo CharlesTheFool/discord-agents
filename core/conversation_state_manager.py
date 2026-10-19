@@ -12,7 +12,7 @@ import hashlib
 import logging
 import json
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Awaitable, Callable, Dict, Optional
 from datetime import datetime
 
 from .conversation_state import ConversationState
@@ -40,6 +40,39 @@ def _walk_image_blocks(messages: list, source_type: str):
                     and source.get("type") == source_type):
                 yield blocks, i
             elif block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+                stack.append(block["content"])
+
+
+# Before 0.14, file inputs persisted the PROVIDER's file id (a Files API
+# document, or a container_upload for code execution). They heal into our
+# own attachment_ref; one with no attachment behind it (code outputs never
+# had a row) becomes this note (spec 4.1 miss policy).
+LOST_FILE_NOTE = "\n[file from an earlier code run, no longer available]"
+
+
+def _legacy_file_id(block) -> str:
+    if not isinstance(block, dict):
+        return ""
+    if block.get("type") == "container_upload":
+        return block.get("file_id") or ""
+    source = block.get("source")
+    if block.get("type") == "document" and isinstance(source, dict) and source.get("type") == "file":
+        return source.get("file_id") or ""
+    return ""
+
+
+def _walk_legacy_file_blocks(messages: list):
+    """Yield (container_list, index, file_id) for every pre-0.14 file block,
+    tool_result content included."""
+    stack = [msg["content"] for msg in messages if isinstance(msg.get("content"), list)]
+    while stack:
+        blocks = stack.pop()
+        for i, block in enumerate(blocks):
+            file_id = _legacy_file_id(block)
+            if file_id:
+                yield blocks, i, file_id
+            elif isinstance(block, dict) and block.get("type") == "tool_result" \
+                    and isinstance(block.get("content"), list):
                 stack.append(block["content"])
 
 
@@ -78,6 +111,11 @@ class ConversationStateManager:
         # Per-channel locks: two concurrent get_or_create calls for the same
         # channel must not build two state objects (last save would win)
         self._creation_locks: Dict[str, asyncio.Lock] = {}
+        # file_id -> attachment_id, for healing pre-0.14 states. Attachments
+        # live in messages.db, which this manager doesn't hold; the bot
+        # injects the lookup. None (attachments off): every block takes the
+        # miss policy.
+        self.attachment_for_file: Optional[Callable[[str], Awaitable[Optional[str]]]] = None
 
         logger.info(
             f"ConversationStateManager initialized for bot '{bot_id}' "
@@ -199,6 +237,7 @@ class ConversationStateManager:
                 state_data = json.loads(row[0])
                 state = ConversationState.from_dict(state_data)
                 await self._rehydrate_images(state)
+                await self._heal_file_blocks(state)
                 logger.debug(f"Loaded ConversationState for channel {channel_id} ({state})")
                 return state
 
@@ -207,6 +246,17 @@ class ConversationStateManager:
                 return None
 
         return None
+
+    async def _heal_file_blocks(self, state: ConversationState) -> None:
+        """Pre-0.14 provider file ids become attachment_refs (or the lost-file
+        note) so no request ever carries a container_upload again."""
+        found = list(_walk_legacy_file_blocks(state.messages))
+        for blocks, i, file_id in found:
+            attachment_id = await self.attachment_for_file(file_id) if self.attachment_for_file else None
+            blocks[i] = ({"type": "attachment_ref", "attachment_id": attachment_id} if attachment_id
+                         else {"type": "text", "text": LOST_FILE_NOTE})
+        if found:
+            logger.info(f"Healed {len(found)} pre-0.14 file block(s) in {state.channel_id}")
 
     async def _rehydrate_images(self, state: ConversationState) -> None:
         """

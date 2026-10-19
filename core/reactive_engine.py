@@ -346,6 +346,11 @@ class ReactiveEngine:
                         vaults=self.vaults,
                     )
                     logger.info("Repository feature enabled")
+                if hasattr(self.driver, "resolve_attachment"):
+                    self.driver.resolve_attachment = self.attachment_manager.resolve_ref
+                if self.conversation_state_manager:
+                    self.conversation_state_manager.attachment_for_file = (
+                        self.attachment_manager.attachment_for_file_id)
             except Exception as e:
                 logger.error(f"Failed to initialize UnifiedAttachmentManager: {e}", exc_info=True)
                 self.attachment_manager = None  # Disable on failure
@@ -427,93 +432,38 @@ class ReactiveEngine:
 
             if db_msg.has_attachments and self.attachment_manager:
                 try:
-                    # Query attachments table for this message (Phase 2.2: added local_path for expiration checking)
                     async with self.attachment_manager.attachment_db.db.execute(
-                        "SELECT attachment_id, filename, local_path FROM attachments WHERE message_id = ?",
+                        "SELECT attachment_id, filename, attachment_type FROM attachments WHERE message_id = ?",
                         (str(db_msg.message_id),)
                     ) as cursor:
                         rows = await cursor.fetchall()
 
-                    # Retrieve each attachment via retroactive processing
                     for row in rows:
-                        attachment_id, filename, local_path = row
+                        attachment_id, filename, attachment_type = row
 
                         try:
-                            file_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
-
-                            if file_data:
-                                if file_data["method"] == "base64":
-                                    # Add text indicator for visibility
+                            if role != "user":
+                                # image and file blocks are only valid in user turns
+                                content_blocks.append({"type": "text", "text": f"\n[Attachment: {filename}]"})
+                            elif attachment_type == "image":
+                                file_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
+                                if file_data and file_data["method"] == "base64":
+                                    attachment_ids.append(attachment_id)
+                                    content_blocks.append({"type": "text", "text": f"\n[Image: {filename}]"})
                                     content_blocks.append({
-                                        "type": "text",
-                                        "text": f"\n[Image: {filename}]"
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": file_data["media_type"],
+                                            "data": file_data["data"],
+                                        },
                                     })
-                                    # Only add image blocks to user messages (API restriction)
-                                    if role == "user":
-                                        attachment_ids.append(attachment_id)
-                                        content_blocks.append({
-                                            "type": "image",
-                                            "source": {
-                                                "type": "base64",
-                                                "media_type": file_data["media_type"],
-                                                "data": file_data["data"]
-                                            }
-                                        })
-                                        logger.debug(f"Loaded image {filename} from DB")
-                                    else:
-                                        logger.debug(f"Skipped image block for assistant message: {filename}")
-
-                                elif file_data["method"] == "file_id":
-                                    file_id = file_data["data"]
-
-                                    # document/container_upload blocks are only valid in user turns
-                                    if role != "user":
-                                        content_blocks.append({
-                                            "type": "text",
-                                            "text": f"\n[Attachment: {filename}]"
-                                        })
-                                        logger.debug(f"Skipped file block for assistant message: {filename}")
-
-                                    # Add document block for reading (if eligible)
-                                    elif file_data.get("use_as_document_block", True):
-                                        attachment_ids.append(attachment_id)
-                                        # Add text indicator for visibility
-                                        content_blocks.append({
-                                            "type": "text",
-                                            "text": f"\n[Document: {filename}]"
-                                        })
-                                        # Add document block (Files API format)
-                                        content_blocks.append({
-                                            "type": "document",
-                                            "source": {
-                                                "type": "file",
-                                                "file_id": file_id
-                                            }
-                                        })
-                                        logger.debug(f"Loaded document {filename} from DB")
-
-                                    # Add container_upload block (matches periodic path behavior)
-                                    else:
-                                        # Phase 2.2: Check expiration and re-upload if needed
-                                        if local_path:
-                                            fresh_file_id = await self.attachment_manager._handle_container_upload_expiration(
-                                                attachment_id=attachment_id,
-                                                file_id=file_id,
-                                                local_path=local_path,
-                                                filename=filename
-                                            )
-                                            if fresh_file_id:
-                                                file_id = fresh_file_id
-                                            else:
-                                                logger.error(f"Failed to verify/re-upload container_upload {filename}, skipping")
-                                                continue  # Skip this attachment
-
-                                        attachment_ids.append(attachment_id)
-                                        content_blocks.append({
-                                            "type": "container_upload",
-                                            "file_id": file_id
-                                        })
-                                        logger.debug(f"Loaded container_upload file {filename} from DB")
+                            else:
+                                # our own id, resolved per request (spec 4.6): no
+                                # upload here for a file the model may never open
+                                attachment_ids.append(attachment_id)
+                                content_blocks.append({"type": "text", "text": f"\n[Document: {filename}]"})
+                                content_blocks.append({"type": "attachment_ref", "attachment_id": attachment_id})
 
                         except Exception as e:
                             logger.warning(f"Failed to load attachment {attachment_id} ({filename}): {e}")
@@ -739,18 +689,20 @@ class ReactiveEngine:
             report += " Note: " + "; ".join(notes) + "."
         return report
 
-    def _build_attachment_tool_result(self, result, block_id, conversation_state):
+    async def _build_attachment_tool_result(self, result, block_id, conversation_state, *,
+                                            message=None, server_id=None, channel_id=None):
         """
         Convert a structured get_attachment result into (tool_result, file_block).
 
-        Images inline into the tool_result (valid content). document /
-        container_upload blocks are NOT valid tool_result content - the file
-        block is returned separately to ride in the same user message after
-        the tool_results, and is persisted as its own annotated user message.
+        Images inline into the tool_result (valid content). A document is not
+        valid tool_result content: its attachment_ref rides in the same user
+        message after the tool_results, and is persisted as its own annotated
+        user message. Any other file goes into the workshop's inbox as bytes.
         """
         content_blocks = [{"type": "text", "text": result["text"]}]
         file_block = None
         file_data = result["file_data"]
+        metadata = result["metadata"]
 
         if file_data.get("method") == "base64":
             content_blocks.append({
@@ -761,24 +713,40 @@ class ReactiveEngine:
                     "data": file_data["data"],
                 },
             })
-        elif file_data.get("method") == "file_id":
-            if file_data.get("use_as_document_block", True):
-                file_block = {
-                    "type": "document",
-                    "source": {"type": "file", "file_id": file_data["data"]},
-                }
-                content_blocks[0]["text"] += "\nFile attached to the conversation as a readable document."
-            else:
-                file_block = {"type": "container_upload", "file_id": file_data["data"]}
-                content_blocks[0]["text"] += "\nFile loaded for code execution (find it via the INPUT_DIR env var)."
-
-            if conversation_state and file_block:
-                att_id = result["metadata"]["attachment_id"]
-                conversation_state.add_message("user", [file_block], [att_id])
-                logger.info(f"Added fetched attachment to conversation state: {result['metadata']['filename']}")
+        elif file_data.get("method") == "ref":
+            file_block = {"type": "attachment_ref", "attachment_id": metadata["attachment_id"]}
+            content_blocks[0]["text"] += "\nFile attached to the conversation as a readable document."
+            if conversation_state:
+                conversation_state.add_message("user", [file_block], [metadata["attachment_id"]])
+                logger.info(f"Added fetched attachment to conversation state: {metadata['filename']}")
+        elif file_data.get("method") == "inbox":
+            content_blocks[0]["text"] += "\n" + await self._copy_to_inbox(
+                metadata, message=message, server_id=server_id, channel_id=channel_id)
 
         tool_result = {"type": "tool_result", "tool_use_id": block_id, "content": content_blocks}
         return tool_result, file_block
+
+    async def _copy_to_inbox(self, metadata: dict, *, message, server_id, channel_id) -> str:
+        """A fetched non-document file, as bytes, into /workspace/inbox (the
+        attachment's own vault check already ran in get_attachment)."""
+        from core.workshop.backend import SandboxUnavailable
+        from core.workshop.service import WorkshopUnavailable
+        if self.workshop is None:
+            return "This kind of file opens in the workshop, which isn't running here."
+        data = await self.attachment_manager.local_bytes(metadata["attachment_id"])
+        if data is None:
+            return "Its stored copy is gone, so it can't be opened."
+        name = re.sub(r"[^A-Za-z0-9._-]", "_", metadata["filename"]).lstrip(".") or "attachment"
+        channel = getattr(message, "channel", None)
+        try:
+            scope = self.workshop.scope_for_turn(
+                server_id, channel_id, parent_id=getattr(channel, "parent_id", None),
+                is_thread=isinstance(channel, discord.Thread))
+            sandbox = await self.workshop.sandbox(scope)
+            await self.workshop.backend.write_file(sandbox, f"/workspace/inbox/{name}", data)
+        except (WorkshopUnavailable, SandboxUnavailable) as e:
+            return f"Couldn't put it in the workshop ({e})."
+        return f"Saved into your workshop at /workspace/inbox/{name}."
 
     # ========== SHARED RESPONSE PIPELINE ==========
 
@@ -857,7 +825,7 @@ class ReactiveEngine:
         for att in processed_attachments:
             attachment_ids.append(att["attachment_id"])
             block = self.attachment_manager.build_content_block(
-                att.get("for_api"), att["filename"]
+                att.get("for_api"), att["filename"], attachment_id=att["attachment_id"]
             )
             if block:
                 content.append(block)
@@ -1251,8 +1219,9 @@ class ReactiveEngine:
                     )
                     # Structured data from get_attachment
                     if isinstance(result, dict) and result.get("_structured"):
-                        tool_result, file_block = self._build_attachment_tool_result(
-                            result, block.id, conversation_state
+                        tool_result, file_block = await self._build_attachment_tool_result(
+                            result, block.id, conversation_state,
+                            message=message, server_id=server_id, channel_id=channel_id,
                         )
                         tool_results.append(tool_result)
                         if file_block:
@@ -1386,7 +1355,13 @@ class ReactiveEngine:
             try:
                 response = await self.driver.generate(request)
             except StaleFileError as e:
-                # A stale file id in persisted state fails the whole request
+                # The Files API dropped a cached upload: forget the id and the
+                # resolver re-uploads from local storage on the retry
+                if (e.file_id not in recovered_file_ids and self.attachment_manager
+                        and await self.attachment_manager.forget_file_id(e.file_id)):
+                    recovered_file_ids.add(e.file_id)
+                    continue
+                # A stale id persisted before 0.14 (healing normally removes these)
                 if conversation_state and e.file_id not in recovered_file_ids:
                     recovered_file_ids.add(e.file_id)
                     if await self._recover_stale_file_in_state(conversation_state, e.file_id):

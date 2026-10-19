@@ -12,7 +12,8 @@ import asyncio
 import logging
 import re
 import time
-from typing import List, Optional, Tuple
+from dataclasses import replace
+from typing import Awaitable, Callable, List, Optional, Tuple
 
 from anthropic import AsyncAnthropic, NotFoundError
 
@@ -226,6 +227,15 @@ def to_response(message) -> ModelResponse:
     )
 
 
+def _is_ref(block) -> bool:
+    return isinstance(block, dict) and block.get("type") == "attachment_ref"
+
+
+def _has_ref(message: dict) -> bool:
+    content = message.get("content")
+    return isinstance(content, list) and any(_is_ref(b) for b in content)
+
+
 class AnthropicMessagesDriver:
     """ModelDriver over the Anthropic Messages API (live and Batches).
 
@@ -241,6 +251,8 @@ class AnthropicMessagesDriver:
         # outside the driver (Files API, Skills API)
         self.client = client or AsyncAnthropic(api_key=api_key, base_url=base_url)
         self._slots = asyncio.Semaphore(max_concurrent)
+        # attachment_id -> request block (spec 4.6); set once attachments run
+        self.resolve_attachment: Optional[Callable[[str], Awaitable[dict]]] = None
         self.poll_interval = poll_interval_seconds
         self.timeout_seconds = timeout_hours * 3600
 
@@ -253,7 +265,27 @@ class AnthropicMessagesDriver:
             api = getattr(api, part)
         return api
 
+    async def _resolve_refs(self, request: ModelRequest) -> ModelRequest:
+        """attachment_ref blocks become what this provider reads: Files API
+        documents, inline images, or a note. New message dicts for this call
+        only - persisted state keeps its refs."""
+        if not any(_has_ref(m) for m in request.messages):
+            return request
+        messages = []
+        for m in request.messages:
+            if _has_ref(m):
+                m = {**m, "content": [await self._resolve_block(b) if _is_ref(b) else b
+                                      for b in m["content"]]}
+            messages.append(m)
+        return replace(request, messages=messages)
+
+    async def _resolve_block(self, block: dict) -> dict:
+        if self.resolve_attachment is None:
+            return {"type": "text", "text": "\n[An attachment that can't be opened here]"}
+        return await self.resolve_attachment(block["attachment_id"])
+
     async def generate(self, request: ModelRequest) -> ModelResponse:
+        request = await self._resolve_refs(request)
         surface, kwargs = render(request)
         try:
             async with self._slots:

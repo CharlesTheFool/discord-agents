@@ -85,7 +85,7 @@ class ConversationState:
             if isinstance(content, list):
                 attachment_block_count = sum(
                     1 for block in content
-                    if block.get("type") in ("document", "container_upload", "image")
+                    if block.get("type") in ("attachment_ref", "document", "container_upload", "image")
                 )
                 if attachment_block_count > len(attachment_ids):
                     logger.warning(

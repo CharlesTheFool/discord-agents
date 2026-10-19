@@ -394,11 +394,17 @@ class DiscordToolExecutor:
 
             size_str = format_size(size_bytes)
 
-            # Retrieve attachment from storage
-            attachment_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
-
-            if not attachment_data:
-                return f"Error: Attachment {attachment_id} not found or no longer available in storage"
+            # Images inline; a document rides as an attachment_ref the request
+            # resolves; anything else goes to the workshop's inbox as bytes -
+            # none of it is uploaded anywhere just for being fetched
+            if attachment_type == "image":
+                attachment_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
+                if not attachment_data:
+                    return f"Error: Attachment {attachment_id} not found or no longer available in storage"
+            elif self.attachment_manager.should_use_document_block(filename, size_bytes or 0):
+                attachment_data = {"method": "ref"}
+            else:
+                attachment_data = {"method": "inbox"}
 
             # Build text description with provenance
             if source_channel_id == "repository":

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from .skills_manager import SkillsManager
 
 from tools.image_processor import ImageProcessor
+from .attachment_classifier import AttachmentClassifier
 from tools.skills_tool import build_skills_catalog_prompt
 from .internal_constants import (
     MANDATORY_RESPONSE_JUDGMENT_PROMPT,
@@ -715,35 +716,12 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
         Returns a content block dict or None if processing fails.
         """
         try:
+            if AttachmentClassifier.classify(filename) != "image":
+                return {"type": "attachment_ref", "attachment_id": attachment_id}
             file_data = await self.attachment_manager.get_attachment_for_processing(attachment_id)
-
             if file_data:
-                if file_data["method"] == "base64":
-                    logger.debug(f"Retrieved image {filename} via retroactive processing")
-                    return {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": file_data["media_type"],
-                            "data": file_data["data"]
-                        }
-                    }
-                elif file_data["method"] == "file_id":
-                    if file_data.get("use_as_document_block", True):
-                        logger.debug(f"Retrieved document {filename} via retroactive processing")
-                        return {
-                            "type": "document",
-                            "source": {
-                                "type": "file",
-                                "file_id": file_data["data"]
-                            }
-                        }
-                    else:
-                        logger.debug(f"Retrieved code file {filename} via retroactive processing")
-                        return {
-                            "type": "text",
-                            "text": f"\n[Attached file: {filename} - available to code execution]"
-                        }
+                return self.attachment_manager.build_content_block(
+                    file_data, filename, attachment_id=attachment_id)
         except Exception as e:
             logger.warning(f"Retroactive processing failed for {filename}: {e}")
             return {
@@ -864,40 +842,11 @@ CRITICAL: Do NOT narrate your thought process, explain your reasoning, or descri
                     )
 
                     if result and result.get("for_api"):
-                        api_data = result["for_api"]
-
-                        if api_data["method"] == "base64":
-                            # Image: base64 format
-                            processed_attachments.append({
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": api_data["media_type"],
-                                    "data": api_data["data"]
-                                }
-                            })
-                            logger.info(f"Processed image via attachment manager: {attachment.filename}")
-
-                        elif api_data["method"] == "file_id":
-                            # Files API: check if should be document block or text mention
-                            if api_data.get("use_as_document_block", True):
-                                # PDF/plaintext: add as document content block for direct viewing
-                                processed_attachments.append({
-                                    "type": "document",
-                                    "source": {
-                                        "type": "file",
-                                        "file_id": api_data["data"]
-                                    }
-                                })
-                                logger.info(f"Processed document block: {attachment.filename}")
-                            else:
-                                # Code execution files: container_upload block
-                                # Bug #25 fix: Use container_upload instead of text mention
-                                processed_attachments.append({
-                                    "type": "container_upload",
-                                    "file_id": api_data['data']
-                                })
-                                logger.info(f"Processed code execution file: {attachment.filename} (file_id: {api_data['data']})")
+                        block = self.attachment_manager.build_content_block(
+                            result["for_api"], attachment.filename,
+                            attachment_id=result["attachment_id"])
+                        if block:
+                            processed_attachments.append(block)
 
                 else:
                     # Fallback: use ImageProcessor directly (backward compatibility, images only)

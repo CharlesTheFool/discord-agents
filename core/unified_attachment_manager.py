@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 class UnifiedAttachmentManager:
     """Orchestrates attachment processing based on storage mode."""
 
-    # Size threshold for document blocks (100KB)
-    # Files larger than this should use container_upload (code execution access)
-    # to avoid materializing full content into context window
+    # Size threshold for document blocks (100KB): bigger files would
+    # materialize their whole content into the context window; they go to
+    # the workshop through get_attachment instead
     DOCUMENT_BLOCK_SIZE_THRESHOLD = 100 * 1024  # 100KB
 
     @classmethod
@@ -226,6 +226,18 @@ class UnifiedAttachmentManager:
                 }
             }
 
+        # Only what the model reads as a document goes to the Files API; any
+        # other file stays local until get_attachment copies it into a
+        # workshop (0.14 - nothing runs server-side any more)
+        if not self.should_use_document_block(attachment.filename, attachment.size):
+            return {
+                "attachment_id": str(attachment.id),
+                "attachment_type": att_type,
+                "filename": attachment.filename,
+                "size_bytes": attachment.size,
+                "for_api": {"method": "local", "use_as_document_block": False},
+            }
+
         # Check-then-upload must be atomic per attachment: without the lock,
         # concurrent calls both miss the cached file_id and upload twice
         async with self._upload_lock_for(str(attachment.id)):
@@ -339,14 +351,19 @@ class UnifiedAttachmentManager:
         return len(rows)
 
     @staticmethod
-    def build_content_block(for_api: Optional[Dict], filename: str, role: str = "user") -> Optional[Dict]:
+    def build_content_block(for_api: Optional[Dict], filename: str, role: str = "user",
+                            attachment_id: Optional[str] = None) -> Optional[Dict]:
         """
         Content block for a processed attachment, respecting API role rules:
-        image/document/container_upload blocks are only valid in user turns,
-        so assistant turns get a text placeholder instead.
+        image and file blocks are only valid in user turns, so assistant
+        turns get a text placeholder instead.
 
-        Single source of truth for the for_api -> block mapping (the audit
-        found six hand-rolled, divergent copies of it).
+        Images persist inline (by reference to image_blobs). Every other
+        file persists as an attachment_ref - our own id, never a provider's
+        file id - and is resolved per request (resolve_ref, spec 4.6).
+
+        The one source of truth for this mapping (the 0.6 audit found six
+        hand-rolled, divergent copies of it).
 
         Returns None when there is nothing to embed (failed processing).
         """
@@ -363,14 +380,59 @@ class UnifiedAttachmentManager:
                     "data": for_api["data"],
                 },
             }
-        if for_api["method"] == "file_id":
-            if for_api.get("use_as_document_block", True):
-                return {
-                    "type": "document",
-                    "source": {"type": "file", "file_id": for_api["data"]},
-                }
-            return {"type": "container_upload", "file_id": for_api["data"]}
+        if attachment_id:
+            return {"type": "attachment_ref", "attachment_id": attachment_id}
         return None
+
+    async def _row(self, attachment_id: str) -> Optional[Dict]:
+        async with self.attachment_db.db.execute(
+            "SELECT * FROM attachments WHERE attachment_id = ?", (attachment_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def resolve_ref(self, attachment_id: str) -> Dict:
+        """What an attachment_ref becomes in a request (spec 4.6): small
+        PDFs and text files as a document through the Files API, used as a
+        cache (uploaded from local storage when the id is missing or stale);
+        images inline; anything else a note pointing at get_attachment,
+        which copies the bytes into the workshop."""
+        row = await self._row(attachment_id)
+        if row is None:
+            return {"type": "text", "text": "\n[An attachment that is no longer available]"}
+        filename, size = row["filename"], row.get("size_bytes") or 0
+        if row.get("attachment_type") == "image" or self.should_use_document_block(filename, size):
+            data = await self.get_attachment_for_processing(attachment_id)
+            if data and data["method"] == "file_id":
+                return {"type": "document", "source": {"type": "file", "file_id": data["data"]}}
+            if data and data["method"] == "base64":
+                return {"type": "image", "source": {"type": "base64", "media_type": data["media_type"],
+                                                    "data": data["data"]}}
+        return {"type": "text", "text": (f"\n[Attachment: {filename} ({format_size(size)}) - "
+                                         f"get_attachment copies it into your workshop]")}
+
+    async def attachment_for_file_id(self, file_id: str) -> Optional[str]:
+        """Which attachment a provider file id belongs to (healing old states)."""
+        async with self.attachment_db.db.execute(
+            "SELECT attachment_id FROM attachments WHERE file_id = ?", (file_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row else None
+
+    async def forget_file_id(self, file_id: str) -> bool:
+        """The Files API no longer has this id: drop it, so the next request
+        re-uploads from local storage. True if an attachment held it."""
+        cursor = await self.attachment_db.db.execute(
+            "UPDATE attachments SET file_id = NULL WHERE file_id = ?", (file_id,))
+        await self.attachment_db.db.commit()
+        return cursor.rowcount > 0
+
+    async def local_bytes(self, attachment_id: str) -> Optional[bytes]:
+        """The file's bytes from local storage (what goes into a workshop)."""
+        row = await self._row(attachment_id)
+        if not row or not row.get("local_path") or not self.local_storage.exists(row["local_path"]):
+            return None
+        return await self.local_storage.load(row["local_path"])
 
     async def get_attachment_for_processing(self, attachment_id: str) -> Optional[Dict]:
         """

@@ -573,8 +573,8 @@ class DiscordClient(discord.Client):
                 attachment_ids = [att["attachment_id"] for att in processed_attachments]
 
                 # Build content blocks; role='assistant' yields text
-                # placeholders only - image/document/container_upload blocks
-                # in assistant turns 400 every subsequent API call
+                # placeholders only - image and file blocks in assistant
+                # turns 400 every subsequent API call
                 content_blocks = []
 
                 # Add text content first if exists
