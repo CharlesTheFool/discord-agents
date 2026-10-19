@@ -28,11 +28,14 @@ def status_path(root: pathlib.Path, bot_id: str) -> pathlib.Path:
     return root / "persistence" / "workshop" / bot_id / "status.json"
 
 
-def write_status(root: pathlib.Path, bot_id: str, state: str, reason: Optional[str] = None) -> None:
+def write_status(root: pathlib.Path, bot_id: str, state: str, reason: Optional[str] = None,
+                 install: Optional[str] = None) -> None:
+    """`install` (when on) is the label the bot's sandboxes carry with
+    bot=<id>, so the supervisor stops exactly this install's sandboxes."""
     path = status_path(root, bot_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"state": state, "reason": reason,
+    tmp.write_text(json.dumps({"state": state, "reason": reason, "install": install,
                                "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
                    encoding="utf-8")
     tmp.replace(path)
@@ -77,7 +80,7 @@ async def open_workshop(config, bot_id: str, *, root: pathlib.Path, vaults, db,
         await workshop.start()
     except WorkshopUnavailable as e:
         raise blocked(root, bot_id, f"The workshop couldn't start: {e}.") from None
-    write_status(root, bot_id, "on")
+    write_status(root, bot_id, "on", install=workshop.install_id)
     logger.info(f"Workshop on (proxy port {workshop.proxy_port})")
     return workshop
 
