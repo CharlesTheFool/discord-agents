@@ -530,6 +530,7 @@ function turnStream(t, chan) {
     case "followup":  verb = "follow-up fired"; break;
     case "relay":     verb = "reached across via the Prime"; break;
     case "watch":     verb = "standing watch resolved"; break;
+    case "job":       verb = "a workshop job finished · a note landed"; break;
     case "scan":      verb = `pulse · weighed ${nMsgs} message${nMsgs !== 1 ? "s" : ""} · replied`; break;
     case "silent":    verb = `pulse · weighed ${nMsgs} message${nMsgs !== 1 ? "s" : ""} · stayed quiet`; break;
     default:          verb = t.response ? "replied" : "no action";
@@ -653,7 +654,7 @@ function renderStatband(st) {
 const KIND_LABEL = {
   mention: "@ mention", scan: "periodic scan", silent: "scanned · silent",
   proactive: "proactive", followup: "follow-up", dm: "direct · prime",
-  memory: "/memory", relay: "ask prime", watch: "watch resolved",
+  memory: "/memory", relay: "ask prime", watch: "watch resolved", job: "workshop job",
 };
 const PRIME_KINDS = new Set(["dm", "memory", "relay", "watch"]);
 

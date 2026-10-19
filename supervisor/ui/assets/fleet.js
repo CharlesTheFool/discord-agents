@@ -13,6 +13,7 @@ let setup = null;
 
 // compact "3m ago" / "19m ago" / "Jun 9"
 function shortAgo(iso) {
+  if (!iso) return "never";   // a bot with no messages yet (new Date(null) is 1970)
   const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
   if (s < 90) return "just now";
   const m = Math.round(s / 60);

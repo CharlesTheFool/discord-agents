@@ -54,6 +54,13 @@ def _query(path: Path, sql: str, params=()) -> List[sqlite3.Row]:
         con.close()
 
 
+def _job_line(p: dict) -> str:
+    """A workshop job's completion (0.14), as the monitor's outcome line."""
+    exit_code = p.get("exit_code")
+    how = p.get("state", "finished") + (f" (exit {exit_code})" if exit_code is not None else "")
+    return f"{how} after {p.get('seconds', '?')} s: {p.get('command', '')}"
+
+
 def _read_json(path: Path, default):
     if not path.exists():
         return default
@@ -395,7 +402,7 @@ class BotData:
                 "thinking": p.get("thinking", ""),
                 "tool_calls": p.get("tool_calls", []),
                 "response": p.get("response"),
-                "decision": p.get("decision"),
+                "decision": p.get("decision") or (_job_line(p) if r["kind"] == "job" else None),
                 "provenance": p.get("provenance"),
                 "tokens": p.get("tokens", {}),
             })

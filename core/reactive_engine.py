@@ -108,6 +108,7 @@ class ToolLoopResult:
     tool_calls: List[dict] = field(default_factory=list)  # {tool, action, detail} per call (v0.9)
     # Native messaging (v0.12.0): messages the model sent via send_message
     sent_message_ids: List[str] = field(default_factory=list)
+    sent_texts: List[str] = field(default_factory=list)  # what those messages said (the turn's event)
     last_sent_message: Any = None  # discord.Message, for engagement tracking
 
     @property
@@ -655,6 +656,7 @@ class ReactiveEngine:
         await self._register_dm_surface(channel)
 
         loop_result.sent_message_ids.append(str(sent.id))
+        loop_result.sent_texts.append(sent.content or "")
         loop_result.last_sent_message = sent
         loop_result.attached_files += len(outgoing_files)
 
@@ -1079,7 +1081,9 @@ class ReactiveEngine:
             "triggers": triggers,
             "thinking": result.thinking_text or "",
             "tool_calls": result.tool_calls,
-            "response": result.response_text or None,
+            # a reply sent through send_message is the turn's response too: the
+            # monitor otherwise read those turns as "nothing needed a reply"
+            "response": result.response_text or " / ".join(t for t in result.sent_texts if t) or None,
             "tokens": {
                 "uncached_in": usage.input_tokens,
                 "cache_read": usage.cache_read_input_tokens,
