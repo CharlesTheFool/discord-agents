@@ -50,7 +50,7 @@ apt-get update -q >/dev/null
 apt-get install -y -q --no-install-recommends git ffmpeg ripgrep build-essential curl xz-utils ca-certificates >/dev/null
 F=$(curl -fsS https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt | grep -o 'node-v[0-9.]*-linux-x64.tar.xz' | head -1)
 curl -fsSL https://nodejs.org/dist/latest-v24.x/$F | tar -xJ -C /usr/local --strip-components=1
-pip install -q --no-cache-dir --disable-pip-version-check --root-user-action=ignore python-docx python-pptx openpyxl pypdf matplotlib pandas pillow requests
+pip install -q --no-cache-dir --disable-pip-version-check --root-user-action=ignore python-docx python-pptx openpyxl pypdf reportlab matplotlib pandas pillow requests
 apt-get clean && rm -rf /var/lib/apt/lists/*
 mkdir -p /workspace /skills
 """

@@ -664,7 +664,9 @@ class ReactiveEngine:
         Images inline into the tool_result (valid content). A document is not
         valid tool_result content: its attachment_ref rides in the same user
         message after the tool_results, and is persisted as its own annotated
-        user message. Any other file goes into the workshop's inbox as bytes.
+        user message. Any other file goes into the workshop's inbox as bytes,
+        and so does a document where the workshop is on (to merge, edit,
+        convert - reading it is not enough).
         """
         content_blocks = [{"type": "text", "text": result["text"]}]
         file_block = None
@@ -686,6 +688,9 @@ class ReactiveEngine:
             if conversation_state:
                 conversation_state.add_message("user", [file_block], [metadata["attachment_id"]])
                 logger.info(f"Added fetched attachment to conversation state: {metadata['filename']}")
+            if self._workshop_on(message):
+                content_blocks[0]["text"] += " " + await self._copy_to_inbox(
+                    metadata, message=message, server_id=server_id, channel_id=channel_id)
         elif file_data.get("method") == "inbox":
             content_blocks[0]["text"] += "\n" + await self._copy_to_inbox(
                 metadata, message=message, server_id=server_id, channel_id=channel_id)
