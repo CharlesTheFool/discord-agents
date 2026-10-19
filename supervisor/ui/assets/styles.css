@@ -130,6 +130,9 @@ header.page { padding: 34px 0 0; }
 .chip.on .led { background: var(--ok); box-shadow: 0 0 0 2px rgba(47,125,68,.2); }
 .chip.off { background: var(--off-bg); color: var(--off); }
 .chip.off .led { background: var(--off); }
+.chip.blocked { background: var(--warn-bg); color: var(--warn); }
+.chip.blocked .led { background: var(--warn); }
+.blocked-reason { display: block; margin-top: 6px; max-width: 64ch; color: var(--warn); font-size: 13px; line-height: 1.4; }
 
 .row .id { padding: 0 12px; }
 .row .id a.botname { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; display: inline-block; }

@@ -77,7 +77,7 @@ def runtime_available() -> bool:
 def remediation(error: BaseException) -> str:
     """What the operator does when a test boot fails (spec 5.5)."""
     detail = f"{type(error).__name__}: {error}"
-    if isinstance(error, RuntimeMissing):
+    if isinstance(error, (RuntimeMissing, ImportError)):   # installed wrong is installed
         return (f"The sandbox runtime is missing ({error}). Reinstall the app's "
                 f"dependencies: pip install -r requirements.txt.")
     system = platform.system()

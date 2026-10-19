@@ -23,7 +23,7 @@ import threading
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.channel_locks import ChannelLocks
-from core.config import BotConfig
+from core.config import START_BLOCKED_EXIT_CODE, BotConfig
 from core.model.factory import build_driver
 from core.rate_limiter import RateLimiter
 from core.message_memory import MessageMemory
@@ -167,6 +167,18 @@ class BotManager:
             user_cache=user_cache,
         )
         logger.info("Reactive engine initialized")
+
+        # The workshop (0.14): sandboxes per scope, behind a test boot. A
+        # blocked start exits with its own code so the supervisor holds it
+        from core.workshop.gate import StartBlocked, open_workshop
+        try:
+            reactive_engine.workshop = await open_workshop(
+                self.config, self.bot_id, root=Path(".").resolve(), vaults=reactive_engine.vaults,
+                db=self.message_memory._db,
+                skills_dir=Path(self.config.get_skills_config()["skills_dir"]))
+        except StartBlocked as e:
+            logger.error(f"[{self.bot_id}] Can't start: {e}")
+            sys.exit(START_BLOCKED_EXIT_CODE)
 
         # Initialize agentic engine if enabled (proactive actions)
         agentic_engine = None
@@ -464,13 +476,16 @@ def main():
 
         manager = BotManager(bot_id, crash_test=crash_test)
 
+        code = 0
         try:
             asyncio.run(manager.run())
         except KeyboardInterrupt:
             pass
+        except SystemExit as e:   # a failed validation or a blocked start: the supervisor reads it
+            code = e.code if isinstance(e.code, int) else 1
         finally:
             # Hard exit to prevent hanging from stubborn threads
-            os._exit(0)
+            os._exit(code)
 
     elif command == "consolidate":
         if len(sys.argv) < 3:

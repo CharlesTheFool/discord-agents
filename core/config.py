@@ -153,6 +153,10 @@ class SkillsConfig:
 
 # "host" arrives with Host mode (0.14.2)
 WORKSHOP_SETTINGS = ("container", "off")
+# A bot whose workshop can't start exits with this (core/workshop/gate.py);
+# the supervisor holds it as blocked instead of crash-restarting. Here because
+# core.config is the one module the supervisor shares with the bot.
+START_BLOCKED_EXIT_CODE = 78   # EX_CONFIG
 _DISCORD_ID = re.compile(r"^\d{5,25}$")
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
 

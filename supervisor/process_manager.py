@@ -4,7 +4,9 @@ ProcessManager - bot instances as managed subprocesses.
 Start/stop/restart `python bot_manager.py spawn <id>` against the managed
 root, remember which bots SHOULD be running (supervisor_state.json), and
 restart crashes with exponential backoff (cap 5 retries/hour, then mark
-crashed and wait for the operator).
+crashed and wait for the operator). A bot that exits with
+START_BLOCKED_EXIT_CODE (its workshop can't start) is held as blocked
+instead: restarting can't fix a missing hypervisor.
 """
 
 import asyncio
@@ -15,6 +17,8 @@ import sys
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
+
+from core.config import START_BLOCKED_EXIT_CODE
 
 from .paths import SupervisorRoot
 
@@ -86,6 +90,7 @@ class ProcessManager:
         self._crash_times: Dict[str, List[float]] = {}
         self._next_retry: Dict[str, float] = {}
         self._crashed: Dict[str, bool] = {}      # gave up until operator start
+        self._blocked: Dict[str, bool] = {}      # start gate refused; until operator start
         self._desired: List[str] = self._load_desired()
 
     # --- spawning ---------------------------------------------------------
@@ -135,6 +140,7 @@ class ProcessManager:
             "uptime_s": int(time.monotonic() - self._started_at[bot_id])
             if running and bot_id in self._started_at else 0,
             "crashed": self._crashed.get(bot_id, False),
+            "blocked": self._blocked.get(bot_id, False),
         }
 
     # --- lifecycle ------------------------------------------------------------
@@ -154,6 +160,7 @@ class ProcessManager:
             self.root.running_flag(bot_id).unlink(missing_ok=True)
             await asyncio.sleep(1.0)
         self._crashed.pop(bot_id, None)
+        self._blocked.pop(bot_id, None)
         self._crash_times.pop(bot_id, None)
         self._next_retry.pop(bot_id, None)
         proc = await self._spawner(bot_id)
@@ -214,7 +221,12 @@ class ProcessManager:
             proc = self._procs.get(bot_id)
             if proc is None or proc.returncode is None:
                 continue  # never started here, or still alive
-            if self._crashed.get(bot_id):
+            if self._crashed.get(bot_id) or self._blocked.get(bot_id):
+                continue
+            if proc.returncode == START_BLOCKED_EXIT_CODE:
+                logger.error(f"{bot_id} can't start (its workshop is blocked) - "
+                             f"holding it until the operator starts it")
+                self._blocked[bot_id] = True
                 continue
             if now < self._next_retry.get(bot_id, 0):
                 continue

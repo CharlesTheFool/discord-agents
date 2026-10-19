@@ -2039,6 +2039,15 @@ class ReactiveEngine:
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
+        # The workshop's own tasks, before the states they write close. Its
+        # sandboxes stay up: jobs survive a restart, idle ones stop themselves
+        for part in (self.approvals, self.job_watcher, self.workshop):
+            if part is not None:
+                try:
+                    await part.close()
+                except Exception as e:
+                    logger.error(f"Error closing {type(part).__name__}: {e}")
+
         # Cleanup v0.5.0 managers
         if self.mcp_manager:
             try:

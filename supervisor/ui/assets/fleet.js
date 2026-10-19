@@ -34,8 +34,9 @@ function statusChip(bot) {
   if (bot.pending)
     return `<span class="chip ${bot.pending === "stop" ? "off" : "on"}"><span class="led"></span>${
       bot.pending === "start" ? "Starting" : bot.pending === "stop" ? "Stopping" : "Restarting"}…</span>`;
-  return bot.running
-    ? `<span class="chip on"><span class="led"></span>Running</span>`
+  if (bot.running) return `<span class="chip on"><span class="led"></span>Running</span>`;
+  return bot.workshop?.start_blocked
+    ? `<span class="chip blocked" title="${esc(bot.workshop.start_blocked)}"><span class="led"></span>Can't start</span>`
     : `<span class="chip off"><span class="led"></span>Stopped</span>`;
 }
 
@@ -45,7 +46,11 @@ function opsFor(bot) {
     return `<button class="stop" data-act="stop">Stop</button>` +
            `<button data-act="restart">Restart</button>` +
            `<button class="danger" disabled title="stop the bot first">Delete</button>`;
-  return `<button class="go" data-act="start">Start</button>` +
+  const blocked = bot.workshop?.start_blocked;
+  const start = blocked
+    ? `<button class="go" data-act="start" title="${esc(blocked)}">Try again</button>`
+    : `<button class="go" data-act="start">Start</button>`;
+  return start +
          `<button disabled>Restart</button>` +
          `<button class="danger" data-act="delete">Delete</button>`;
 }
@@ -76,7 +81,8 @@ function rowHTML(bot) {
       <div class="edge"></div>
       <div class="id">
         <a class="botname" href="bot.html?id=${encodeURIComponent(bot.bot_id)}">${esc(bot.bot_id)}</a>
-        <div class="substat">${statusChip(bot)}<span class="pid">${bot.running ? "PID " + bot.pid : "idle"}</span></div>
+        <div class="substat">${statusChip(bot)}<span class="pid">${bot.running ? "PID " + bot.pid : "idle"}${
+          bot.workshop?.state === "off" ? " · workshop off" : ""}</span></div>
       </div>
       <div><span class="tag ${modelFamily(bot.model)}">${esc(modelShort(bot.model))}</span></div>
       <div class="num">${bot.servers} <span class="u">srv</span></div>

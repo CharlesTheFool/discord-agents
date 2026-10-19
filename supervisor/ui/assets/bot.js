@@ -52,15 +52,23 @@ function renderNameplate(s) {
   const np = document.getElementById("nameplate");
   np.classList.toggle("running", s.running);
   const serverNames = (s.servers || []).map((x) => x.name).join(" · ");
+  const workshop = s.workshop || {};
+  // the start gate refused: Start can't help until the reason is dealt with
+  const blocked = workshop.start_blocked;
+  const sub = `${esc(modelShort(s.model))} · ${esc(serverNames || "no servers")}` +
+    (workshop.state === "off" ? ` · workshop off` : "");
   document.getElementById("np-state").innerHTML = s.running
     ? `<span class="chip on"><span class="led"></span>Running</span>`
-    : `<span class="chip off"><span class="led"></span>Stopped</span>`;
+    : blocked
+      ? `<span class="chip blocked"><span class="led"></span>Can't start</span>`
+      : `<span class="chip off"><span class="led"></span>Stopped</span>`;
   document.getElementById("np-meta").innerHTML = s.running
-    ? `PID ${s.pid} · up ${uptimeInWords(s.uptime_s)}<span class="sub">${esc(modelShort(s.model))} · ${esc(serverNames || "no servers")}</span>`
-    : `<span class="sub">${esc(modelShort(s.model))} · ${esc(serverNames || "no servers")}</span>`;
+    ? `PID ${s.pid} · up ${uptimeInWords(s.uptime_s)}<span class="sub">${sub}</span>`
+    : `<span class="sub">${sub}</span>` +
+      (blocked ? `<span class="blocked-reason">${esc(blocked)}</span>` : "");
   document.getElementById("np-ops").innerHTML = s.running
     ? `<button class="op" data-act="restart">Restart</button><button class="op no" data-act="stop">Stop</button>`
-    : `<button class="op go" data-act="start">Start</button>`;
+    : `<button class="op go" data-act="start">${blocked ? "Try again" : "Start"}</button>`;
 }
 
 // The nameplate Start/Stop/Restart buttons (same actions as the fleet board,

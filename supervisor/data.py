@@ -201,6 +201,17 @@ class BotData:
             out.append(rows[0]["n"] if rows else 0)
         return out
 
+    # --- workshop -------------------------------------------------------------
+
+    def _workshop(self, bot_id: str, running: bool) -> dict:
+        """The start gate's last word (core/workshop/gate.py): on, off with
+        why, or blocked with the fix. A stopped bot whose last start was
+        blocked can't usefully start until that's dealt with."""
+        status = _read_json(self.root.workshop_status(bot_id), {})
+        state = status.get("state") or "unknown"
+        return {"state": state, "reason": status.get("reason"),
+                "start_blocked": status.get("reason") if state == "blocked" and not running else None}
+
     # --- bots list ----------------------------------------------------------
 
     async def list_bots(self, running_status: Callable[[str], dict]) -> List[dict]:
@@ -249,6 +260,7 @@ class BotData:
                 "watches": len(self._active_watches(bot_id, names)),
                 "dms": len(self._dm_rows(bot_id)),
                 "health": health,
+                "workshop": self._workshop(bot_id, running),
             })
         return bots
 
@@ -317,6 +329,7 @@ class BotData:
         return {
             "running": running,
             "crashed": proc.get("crashed", False),
+            "workshop": self._workshop(bot_id, running),
             "pid": proc["pid"],
             "uptime_s": proc["uptime_s"],
             "model": (config.get("api") or {}).get("model", "?"),
