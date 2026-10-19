@@ -11,6 +11,7 @@ bots/*.yaml
 !bots/*.yaml.example
 test-stuff/
 venv/
+.venv/
 
 # Export backups
 deployment-backup_*.zip

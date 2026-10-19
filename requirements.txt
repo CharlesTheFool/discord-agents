@@ -1,19 +1,24 @@
-discord.py>=2.3.0
-anthropic>=0.109.0
-python-dotenv>=1.0.0
-aiohttp>=3.9.0      
-httpx>=0.27.0       
-Pillow>=10.0.0
-pyyaml>=6.0.0
-pytz>=2024.1
-aiosqlite>=0.19.0
-aiofiles>=23.0.0
+# Exact versions: the suite runs on these and production runs on these.
+# Changing this file makes the app's updater run pip on the next launch.
+discord.py==2.7.1
+anthropic==0.109.1
+python-dotenv==1.2.2
+aiohttp==3.14.1
+httpx==0.28.1
+Pillow==12.2.0
+pyyaml==6.0.3
+pytz==2026.2
+aiosqlite==0.22.1
+aiofiles==25.1.0
 
 # Office format libraries for file text extraction (v0.5.0)
-openpyxl>=3.1.0
-python-docx>=1.1.0
-python-pptx>=0.6.23
+openpyxl==3.1.5
+python-docx==1.2.0
+python-pptx==1.0.2
+
+# The workshop's microVM runtime (0.14.0); the wheel bundles msb + libkrunfw
+microsandbox==0.7.8
 
 # Testing
-pytest>=7.4.0
-pytest-asyncio>=0.23.0
+pytest==8.3.5
+pytest-asyncio==0.26.0
