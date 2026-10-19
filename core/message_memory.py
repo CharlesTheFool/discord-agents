@@ -780,15 +780,20 @@ class MessageMemory:
         """channel_id -> created_at (aware UTC) of the newest stored message.
 
         One bulk query so boot backfill can resume each channel where the
-        last session stopped instead of re-fetching the whole window."""
+        last session stopped instead of re-fetching the whole window.
+        Lifecycle markers don't count: [YOU CAME ONLINE] is written at boot,
+        before backfill runs, and resuming from it would skip everything
+        said while the bot was down. Their naive (utcnow) stamps also made
+        the comparison with the aware cutoff raise, skipping the channel."""
         cursor = await self._db.execute(
-            "SELECT channel_id, MAX(timestamp) FROM messages GROUP BY channel_id")
+            "SELECT channel_id, MAX(timestamp) FROM messages WHERE is_system = 0 GROUP BY channel_id")
         out = {}
         for cid, ts in await cursor.fetchall():
             try:
-                out[cid] = datetime.fromisoformat(ts)
+                stamp = datetime.fromisoformat(ts)
             except (TypeError, ValueError):
-                pass
+                continue
+            out[cid] = stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
         return out
 
     async def get_latest_message(self, channel_id: str) -> Optional[StoredMessage]:
