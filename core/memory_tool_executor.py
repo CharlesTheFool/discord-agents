@@ -55,6 +55,16 @@ class MemoryToolExecutor:
             write_grant: one-shot /memory consent (v0.9) - that user's own
                 global profile is writable from their DM for this turn
         """
+        # The trained tool (memory_20250818) names rename's source old_path
+        # and insert's text insert_text; this executor long read path and
+        # new_str, so renames failed and inserts wrote empty lines. Mapped
+        # first, so every check below judges the path rename actually moves.
+        tool_input = dict(tool_input)
+        if tool_input.get("command") == "rename" and tool_input.get("old_path"):
+            tool_input["path"] = tool_input["old_path"]
+        if tool_input.get("command") == "insert" and "insert_text" in tool_input:
+            tool_input["new_str"] = tool_input["insert_text"]
+
         # Every check below reads the path as written, so it must be the path
         # that gets touched: "a/b/../../c" and Windows backslashes would
         # otherwise pass a vault or DM rule and land somewhere else

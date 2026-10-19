@@ -97,6 +97,10 @@ Upgrading).
   the bot was down. Markers no longer count.
 - **Exit codes were lost.** `bot_manager.py spawn` always exited 0, even
   when configuration validation failed.
+- **Memory inserts wrote empty lines, and renames always failed.** The
+  memory tool's executor read `new_str` and `path`, but Claude's memory tool
+  sends `insert_text`, `old_path` and `new_path`. Both now work as sent,
+  and the vault and DM checks judge the path a rename really moves.
 - **The fleet board showed a bot as running right after Start,** with a
   made-up PID, before the daemon said so. It now asks the daemon.
 - **The monitor said "Nothing here needed a reply" on every reply sent
