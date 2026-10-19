@@ -93,12 +93,16 @@ function copyFiltered(src, dest) {
 
   // 5. prove the bundle stands alone: the embedded python imports the
   // dependencies AND the framework's own entry points (a missing framework
-  // folder once shipped unnoticed because only the deps were checked)
+  // folder once shipped unnoticed because only the deps were checked), and
+  // finds the workshop's own sandbox runtime inside the bundled wheel
   log("smoke test: embedded interpreter imports the deps and the framework…");
   execFileSync(path.join(RUNTIME, "python.exe"),
-    ["-c", "import sys; sys.path.insert(0, 'framework'); " +
+    ["-c", "import sys, os, tempfile; sys.path.insert(0, 'framework'); " +
            "import discord, anthropic, aiohttp, aiosqlite, yaml, PIL, dotenv; " +
-           "import core.reactive_engine, core.agentic_engine, supervisor.api; " +
+           "import core.reactive_engine, core.agentic_engine, supervisor.api, core.workshop.gate; " +
+           "from core.workshop.backends.microsandbox import pin_runtime; " +
+           "from pathlib import Path; pin_runtime(Path(tempfile.mkdtemp()) / 'msb'); " +
+           "assert os.path.exists(os.environ['MSB_PATH']), 'no bundled msb'; " +
            "print('bundle ok')"],
     { stdio: "inherit", cwd: BUNDLE });
 

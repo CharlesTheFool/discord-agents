@@ -7,6 +7,153 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.0] - 2026-10-19
+
+**Status:** Pre-release (beta). The workshop: each bot gets a sandboxed
+machine of its own. Needs hardware virtualization on the host (see
+Upgrading).
+
+### Added
+- **The workshop.** A Linux microVM per scope (a server, a vaulted channel
+  or thread, a DM), run through microsandbox on the host's hardware
+  virtualization. The bot gets `bash` and a file editor there, with Python,
+  Node, git, ffmpeg and the document libraries, and a `/workspace` that
+  keeps its files between conversations. Files cross as bytes, never
+  through mounts: an attachment the bot fetches lands in `/workspace/inbox`,
+  `send_message` attaches files by their `/workspace` path, and the
+  repository gains `copy_to_workshop` and a `save_output` that takes a
+  workspace path. Each scope can be set to `container` or `off`
+  (`workshop.scopes`), the most specific id winning.
+- **Long work that reports back.** Every command is a job. The turn waits
+  up to three minutes; past that the job carries on in the background (up
+  to six hours, three at a time per scope) and its completion lands as a
+  note in the channel's context and starts a turn of its own, so the bot
+  reports back without being asked. Quiet hours hold that turn, never the
+  note. Jobs survive bot restarts.
+- **A closed network, with an operator's key.** A sandbox reaches only the
+  bot's egress proxy, which allows TLS to package-download hosts, resolves
+  names itself, refuses private addresses and the host's own network,
+  connects to the address it checked, and requires the TLS server name to
+  match. For anything else the bot calls `request_network_access`, which DMs
+  the bot's operators an Allow / Deny prompt; an approved host stays
+  approved for that scope, and a declined one can't be re-asked for a day.
+- **Local skills.** Skills are folders in `skills/`, listed in the prompt
+  and read on request, with their files copied into every workshop at
+  `/skills`. New guides for Word, PowerPoint, Excel and PDF files, written
+  for the workshop's libraries, and two for fiction: `storytelling`
+  (planning and writing with people, a whole channel included) and
+  `fiction-criticism`.
+- **A start gate.** Before logging in, a bot test-boots a VM (three tries,
+  so a registry hiccup doesn't count). If the host can't run one, the bot
+  doesn't start: the dashboard shows **Can't start** with the reason and a
+  **Try again** button, and the supervisor retries every 10 minutes instead
+  of crash-restarting it. On Windows the desktop app offers to turn on the
+  Windows Hypervisor Platform (one administrator prompt, then a restart).
+  `workshop.enabled: false` runs a bot with no execution capability at all,
+  and the dashboard says "workshop off".
+- **Paused updates are visible.** When the app skips a framework update
+  because files were changed locally, the fleet dashboard says so and names
+  the files. (A production install sat four months behind on one edited
+  line before this.)
+
+### Changed
+- **Server-side code execution is gone.** Anthropic's code-execution
+  container, the Skills API and `container_upload` blocks are removed from
+  every request; the workshop replaces them. `api.code_execution` and
+  `skills.include_anthropic_skills` now warn and are ignored.
+- **Attachments are stored by the framework's own id.** Conversation state
+  used to hold the Files API's ids, which expire; it now holds an
+  `attachment_ref` that each request resolves (small PDFs and text files as
+  documents, images inline, anything else a note pointing the bot at
+  `get_attachment`). Files the model never reads as a document are no
+  longer uploaded to the Files API at all. Older states convert on load.
+- **A fetched document also lands in the workshop.** Reading a small PDF
+  wasn't enough to merge, split or fill it.
+- **DMs have no repository.** It never worked there; a DM's `/workspace`
+  is its private drive.
+- **The prompt describes the workshop, low-key,** where the scope runs it,
+  and the code-execution instructions are gone.
+- **Every dependency is pinned to an exact version,** with `microsandbox`
+  added. The app reinstalls dependencies whenever `requirements.txt`
+  differs from the last install that succeeded, so a failed install is
+  retried on the next launch instead of never.
+
+### Security
+- **Threads slipped past vaults in five places.** A thread of a vaulted
+  channel could ask across servers through `ask_prime` and save into the
+  server-visible repository; messages in such threads fed global profiles
+  through both consolidation and induction; and a vaulted thread inside a
+  vaulted channel could write the channel's memory. Every check now goes
+  through the vault enforcer's thread-aware rules.
+- **The global repository listing showed a leftover DM folder.** It now
+  lists server folders only, and the repository refuses DMs outright.
+
+### Fixed
+- **Boot backfill skipped channels, since 0.11.2.** It resumed each channel
+  from its newest stored row, which counted the "came online" marker
+  written at boot. That marker's timestamp has no time zone, so the
+  comparison raised and every channel holding one was skipped; and had it
+  not raised, the resume point would have skipped everything said while
+  the bot was down. Markers no longer count.
+- **Exit codes were lost.** `bot_manager.py spawn` always exited 0, even
+  when configuration validation failed.
+- **The fleet board showed a bot as running right after Start,** with a
+  made-up PID, before the daemon said so. It now asks the daemon.
+
+### Release review
+Two independent reviews (security, correctness) ran over the release
+before it shipped; every finding was traced in the code, and each fix has
+a test that fails without it. The ones worth knowing:
+- **The proxy let a sandbox reach the host's own network over IPv6.** On an
+  IPv6 LAN every device has a global address, so a name pointing at the
+  router or the host itself passed the "public address" check. Addresses on
+  the host and its /64 prefixes are refused now.
+- **An unexpected error in a workshop tool killed the whole turn.** It's a
+  tool result the model sees now; every runtime call is bounded in time and
+  reports a failure the same way.
+- **A scope created while the template was still failing kept the bare
+  image for good.** New scopes now wait while the template retries; a lost
+  template snapshot is rebuilt; old snapshots are cleaned up.
+- **A foreground command whose wait failed was stranded as running,** and
+  the job watcher had races (two wake loops for one channel, a job reported
+  twice at boot).
+- **The editor could silently corrupt text that isn't UTF-8,** and edit a
+  directory or open a multi-gigabyte log; it refuses all three now.
+- **Every model call re-checked every document with the Files API,** and a
+  transient failure there re-uploaded the file and broke the prompt cache.
+  Cached ids are used as they are; an expired one still recovers.
+- Workshop turns get 25 tool-loop iterations instead of 10.
+
+### Upgrading
+- **Virtualization.** The host needs it: on Windows, virtualization on in
+  the firmware plus the Windows Hypervisor Platform feature; on Linux,
+  `/dev/kvm`; in Docker, `--device /dev/kvm`. DEPLOYMENT.md has the steps,
+  and `workshop.enabled: false` is the fallback.
+- **The first start builds the workshop's template** (a minute or two,
+  downloaded through the bot's proxy), once per install.
+- **Take an export before updating** (`python deployment_tool.py export`).
+  Conversation states are converted on load to a form 0.13.x can't read,
+  so rolling back below 0.14.0 means restoring that export.
+- The desktop app ships a new installer; the launcher updates itself.
+
+### Verified
+- Unit suite (about 1,170 tests) and the integration suite against real
+  VMs, including a template rebuild and its old-snapshot cleanup.
+- Live on the test server: a PDF and a QR code built in the workshop and
+  attached (pip through the proxy on the scope's own credential); a
+  200-second command carried past the three-minute ceiling into the
+  background and reported back on its own; a question in another channel
+  answered while it ran; a network approval DMed to the operator; a file
+  written inside a vault absent from the server's workshop; the bot killed
+  mid-job with its VMs left running, the restarted bot re-adopting the job.
+- The update path, rehearsed on a copy of the production install: its
+  installed 0.9.1 updater fast-forwarded it to the release and installed
+  the new dependencies; a failed install was retried by the new launcher; the
+  production bot initialized on the release, passed its test boot, built
+  its template, and loaded and rendered its stored conversations.
+
+---
+
 ## [0.13.1] - 2026-10-18
 
 **Status:** Pre-release (beta). Concurrency, plus fixes.

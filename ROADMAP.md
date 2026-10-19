@@ -70,6 +70,11 @@ stop at 40 tool-loop iterations or 60 minutes with a partial report.
 **Supervisor and app.** A per-bot workshop panel: scopes, sandbox status,
 disk use, jobs, allowlists, pending approvals, reset and wipe.
 
+**Carried over from the 0.14.0 review.** Skills that are only text (the
+fiction guides) offered where the workshop is off, with document skills
+marked as needing it; per-start rotation of scope proxy credentials; larger
+documents readable without the workshop.
+
 ### 0.14.2: Host mode
 
 A third scope setting beside Container and Off: commands run on the
