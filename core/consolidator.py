@@ -614,9 +614,11 @@ class MemoryConsolidator:
         return fingerprint() != at_build
 
     def _vaulted_channel_ids(self, server_id: str) -> list:
+        """Every vaulted channel's id AND its threads' ids: evidence from any
+        of them never reaches a global profile."""
         if not self.vaults or not self.vaults.vaults:
             return []
-        return [v for v in self.vaults.vaults if v != server_id]
+        return self.vaults.excluded_ids(server_id, None)
 
     async def _build_profile_requests(self, server_id: str) -> list:
         if self.vaults and server_id in getattr(self.vaults, "vaults", set()):

@@ -164,9 +164,8 @@ class WorkshopConfig:
     channel or thread, DM) with a shell, an editor and filtered egress."""
     enabled: bool = True
     default_setting: str = "container"
-    # id -> container | off. `off` may name any server, channel or user;
-    # `container` only means something on a scope id (a server, a vaulted
-    # channel or thread, a user for their DM).
+    # id -> container | off, for a server, channel, thread or DM user; the
+    # most specific configured id wins (core/workshop/scopes.setting_for)
     scopes: Dict[str, str] = field(default_factory=dict)
     operators: List[str] = field(default_factory=list)      # user ids; default: the app owner
     allowlist: List[str] = field(default_factory=list)      # hosts added to every scope's preset

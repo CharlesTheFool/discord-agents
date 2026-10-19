@@ -12,6 +12,8 @@ import logging
 import posixpath
 from typing import List, Optional, Tuple
 
+from core.workshop.scopes import Scope
+
 logger = logging.getLogger(__name__)
 
 # Memory tool commands that write
@@ -73,9 +75,42 @@ class VaultEnforcer:
         return bool(excluded & content)
 
     def blocks_repository_save(self, server_id, channel_id) -> bool:
-        """Saving from a vaulted CHANNEL into the server-visible repo would leak.
-        A vaulted SERVER's repo is inside the vault - fine."""
-        return str(channel_id or "") in self.vaults
+        """Saving from a vaulted CHANNEL (or a thread of one) into the
+        server-visible repo would leak. A vaulted SERVER's repo is inside the
+        vault - fine."""
+        return bool((self._context_ids(server_id, channel_id) - {str(server_id)}) & self.vaults)
+
+    def _thread_parent(self, channel_id, parent_id=None) -> Optional[str]:
+        if parent_id:
+            return str(parent_id)
+        if channel_id and self.thread_parent_resolver:
+            return self.thread_parent_resolver(str(channel_id))
+        return None
+
+    def innermost_vault(self, server_id, channel_id, parent_id=None) -> Optional[str]:
+        """The vault this context lives in, innermost first: a vaulted thread,
+        then its vaulted parent channel, then a vaulted server."""
+        for place in (channel_id, self._thread_parent(channel_id, parent_id), server_id):
+            if place and str(place) in self.vaults:
+                return str(place)
+        return None
+
+    def resolve_scope(self, server_id, channel_id, *, parent_id=None,
+                      is_thread: bool = False) -> Optional[Scope]:
+        """The workshop scope of a conversation (spec 5.2). Callers that hold
+        the live channel pass its thread parent: a thread whose parent can't
+        be resolved gets no scope at all, since falling back to the server
+        would put a vaulted channel's thread in the server's sandbox."""
+        if server_id in (None, "DM"):
+            partner = self.dm_partner_resolver(str(channel_id)) if self.dm_partner_resolver else None
+            return Scope("dm", str(partner)) if partner else Scope("dm-channel", str(channel_id))
+        parent = self._thread_parent(channel_id, parent_id)
+        if is_thread and not parent:
+            return None
+        for place in (channel_id, parent):
+            if place and str(place) in self.vaults:
+                return Scope("vault", str(place))
+        return Scope("server", str(server_id))
 
     def _check_dm_memory(self, path: str, command: str,
                          server_id, channel_id,
@@ -180,8 +215,8 @@ class VaultEnforcer:
         innermost vault wins (a vaulted channel in a vaulted server keeps its
         notes in the channel's tree, out of the rest of the server's reach).
         True when the context is in no vault at all."""
-        inside = self.vaults & self._context_ids(server_id, channel_id)
-        if not inside:
+        innermost = self.innermost_vault(server_id, channel_id)
+        if innermost is None:
             return True
         # parts: ['', 'memories', bot, 'servers', sid, ...rest]
         if len(parts) < 6 or parts[3] != "servers" or parts[4] != str(server_id):
@@ -189,13 +224,15 @@ class VaultEnforcer:
         rest = parts[5:]
         if rest == ["followups.json"]:
             return True   # follow-ups are server-level by design (SECURITY.md residual)
-        channel_vaults = inside - {str(server_id)}
-        if not channel_vaults:
+        if innermost == str(server_id):
             return True   # a vaulted server: its whole tree
         if rest[0] != "channels" or len(rest) < 2:
             return False
         names = [n.replace(".md", "").replace("_stats.json", "") for n in rest[1:]]
-        # channels/{C}[.md|_stats.json|/...], or a vaulted thread's
-        # channels/{parent}/threads/{T}[.md|/...]
-        return (names[0] in channel_vaults
-                or (len(names) >= 3 and names[1] == "threads" and names[2] in channel_vaults))
+        parent = self._thread_parent(channel_id)
+        if innermost == str(channel_id) and parent:
+            # a vaulted thread: channels/{parent}/threads/{T}[.md|/...] only,
+            # even when its parent channel is a vault too
+            return names[:3] == [parent, "threads", innermost]
+        # a vaulted channel: channels/{C}[.md|_stats.json|/...]
+        return names[0] == innermost

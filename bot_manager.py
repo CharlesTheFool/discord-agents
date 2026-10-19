@@ -340,12 +340,21 @@ async def _run_consolidation(bot_id: str, server_id: str, force: bool):
     user_cache = UserCache(Path("persistence") / f"{bot_id}_users.db")
     await user_cache.initialize()
     try:
+        memory_manager = MemoryManager(bot_id, Path("memories"))
+        memory_manager.thread_parent_resolver = memory.thread_parent
+        memory_manager.dm_partner_resolver = user_cache.dm_partner
+        # The same resolvers the running bot wires: without them a vaulted
+        # channel's threads would look like ordinary channels
+        vaults = VaultEnforcer(config.vaults)
+        vaults.thread_parent_resolver = memory.thread_parent
+        vaults.threads_of = memory.threads_of
+        vaults.dm_partner_resolver = user_cache.dm_partner
         consolidator = MemoryConsolidator(
             bot_id=bot_id, config=config, message_memory=memory,
-            memory_manager=MemoryManager(bot_id, Path("memories")),
+            memory_manager=memory_manager,
             user_cache=user_cache,
             driver=build_driver(config.api),
-            vaults=VaultEnforcer(config.vaults),
+            vaults=vaults,
         )
         report = await consolidator.consolidate_server(server_id, force=force)
         print(json.dumps(report, indent=2, default=str))

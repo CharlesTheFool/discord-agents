@@ -73,11 +73,11 @@ JUDGMENT_SCHEMA = {
 class AskPrimeExecutor:
     """Executes ask_prime calls; constructed in on_ready (needs the client)."""
 
-    def __init__(self, driver, model: str, vault_ids, watch_manager,
+    def __init__(self, driver, model: str, vaults, watch_manager,
                  agentic_engine, discord_client, message_memory=None):
         self.driver = driver
         self.model = model
-        self.vaults = {str(v) for v in (vault_ids or [])}
+        self.vaults = vaults  # the bot's VaultEnforcer (thread parents included)
         self.watch_manager = watch_manager
         self.agentic_engine = agentic_engine
         self.discord_client = discord_client
@@ -149,9 +149,11 @@ class AskPrimeExecutor:
             return ("That target is this server - just say it here yourself, "
                     "no Prime needed.")
 
-        # 3. Mechanical vault gates: nothing crosses a vault boundary, either way
-        if {str(guild.id), str(channel.id)} & self.vaults or \
-                {str(current_server_id), str(current_channel_id)} & self.vaults:
+        # 3. Mechanical vault gates: nothing crosses a vault boundary, either
+        # way. A thread is inside its parent's vault; targets are text
+        # channels, so they need no thread hop.
+        if {str(guild.id), str(channel.id)} & self.vaults.vaults or \
+                self.vaults.is_inside(current_server_id, current_channel_id):
             return "Can't do that one, sorry - that's a door that stays closed."
 
         # 4. Daily caps, before any model spend

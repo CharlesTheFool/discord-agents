@@ -209,7 +209,7 @@ class ServerInductor:
             await self.message_memory.set_episode_watermark(
                 cid, spans[cid][-1].message_id)
             # Vault evidence never reaches global files
-            if not server_vaulted and cid not in self.vaults.vaults:
+            if not server_vaulted and not self.vaults.is_inside(server_id, cid):
                 for data in payloads:
                     for entry in data.get("user_observations", []):
                         uid = str(entry.get("user_id", ""))

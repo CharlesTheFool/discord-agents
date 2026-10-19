@@ -424,7 +424,7 @@ class DiscordClient(discord.Client):
             self.reactive_engine.ask_prime_executor = AskPrimeExecutor(
                 driver=self.reactive_engine.driver,
                 model=self.config.api.model,
-                vault_ids=self.config.vaults,
+                vaults=self.reactive_engine.vaults,
                 watch_manager=self.agentic_engine.watch_manager,
                 agentic_engine=self.agentic_engine,
                 discord_client=self,
