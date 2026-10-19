@@ -165,7 +165,8 @@ the desktop app belong to the final application release.
   1.0. The design is archived (local faster-whisper with VAD, per-utterance
   transcription over Discord's per-user streams) and waits for a supported
   surface.
-- **Richer presence:** events, polls, scheduled activities.
+- **Richer presence:** events, polls, scheduled activities, deleting its
+  own messages.
 - **Daily web-search quota.** Dormant; revisit only if the per-request cap
   proves insufficient.
 - **Cheap scan pre-gate.** A small classifier deciding respond-or-silent
