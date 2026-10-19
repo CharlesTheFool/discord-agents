@@ -67,10 +67,14 @@ def find_orphan_pids(bot_id: str, owned: Optional[List[int]] = None) -> List[int
 
 
 def kill_pids(pids: List[int]) -> None:
+    """Kill exactly these processes, never their trees: the bot's sandbox
+    VMMs are its children and must outlive it, as they do a normal stop
+    (spec 5.5). find_orphan_pids lists the venv shim and its interpreter
+    separately, so each gets its own kill."""
     for pid in pids:
         try:
             if sys.platform == "win32":
-                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"],
                                capture_output=True, timeout=15)
             else:
                 import os

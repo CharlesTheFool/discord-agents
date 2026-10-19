@@ -34,6 +34,7 @@ from .integrations import (add_skill, apply_skills, load_mcp_servers,
 from .mcp_health import MCPHealthPoller
 from .paths import PathJailError, SupervisorRoot
 from .process_manager import ProcessManager
+from .sandboxes import stop_sandboxes
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,7 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             "tokens_today": tokens,
             "cost_today_usd": round(cost, 4),
             "cost_complete": cost_complete,
+            "app": data.app_state(),   # the desktop app's update report (fleet notices)
             "time": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -240,7 +242,12 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
 
     async def stop_bot(request):
         bot_id = bot_or_404(request)
-        return json_response(await pm.stop(bot_id))
+        status = await pm.stop(bot_id)
+        # Only the operator's Stop ends the workshop: restart, the integrations
+        # auto-restart and daemon shutdown share pm.stop and leave the bot's
+        # sandboxes (and their jobs) running (spec 5.5)
+        await stop_sandboxes(root, bot_id)
+        return json_response(status)
 
     async def restart_bot(request):
         bot_id = bot_or_404(request)
