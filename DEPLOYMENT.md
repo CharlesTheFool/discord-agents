@@ -35,6 +35,37 @@ python -m venv .venv                   # own venv: dev dependency churn can't br
 Linux is the same flow; the README's systemd, PM2 and Docker sections cover
 supervision.
 
+## The workshop needs hardware virtualization (0.14)
+
+Each bot runs its commands in microVMs (see [SECURITY.md](SECURITY.md)), so
+the host must be able to run a VM. Before a bot logs in to Discord it
+test-boots one; if that fails, the bot doesn't start, the dashboard shows
+**Can't start** with the reason, and **Try again** reruns the check. What
+the host needs:
+
+- **Windows:** virtualization switched on in the PC's firmware (BIOS/UEFI;
+  often called Intel VT-x, AMD-V or SVM), and the **Windows Hypervisor
+  Platform** feature. The desktop app offers to turn the feature on (an
+  administrator prompt, then a restart). By hand, from an elevated prompt:
+  `dism /online /enable-feature /featurename:HypervisorPlatform /all`, then
+  restart.
+- **Linux:** `/dev/kvm` present, and the bot's user in the `kvm` group. On
+  a VPS that means a plan with nested virtualization.
+- **Docker:** pass the device through: `docker run --device /dev/kvm ...`.
+- **macOS (Apple Silicon):** nothing to install.
+
+The first start also builds the workshop's template: a Debian image with
+Python, Node, git, ffmpeg and the document libraries, downloaded through the
+bot's own egress proxy. It takes a minute or two and happens once per
+install; every scope's sandbox starts from it in seconds. The runtime's
+files live in `~/.discord-agents/msb`. Budget host disk: each scope can
+grow to 20 GiB (a 10 GiB workspace and a 10 GiB root filesystem), and a
+bot refuses new sandbox work when the drive has less than 5 GiB free.
+
+If a host can't run VMs at all, `workshop.enabled: false` in the bot's
+config is the last resort: the bot starts with no execution capability,
+and the dashboard shows "workshop off".
+
 ### One identity per install
 
 Never let two installs share a Discord bot token; both instances would
@@ -66,13 +97,22 @@ git pull                                          # main = releases only
 # restart the bot
 ```
 
+Dependencies are pinned to exact versions in `requirements.txt`, so a
+production venv runs what the release was tested with.
+
 ## Rolling back
 
-A checkout never touches data, so rolling back is a checkout, with one
-precaution. Since 0.13.0 every saved assistant message carries a `model`
-stamp; releases older than 0.13.0 do not know the field and send it to the
-API, which refuses the whole request. Strip the stamps before going below
-0.13.0.
+A checkout never touches data, so rolling back is a checkout, with two
+precautions:
+
+- **Below 0.14.0, restore an export.** 0.14.0 stores attachments in
+  conversation state by the framework's own id and converts older states
+  on load; 0.13.x can't read the converted form. Take a
+  `deployment_tool.py export` before updating to 0.14, and restore it if
+  you roll back below 0.14.0.
+- **Below 0.13.0, strip the model stamps.** Since 0.13.0 every saved
+  assistant message carries a `model` stamp; older releases send it to the
+  API, which refuses the whole request.
 
 ```powershell
 # stop the bot first
@@ -96,11 +136,13 @@ never touched.
 **The framework** catches up on its own. Because `main` advances only at
 releases, the app fast-forwards its git checkout to `origin/main` before
 starting the supervisor daemon, so the daemon always boots on the latest
-release. `pip install` runs only when `requirements.txt` changed in the
-incoming range. The updater is deliberately conservative: it acts only on a
-git checkout whose HEAD is on `main` with a clean tracked tree. A dev
-workspace on another branch, or an install with local edits, is left alone,
-and the manual `git pull` above remains the fallback. The self-contained
+release. `pip install` runs whenever `requirements.txt` differs from the
+last install that succeeded, so a failed install is retried on the next
+launch. The updater is deliberately conservative: it acts only on a git
+checkout whose HEAD is on `main` with a clean tracked tree. A dev workspace
+on another branch, or an install with local edits, is left alone; since
+0.14.0 the fleet dashboard says when updates are paused and names the
+locally changed files. The manual `git pull` above remains the fallback. The self-contained
 installer carries the framework inside its bundle and updates it with the
 launcher instead.
 

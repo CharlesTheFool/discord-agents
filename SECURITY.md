@@ -4,8 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.13.x  | Yes       |
-| < 0.13  | No        |
+| 0.14.x  | Yes       |
+| < 0.14  | No        |
 
 Beta versions receive security patches on a best-effort basis. A formal
 support policy arrives with 1.0.
@@ -136,13 +136,92 @@ the API reports whether a key is set and never returns its value.
   id, which files attached), so the model cannot claim an attachment that
   never went out.
 
-### Code execution
+### The workshop (0.14)
 
-In 0.13.x, code execution and skills run in Anthropic's server-side
-container. Model-written code never runs on your host, and the container is
-air-gapped: no package installs, no network. Version 0.14 moves execution
-into local microVMs with a default-deny egress policy; that design is in
-[ROADMAP.md](ROADMAP.md) and nothing in it is shipped yet.
+Since 0.14.0 the bot runs commands in a workshop: a Linux microVM per scope
+(a server, a vaulted channel or thread, a DM), started through
+[microsandbox](https://github.com/microsandbox/microsandbox) on the host's
+hardware virtualization. Members of a server can ask the bot to run
+anything there, and content an outsider planted can steer it too, so the
+boundaries are the VM and the network policy, never the model's judgment.
+
+**Isolation.**
+
+- Each scope is its own VM with its own disk. A vault's workshop is
+  separate from its server's, and a DM's from everything else. Commands
+  run under the runtime's restricted profile (no new privileges; mount
+  refused), with 2 CPUs, 2 GiB of memory, a 10 GiB `/workspace` and a
+  10 GiB root filesystem. Both disks are fixed-size images, so filling one
+  fails the guest's writes, never the host's. A free-space floor on the host drive
+  refuses new work below 5 GiB.
+- Nothing on the host is mounted into a sandbox. Files cross as bytes
+  through the bot's own reads and writes: a fetched attachment into
+  `/workspace/inbox`, a file attached to a message by its path, a file
+  copied to or from the repository. Symlinks resolve inside the guest. The
+  bot's skills are copied in at `/skills`.
+- The sandbox holds no secrets. API keys, Discord tokens and the
+  operator's own logins (git credential managers, `gh` tokens, browser
+  sessions) stay on the host, and the workshop never borrows them.
+- A command runs at most six hours, enforced by the runtime. A scope runs
+  at most three background jobs at once, and at most four sandboxes run
+  per bot, fewer when the host's free commit memory can't hold another
+  (4 GiB stays reserved for the host).
+
+**Egress.** A sandbox's network policy denies everything, DNS included,
+except TCP to one port on the host: the bot's egress proxy. The proxy:
+
+- accepts only `CONNECT` to port 443 (no plain HTTP, no SSH, no SMTP);
+- identifies the scope by a random per-scope credential, so one scope can
+  never use another's allowlist;
+- allows exact host names only: a download preset (`pypi.org`,
+  `files.pythonhosted.org`, `codeload.github.com`,
+  `objects.githubusercontent.com`, `deb.debian.org`,
+  `security.debian.org`) plus hosts an operator approved for that scope;
+- resolves names itself, refuses any address that isn't globally routable
+  (private, loopback, link-local, multicast, and the IPv6 forms that wrap
+  them: IPv4-mapped, NAT64, 6to4, Teredo), and connects to the exact address
+  it checked, so DNS rebinding can't redirect a tunnel;
+- requires the TLS ClientHello's SNI to name the host the `CONNECT` asked
+  for.
+
+`github.com` and `registry.npmjs.org` are not in the preset: both accept
+uploads, so each needs an approval. `request_network_access` DMs the
+bot's operators: the ids in `workshop.operators`, or else the Discord
+application's owner (for a team-owned app, the team's owner and admins). The DM shows the host and where the request came
+from; the model's stated reason sits behind a Details button, so text a
+model wrote never lands in the DM's preview. The first decision wins, and a
+request expires after 24 hours. An operator can also open a scope to any
+public host, still port 443 only.
+
+**Residuals**, stated as they are:
+
+- **Approved upload hosts.** Once `github.com` or npm is approved for a
+  scope, a sandbox there can push or publish with credentials an injected
+  page hands it (it has none of yours). Restricting methods needs TLS
+  interception, which the proxy doesn't do.
+- **Fronting inside TLS.** The proxy checks the `CONNECT` host and the SNI,
+  but not the HTTP `Host` header inside the tunnel. On a CDN edge shared by
+  many tenants, a request could name another tenant behind an allowed name.
+  GitHub's edge was checked and refuses this across the preset's hosts; the
+  general case stays open until TLS interception.
+- **The runtime's share.** microsandbox mounts each sandbox's own runtime
+  folder (its control files, no operator data) read-write into the guest at
+  `/.msb`. It is per sandbox. On Windows a symlink the guest makes there
+  lands on the host as a plain file holding its target's path; on macOS and
+  Linux it may be a real link.
+- **No process cap.** The guest runs as root, which a per-process limit
+  doesn't bind, and the restricted profile doesn't delegate the pids
+  controller. A fork bomb is contained by its VM's CPU and memory caps and
+  takes down only its own sandbox.
+- **Disk only grows.** Deleting files inside a sandbox doesn't return host
+  disk (`fstrim` is refused under the restricted profile), so a scope's host
+  footprint ratchets up to its caps, 20 GiB at most.
+- **The hypervisor is the boundary.** The VM monitor runs as the operator's
+  user. A VM escape would land with that user's privileges, which is one
+  more reason to run the app under an account that isn't an administrator.
+
+`workshop.enabled: false` turns all of it off: the bot then has no
+execution capability at all, and the dashboard says so.
 
 ## What the model is still trusted with
 
@@ -151,6 +230,10 @@ into local microVMs with a default-deny egress policy; that design is in
   server, or to repeat what they said there, is governed by a mandatory
   prompt section, and a successful injection could make the bot cross that
   line. Put anything that must not travel in a vault.
+- **What runs in the workshop.** Inside a scope's VM the model runs what it
+  chooses, so an injected instruction can run code there. What bounds it is
+  the VM and the proxy above: the scope's own files, the allowed hosts, no
+  secrets.
 - **External content.** Fetched pages, attachments and MCP tool results
   reach the model as text. Citations show where search results came from;
   review them before trusting a claim. Report patterns of injected behavior
@@ -186,6 +269,8 @@ remembering.
   deployment_tool.py export` produces a portable zip).
 - Separate keys for development and production, and separate bot tokens for
   separate installs.
+- Approve network hosts per scope and sparingly; open internet only for
+  scopes whose members you trust with it.
 
 ## Acknowledgments
 

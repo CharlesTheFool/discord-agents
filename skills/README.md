@@ -1,80 +1,71 @@
-# Skills Directory
+# Skills
 
-This directory is for **Skills** auto-discovery. Skills are modular instruction packages that teach Claude specialized tasks.
+A skill is a folder here with a `SKILL.md`: a guide for one kind of work,
+plus any scripts, templates or references it needs. Where a bot's workshop
+runs, its system prompt lists every skill by name and description, and the
+bot reads a guide with `request_skill` when one fits what it's doing. The
+whole folder is copied into each workshop at `/skills/<name>/`, so its
+scripts run there and its references can be opened there. Nothing is
+uploaded anywhere.
 
-## Supported Formats
-
-Skills can be added in two formats:
-
-### 1. Folder-based (recommended)
-
-Create a subdirectory containing a `SKILL.md` file:
+## Layout
 
 ```
 skills/
   my-skill/
-    SKILL.md          # Required
-    template.md       # Optional supporting files
-    examples/
-      sample.md
+    SKILL.md          # required
+    scripts/          # optional: anything the guide points at
+    references/
 ```
 
-### 2. Zip archive
-
-Drop a `.zip` file containing a `SKILL.md`:
-
-```
-skills/
-  my-skill.zip        # Contains SKILL.md + supporting files
-```
-
-## SKILL.md Format
-
-Every skill needs a `SKILL.md` with YAML frontmatter:
+`SKILL.md` starts with YAML frontmatter:
 
 ```markdown
 ---
-name: my-skill-name
-description: Brief description of what this skill does
+name: my-skill
+description: One or two sentences on what it's for and when to reach for it.
 ---
 
-# Skill Instructions
+# My skill
 
-[Detailed instructions for Claude to follow when using this skill]
+The instructions the bot reads when it asks for this skill.
 ```
 
-## How It Works
+Keep the description short: every skill's description rides in the cached
+system prompt of every conversation where the workshop runs. The body is
+returned only on request, and long material belongs in `references/`, which
+the body can point at by its workshop path (`/skills/my-skill/references/...`).
 
-1. On startup, the bot scans this directory for `.zip` files and folders containing `SKILL.md`
-2. Each skill is hashed (SHA256) for change detection
-3. New or changed skills are uploaded to Anthropic's API
-4. Results are cached in `.skills_cache.json` to prevent re-uploading unchanged skills
-5. Folder-based skills are automatically zipped in memory before upload
+A zip someone sends you needs unpacking into a folder first. If unzipping
+adds a wrapper folder (`skills/my-skill/my-skill/SKILL.md`), that one level
+is tolerated.
 
-## Default Skills
+## What ships
 
-Skills committed to this directory in the repository ship as defaults with the framework. To add a default skill, create a folder here with a `SKILL.md` and commit it.
+| Skill | For |
+| --- | --- |
+| `docx` | Word documents with python-docx |
+| `pptx` | PowerPoint decks with python-pptx |
+| `xlsx` | Spreadsheets with openpyxl and pandas |
+| `pdf` | Reading and reshaping PDFs with pypdf; making them with reportlab |
+| `storytelling` | Planning and writing fiction with people, one author or a whole channel |
+| `fiction-criticism` | Notes on a draft, reviews, and a cold read of the bot's own fiction |
 
-## Built-in Anthropic Skills
+The document guides use only what the workshop image ships, and each ends
+the same way: save into `/workspace`, attach with `send_message`, and copy
+it onto the repository if the server should keep it.
 
-The following Anthropic skills are automatically available (no files needed):
-- `xlsx`: Excel spreadsheet creation/editing
-- `pptx`: PowerPoint presentation creation
-- `docx`: Word document creation/editing
-- `pdf`: PDF manipulation
+## Preloading and reloading
 
-## Custom Skills
+`skills.default_skills` in a bot's config lists skills whose instructions
+are preloaded into the system prompt instead of fetched on request. Leave it
+empty unless a bot uses a skill in most conversations.
 
-You can create your own skills or download them from:
-- [Anthropic Skills Repository](https://github.com/anthropics/skills)
-- [Agent Skills Specification](https://agentskills.io/)
+Adding, editing or removing a skill takes effect on the next request; no
+restart is needed. A workshop picks up the new files the next time the bot
+uses it.
 
-## Reloading Skills
+## Trust
 
-Skills are scanned on bot startup. To pick up new skills, restart the bot.
-
-## Notes
-
-- Skills require the code execution tool to be enabled
-- Cache is stored in `.skills_cache.json` in the project root
-- Only install skills from trusted sources
+A skill is instructions the bot follows and code it runs. Install skills
+only from sources you trust, and read them first.

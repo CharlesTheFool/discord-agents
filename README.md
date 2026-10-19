@@ -1,9 +1,9 @@
 # Discord Agents
 
-**Version:** 0.13.1 (Pre-release Beta)
+**Version:** 0.14.0 (Pre-release Beta)
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Discord.py](https://img.shields.io/badge/discord.py-2.3+-blue.svg)](https://discordpy.readthedocs.io/)
+[![Discord.py](https://img.shields.io/badge/discord.py-2.7-blue.svg)](https://discordpy.readthedocs.io/)
 [![Security](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![Status](https://img.shields.io/badge/status-beta-yellow.svg)](CHANGELOG.md)
 
@@ -77,15 +77,15 @@ with its origin. A DM is a conversation with the Prime itself.
 ### Surfaces and capabilities
 
 Text channels, threads (active and archived, with memory nested under the
-parent channel), voice-channel text chats, and DMs. Image attachments are
-understood in context. Web search runs as a server tool with citations,
+parent channel), voice-channel text chats, and DMs. Images and small PDFs
+are read in context. Web search runs as a server tool with citations,
 capped per request. Remote MCP servers can be connected; their tools are
-discovered at startup. Skills (`.zip` packages in `skills/`, plus
-Anthropic's document skills for xlsx, pptx, docx and pdf) run with code
-execution in Anthropic's server-side container, not on your host, and files
-produced there attach to the bot's reply. That container is air-gapped: no
-pip, no network. Version 0.14 replaces it with a local sandbox, described in
-[ROADMAP.md](ROADMAP.md).
+discovered at startup. Each bot has a **workshop**, a sandboxed Linux
+machine of its own per server (described below), where it can run code,
+build documents and work on files. **Skills** are folders in `skills/`: a
+`SKILL.md` guide plus any scripts. The bot sees a catalog and reads a guide
+when one fits. It ships with guides for Word, PowerPoint, Excel and PDF
+files, and two for fiction (writing it with people, and critiquing it).
 
 ### Operator surface
 
@@ -132,7 +132,8 @@ the empty-after-tools reprompt) therefore covers every path.
 
 Anthropic's prompt cache is a prefix cache, so anything volatile upstream
 invalidates everything downstream. The request is laid out around that. One
-cached system block holds personality, memory and the skills catalog.
+cached system block holds personality, memory and, where the workshop
+runs, its short description and the skills catalog.
 Messages are rebuilt from conversation state with a cache breakpoint on the
 last stable block. Everything per-request (timestamp, channel and user line,
 attachment index, repository manifest, recent-message id map) rides a
@@ -177,10 +178,43 @@ The bot posts through a `send_message` tool rather than only through its
 captured final text. Each call is one Discord message, and the tool result
 reports ground truth (message id, which files attached), so the model
 cannot sustain a false belief about its own output. Reply anchoring,
-multi-message turns and attachments by filename ride the same call. Plain
+multi-message turns and files from the workshop, attached by path, ride the
+same call. Plain
 final text still posts too, except right after a `send_message` call: that
 is the send-then-restate double post, so it is held back, never persisted,
 and counted on the turn's event.
+
+### The workshop
+
+Since 0.14.0 a bot works in a microVM per scope (a server, a vaulted
+channel or thread, a DM), started through
+[microsandbox](https://github.com/microsandbox/microsandbox) on the host's
+hardware virtualization. It gets a shell and a file editor there, with
+Python, Node, git, ffmpeg and the document libraries, a `/workspace` that
+keeps its files between conversations, and its skills at `/skills`. Files
+cross as bytes, never through mounts: an attachment someone shares lands in
+`/workspace/inbox` when the bot fetches it, and what the bot makes goes back
+to Discord by path through `send_message`, or onto the server's repository.
+
+- **Long work runs in the background.** Every command is a job. The turn
+  waits up to three minutes, then the job carries on, and when it finishes a
+  note lands in the channel's context and starts a turn of its own, so the
+  bot reports back unprompted. Jobs survive bot restarts.
+- **The network is closed by default.** A sandbox can reach one thing: the
+  bot's egress proxy on the host, which allows TLS to an exact-host list
+  (package downloads), resolves names itself, refuses private addresses,
+  and checks the TLS server name against the host asked for. Anything else
+  is a `request_network_access` call that DMs the bot's operators an
+  Allow / Deny prompt.
+- **Nothing secret is inside.** API keys, tokens and the operator's own
+  logins stay on the host.
+- **The start is gated.** A bot test-boots a VM before logging in. A host
+  without virtualization gets a plain reason on the dashboard (and on
+  Windows, an offer to turn the feature on) instead of a crash loop.
+
+It replaced Anthropic's server-side code-execution container, which had no
+network and kept nothing between turns. [SECURITY.md](SECURITY.md) has the
+full model, residuals included.
 
 ### Concurrency
 
@@ -208,6 +242,9 @@ press Start. Everything below is the developer path.
 - Python 3.10 or newer.
 - A Discord application with a bot user and **Message Content Intent**
   enabled ([developer portal](https://discord.com/developers/applications)).
+- Hardware virtualization for the workshop: on Windows the Windows
+  Hypervisor Platform feature, on Linux `/dev/kvm`. [DEPLOYMENT.md](DEPLOYMENT.md)
+  has the details per platform.
 - An Anthropic API key ([console](https://console.anthropic.com/)). The
   default model is `claude-sonnet-5`. The model catalog in
   `core/model/catalog.py` records what each model supports, and startup
@@ -260,8 +297,9 @@ personality:
 python bot_manager.py spawn alpha
 ```
 
-The bot connects, backfills message history in the background, starts its
-hourly loop, and answers @mentions.
+The bot test-boots its workshop, connects, backfills message history in the
+background, starts its hourly loop, and answers @mentions. The first start
+also builds the workshop's template image, which takes a minute or two.
 
 ### 5. Dashboard (optional)
 
@@ -298,6 +336,12 @@ api:
   effort: "medium"              # optional cost/depth dial: low | medium | high | max
 
 vaults: []                      # channel or server IDs whose content never leaves them
+
+workshop:
+  enabled: true
+  default_setting: container    # container | off, per scope below
+  scopes: {}                    # server, channel, thread or DM-user id -> container | off
+  allowlist: []                 # extra hosts every scope may reach
 ```
 
 `validate()` runs at startup and rejects bad presets, `context_messages`
@@ -354,8 +398,10 @@ CMD ["python3", "bot_manager.py", "spawn", "alpha"]
 
 ```bash
 docker build -t discord-agent .
-docker run -d --name bot --env-file .env discord-agent
+docker run -d --name bot --device /dev/kvm --env-file .env discord-agent
 ```
+
+`--device /dev/kvm` gives the workshop its hypervisor.
 
 Mount `persistence/`, `memories/`, `bots/` and `repository/` as volumes if
 the container is meant to keep its memory across rebuilds.
@@ -383,8 +429,10 @@ The full policy, including how to report a vulnerability, is in
 - Rate limits are per channel with preset tiers. After five consecutive
   ignored messages the bot goes quiet in that channel for half an hour;
   @mentions still get answered.
-- Web search is capped per request. Code execution runs in Anthropic's
-  server-side container, not on your host.
+- Code runs in a microVM per scope with no host mounts and no secrets
+  inside; its network reaches only an allowlist, through the bot's own
+  proxy, and every other host needs an operator's approval.
+- Web search is capped per request.
 - Deleting a Discord message purges it from the bot's storage and
   attachment pipeline, including messages older than the running process.
 - The dashboard API requires a per-install token and refuses foreign `Host`
@@ -413,17 +461,18 @@ The full policy, including how to report a vulnerability, is in
 
 ## Status
 
-0.13.0 and 0.13.1 are the first two releases of the plan in
-[ROADMAP.md](ROADMAP.md): the model layer landed alone so that the request
-bytes could be compared with nothing else changing, then per-channel
-concurrency and three fixes. Next is 0.14, the workshop: a sandboxed,
-per-scope development environment with background jobs and workers.
+0.14.0 is the workshop: the bot's own sandboxed machine per scope, with
+background jobs that report back and a network that is closed unless an
+operator opens it. It follows 0.13.0 and 0.13.1, where the model layer
+landed alone so the request bytes could be compared with nothing else
+changing. Next are projects and workers (0.14.1), then a Host mode for
+trusted single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
 
-The codebase is about thirty core modules plus the supervisor package, with
-about 800 unit tests. Every release cycle also runs live scenario campaigns
-on a real Discord server, because the wire-level bugs that matter most do
-not reproduce under mocks; the [CHANGELOG](CHANGELOG.md) records what each
-campaign found.
+The codebase is about fifty core modules plus the supervisor package, with
+about 1,100 unit tests and an integration suite that boots real VMs. Every
+release cycle also runs live scenario campaigns on a real Discord server,
+because the wire-level bugs that matter most do not reproduce under mocks;
+the [CHANGELOG](CHANGELOG.md) records what each campaign found.
 
 ---
 
