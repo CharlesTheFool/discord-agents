@@ -270,6 +270,11 @@ class DiscordClient(discord.Client):
             await self._run_memory_command(interaction, "feedback", text)
 
         self.tree.add_command(memory_group)
+
+        # Workshop network approvals (0.14): buttons on operator DMs keep
+        # working across restarts - discord.py routes any matching custom_id
+        from core.workshop.approvals import ApprovalButton
+        self.add_dynamic_items(ApprovalButton)
         try:
             await self.tree.sync()
             logger.info("Slash commands synced (/memory, DM-only)")
@@ -410,6 +415,23 @@ class DiscordClient(discord.Client):
             self.reactive_engine.repository_manager.guild_name_resolver = (
                 lambda gid: self.get_guild(int(gid)).name
                 if gid.isdigit() and self.get_guild(int(gid)) else None)
+
+        # Workshop approvals (0.14): once, after the engine's job watcher exists
+        engine = self.reactive_engine
+        if engine.workshop is not None and engine.job_watcher is not None and engine.approvals is None:
+            from core.workshop.approvals import ApprovalButton, Approvals
+            from core.workshop.notes import ContextNoteWriter
+            engine.approvals = Approvals(
+                engine.workshop, self,
+                ContextNoteWriter(engine.conversation_state_manager, engine.channel_locks),
+                engine.job_watcher.request_turn, self.config,
+                register_dm=engine._register_dm_surface)
+            ApprovalButton.controller = engine.approvals
+            try:
+                await engine.approvals.resolve_operators()
+            except Exception as e:
+                logger.error(f"Couldn't resolve the workshop's operators: {e}")
+            engine.approvals.start()
 
         # Watches inject relay notes into conversation states (v0.9); the
         # state manager lives on the reactive engine after async_initialize

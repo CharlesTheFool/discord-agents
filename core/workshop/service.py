@@ -170,11 +170,15 @@ class Workshop:
         expected = self.state.data["credentials"][scope_key]["password"]
         if not hmac.compare_digest(password.encode(), expected.encode()):
             return None
+        allow, open_internet = self.allowed(scope_key)
+        return EgressGrant(scope_key, allow, open_internet=open_internet)
+
+    def allowed(self, scope_key: str):
+        """(exact hosts this scope may reach, whether it is open-internet)."""
         scope_id = scope_key.split(":", 1)[1]
         allow = {*WORKSHOP_DOWNLOAD_PRESET, *self.config.workshop.allowlist,
                  *self.state.approved_hosts(scope_key)}
-        return EgressGrant(scope_key, frozenset(allow),
-                           open_internet=scope_id in self.config.workshop.open_internet)
+        return frozenset(allow), scope_id in self.config.workshop.open_internet
 
     def exec_env(self, scope: Scope) -> Dict[str, str]:
         """What every command in this scope carries: its own proxy credential."""

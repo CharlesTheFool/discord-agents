@@ -202,6 +202,7 @@ class ReactiveEngine:
         # starts in async_initialize, once conversation state exists
         self.workshop = None
         self.job_watcher = None
+        self.approvals = None      # network approvals, wired in on_ready (needs the client)
 
         # Initialize v0.5.0 managers
         # MCP Manager
@@ -350,7 +351,9 @@ class ReactiveEngine:
                 self.attachment_manager = None  # Disable on failure
                 self.repository_manager = None
 
-        if self.workshop is not None and self.conversation_state_manager:
+        # once: on_ready runs again after a reconnect, and a second watcher
+        # would follow the same jobs twice
+        if self.workshop is not None and self.conversation_state_manager and self.job_watcher is None:
             from core.workshop.notes import ContextNoteWriter
             from core.workshop.watcher import JobWatcher
             self.job_watcher = JobWatcher(
