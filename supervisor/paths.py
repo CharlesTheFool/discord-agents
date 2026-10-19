@@ -56,6 +56,11 @@ class SupervisorRoot:
     def engagement_stats(self, bot_id: str) -> Path:
         return self.persistence_dir() / f"{bot_id}_engagement_stats.json"
 
+    def app_state(self) -> Path:
+        """What the desktop app reports: its last framework update, the
+        dependency install, a pending restart (app/main.js writes it)."""
+        return self.persistence_dir() / "app_state.json"
+
     def workshop_status(self, bot_id: str) -> Path:
         """The bot's start-gate outcome (core/workshop/gate.py writes it)."""
         return self.persistence_dir() / "workshop" / bot_id / "status.json"

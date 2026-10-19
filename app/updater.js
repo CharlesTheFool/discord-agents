@@ -7,6 +7,7 @@
 // plain node against a throwaway git repo (see test/updater.test.js).
 
 const { execFileSync } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
@@ -22,27 +23,12 @@ function git(root, args) {
 // Gates (any failed gate => no-op, never throws into the caller):
 //   - root is a git checkout
 //   - HEAD is on `branch` (default "main"); dev branches are left alone
-//   - tracked tree is clean (untracked files are fine)
+//   - tracked tree is clean (untracked files are fine); a skip names the
+//     modified files, so the dashboard can say exactly what's in the way
 //   - origin/branch is strictly ahead and fast-forwardable
-// pip runs only when requirements.txt changed across the incoming range.
-//
-// `installDeps` is the seam for that pip call (injectable for tests).
+// Dependencies are ensureDeps' job, not this one's.
 // Returns { status, ... }: "updated" | "current" | "skipped" | "error".
-function defaultInstallDeps(python, reqPath, cwd) {
-  execFileSync(python, ["-m", "pip", "install", "-r", reqPath], {
-    cwd,
-    encoding: "utf-8",
-    windowsHide: true,
-  });
-}
-
-function updateFrameworkRepo({
-  root,
-  python = "python",
-  branch = "main",
-  log = () => {},
-  installDeps = defaultInstallDeps,
-}) {
+function updateFrameworkRepo({ root, branch = "main", log = () => {} }) {
   try {
     if (!fs.existsSync(path.join(root, ".git"))) {
       return { status: "skipped", reason: "not a git checkout" };
@@ -53,8 +39,11 @@ function updateFrameworkRepo({
       return { status: "skipped", reason: `on '${current}', not '${branch}'` };
     }
 
-    if (git(root, ["status", "--porcelain", "--untracked-files=no"])) {
-      return { status: "skipped", reason: "tracked files modified locally" };
+    const dirty = git(root, ["status", "--porcelain", "--untracked-files=no"]);
+    if (dirty) {
+      // porcelain lines are "XY path"; git() trimmed the first one's leading space
+      const files = dirty.split("\n").map((line) => line.trim().replace(/^\S+\s+/, ""));
+      return { status: "skipped", reason: "tracked files modified locally", files };
     }
 
     const before = git(root, ["rev-parse", "HEAD"]);
@@ -64,29 +53,46 @@ function updateFrameworkRepo({
     const behind = parseInt(git(root, ["rev-list", "--count", `HEAD..origin/${branch}`]), 10);
     if (!behind) return { status: "current", head: before };
 
-    // Inspect the incoming range before moving HEAD so we know whether deps shifted.
-    const changed = git(root, ["diff", "--name-only", `HEAD..origin/${branch}`]).split("\n");
-    const reqChanged = changed.includes("requirements.txt");
-
     log(`fast-forwarding ${behind} commit(s)…`);
     try {
       git(root, ["merge", "--ff-only", `origin/${branch}`]);
     } catch (e) {
       return { status: "skipped", reason: "local history diverged from origin" };
     }
-    const after = git(root, ["rev-parse", "HEAD"]);
-
-    let pip = false;
-    if (reqChanged) {
-      log("requirements.txt changed — installing dependencies…");
-      installDeps(python, path.join(root, "requirements.txt"), root);
-      pip = true;
-    }
-
-    return { status: "updated", from: before, to: after, behind, pip };
+    return { status: "updated", from: before, to: git(root, ["rev-parse", "HEAD"]), behind };
   } catch (e) {
     return { status: "error", reason: e.message };
   }
 }
 
-module.exports = { updateFrameworkRepo };
+function defaultInstallDeps(python, reqPath, cwd) {
+  execFileSync(python, ["-m", "pip", "install", "-r", reqPath], {
+    cwd,
+    encoding: "utf-8",
+    windowsHide: true,
+  });
+}
+
+// Install requirements.txt whenever it differs from the last successful
+// install, recorded as its hash in `stamp`. A failed pip leaves the stamp
+// alone, so the next launch tries again - judging by the incoming git range
+// instead never retried: once the fast-forward landed, nothing was "new".
+// Returns { status }: "current" | "installed" | "error".
+function ensureDeps({ root, python = "python", stamp, log = () => {}, installDeps = defaultInstallDeps }) {
+  const reqPath = path.join(root, "requirements.txt");
+  try {
+    const hash = crypto.createHash("sha256").update(fs.readFileSync(reqPath)).digest("hex");
+    let last = null;
+    try { last = fs.readFileSync(stamp, "utf-8").trim(); } catch (e) { /* never installed here */ }
+    if (last === hash) return { status: "current" };
+    log("requirements.txt differs from the last install - installing dependencies…");
+    installDeps(python, reqPath, root);
+    fs.mkdirSync(path.dirname(stamp), { recursive: true });
+    fs.writeFileSync(stamp, hash + "\n");
+    return { status: "installed" };
+  } catch (e) {
+    return { status: "error", reason: e.message };
+  }
+}
+
+module.exports = { updateFrameworkRepo, ensureDeps };

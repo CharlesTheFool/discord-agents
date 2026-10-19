@@ -8,11 +8,12 @@
 
 const { app, BrowserWindow, dialog } = require("electron");
 const { autoUpdater } = require("electron-updater");
-const { spawn } = require("child_process");
+const { execFile, spawn } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const http = require("http");
-const { updateFrameworkRepo } = require("./updater");
+const { updateFrameworkRepo, ensureDeps } = require("./updater");
 
 const PORT = process.env.SLH_SUPERVISOR_PORT || 8642;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -95,6 +96,20 @@ function fetchDaemonToken() {
   });
 }
 
+// What the app tells the daemon, as a file in the data root it reads (the
+// dashboard shows it): the last framework update and dependency install,
+// and a restart the app is waiting on.
+function appStatePath(cfg) { return path.join(cfg.root, "persistence", "app_state.json"); }
+function readAppState(cfg) {
+  try { return JSON.parse(fs.readFileSync(appStatePath(cfg), "utf-8")); } catch (e) { return {}; }
+}
+function writeAppState(cfg, state) {
+  try {
+    fs.mkdirSync(path.dirname(appStatePath(cfg)), { recursive: true });
+    fs.writeFileSync(appStatePath(cfg), JSON.stringify(state, null, 1));
+  } catch (e) { log(`couldn't write app state: ${e.message}`); }
+}
+
 async function ensureDaemon() {
   if (await daemonUp()) return true; // operator already runs one - attach, leave it be
   const cfg = readConfig();
@@ -107,18 +122,28 @@ async function ensureDaemon() {
       "Point app-config.json's \"root\" at your Discord Agents install.");
     return false;
   }
-  // Catch the framework up to the latest release before it boots. Skipped on
-  // dev branches, dirty trees, non-git installs, and bundled installs.
+  const state = readAppState(cfg);
+  // a pending restart is over once the machine has booted since it was asked for
+  if (state.restart_pending && state.restart_pending.at < Date.now() - os.uptime() * 1000) {
+    delete state.restart_pending;
+  }
+  // Catch the framework up to the latest release before it boots, then make
+  // its dependencies match. Skipped on dev branches, dirty trees, non-git
+  // installs, and bundled installs (the installer carries both).
   if (cfg.autoUpdateFramework !== false && !cfg.bundled) {
-    const r = updateFrameworkRepo({
-      root: cfg.root,
-      python: cfg.python || "python",
-      branch: cfg.frameworkBranch || "main",
-      log,
-    });
+    const python = cfg.python || "python";
+    const r = updateFrameworkRepo({ root: cfg.root, branch: cfg.frameworkBranch || "main", log });
     log(`framework update: ${r.status}${r.reason ? ` (${r.reason})` : ""}` +
         (r.status === "updated" ? ` ${r.from.slice(0, 7)}→${r.to.slice(0, 7)}` : ""));
+    const deps = ensureDeps({
+      root: cfg.root, python, log,
+      stamp: path.join(cfg.root, "persistence", "requirements.sha256"),
+    });
+    log(`dependencies: ${deps.status}${deps.reason ? ` (${deps.reason})` : ""}`);
+    state.framework = { ...r, at: new Date().toISOString() };
+    state.deps = deps;
   }
+  writeAppState(cfg, state);
   fs.mkdirSync(cfg.root, { recursive: true }); // data root (the daemon seeds inside it)
   const args = [script, "--root", cfg.root];
   if (cfg.codeRoot) args.push("--code-root", cfg.codeRoot);
@@ -199,6 +224,80 @@ function setupShellAutoUpdate(win) {
   }, UPDATE_INTERVAL_MS);
 }
 
+function apiJson(route, token) {
+  return new Promise((resolve) => {
+    const req = http.get(`${BASE}${route}`, { headers: token ? { "X-DA-Token": token } : {} }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try { resolve(res.statusCode === 200 ? JSON.parse(body) : null); } catch (e) { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+  });
+}
+
+// Windows (spec 8.2): a bot whose workshop can't boot a VM there almost
+// always means the Windows Hypervisor Platform feature is off. The bots'
+// own test boot is the judge - never the optional-feature list, which can
+// say "enabled" on a machine that can't run a VM. Asked once per launch.
+async function watchForVirtualization(win, cfg) {
+  if (process.platform !== "win32") return;
+  const token = await fetchDaemonToken();
+  for (let i = 0; i < 18; i++) {   // ~3 minutes: each bot test-boots as it starts
+    await new Promise((r) => setTimeout(r, 10000));
+    const bots = await apiJson("/api/bots", token);
+    if ((bots || []).some((b) => b.workshop && b.workshop.kind === "boot" && b.workshop.start_blocked)) {
+      return offerVirtualization(win, cfg);
+    }
+  }
+}
+
+function enableHypervisorPlatform() {
+  // dism through a UAC prompt; 3010 = done, restart needed; 1223 = UAC declined
+  const command = "try { $p = Start-Process dism.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden " +
+    "-ArgumentList '/online','/enable-feature','/featurename:HypervisorPlatform','/all','/norestart'; " +
+    "exit $p.ExitCode } catch { exit 1223 }";
+  return new Promise((resolve) => {
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command],
+             { windowsHide: true }, (err) => resolve(err ? (typeof err.code === "number" ? err.code : -1) : 0));
+  });
+}
+
+async function offerVirtualization(win, cfg) {
+  const box = (options) => dialog.showMessageBox(win, { title: "Discord Agents", ...options });
+  if (readAppState(cfg).restart_pending) {
+    await box({ type: "info", buttons: ["OK"],
+                message: "Restart Windows to finish turning on virtualization for your bots' workshops." });
+    return;
+  }
+  const { response } = await box({
+    type: "warning", buttons: ["Turn it on", "Not now"], defaultId: 0, cancelId: 1,
+    message: "Your bots' workshops need Windows' virtualization feature, and it's off.",
+    detail: "Turning it on asks for administrator permission, then a restart. If it's already on, " +
+            "virtualization may be switched off in your PC's firmware (BIOS/UEFI) instead.",
+  });
+  if (response !== 0) return;
+  const code = await enableHypervisorPlatform();
+  log(`enabling HypervisorPlatform: exit ${code}`);
+  if (code !== 0 && code !== 3010) {
+    await box({ type: "error", buttons: ["OK"], message: "Virtualization wasn't turned on.",
+                detail: code === 1223 ? "The administrator prompt was declined." : `Windows returned ${code}.` });
+    return;
+  }
+  writeAppState(cfg, { ...readAppState(cfg), restart_pending: { reason: "virtualization", at: Date.now() } });
+  const { response: when } = await box({
+    type: "info", buttons: ["Restart now", "Later"], defaultId: 0, cancelId: 1,
+    message: "Virtualization is on. Restart Windows to finish.",
+  });
+  if (when === 0) {
+    await shutdownDaemon();
+    execFile("shutdown.exe", ["/r", "/t", "0"], { windowsHide: true });
+  }
+}
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1320,
@@ -212,6 +311,7 @@ async function createWindow() {
   setupShellAutoUpdate(win);
   if (await ensureDaemon()) {
     await win.loadURL(BASE);
+    watchForVirtualization(win, readConfig()).catch((e) => log(`virtualization check failed: ${e.message}`));
   } else {
     await win.loadFile(path.join(__dirname, "placeholder.html"));
   }

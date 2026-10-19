@@ -7,7 +7,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { updateFrameworkRepo } = require("../updater");
+const { updateFrameworkRepo, ensureDeps } = require("../updater");
 
 function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf-8", windowsHide: true }).trim();
@@ -66,33 +66,47 @@ test("fast-forwards when origin is ahead", () => {
   assert.strictEqual(r.behind, 1, "should be 1 behind");
   assert.notStrictEqual(git(work, "rev-parse", "HEAD"), headBefore, "HEAD must move");
   assert.strictEqual(fs.readFileSync(path.join(work, "core.py"), "utf-8").replace(/\r/g, ""), "v2\n");
-  assert.strictEqual(r.pip, false, "no pip when requirements unchanged");
 });
 
-// --- pip only when requirements change --------------------------------------
-test("runs pip only when requirements.txt is in the range", () => {
-  const { origin, work } = makeRepos();
-  advanceOrigin(origin, { touchReqs: true });
+// --- dependencies: by hash, retried until one install succeeds ------------
+test("installs when requirements.txt was never installed, then stays current", () => {
+  const { work } = makeRepos();
+  const stamp = path.join(work, "persistence", "requirements.sha256");
   const calls = [];
-  const r = updateFrameworkRepo({
-    root: work,
-    python: "py.exe",
-    installDeps: (python, reqPath) => calls.push({ python, reqPath }),
-  });
-  assert.strictEqual(r.status, "updated", JSON.stringify(r));
-  assert.strictEqual(r.pip, true, "pip should run");
-  assert.strictEqual(calls.length, 1, "installDeps called exactly once");
+  const deps = () => ensureDeps({ root: work, python: "py.exe", stamp,
+                                  installDeps: (python, reqPath) => calls.push({ python, reqPath }) });
+  assert.strictEqual(deps().status, "installed");
+  assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].python, "py.exe");
   assert.match(calls[0].reqPath, /requirements\.txt$/);
+  assert.strictEqual(deps().status, "current");
+  assert.strictEqual(calls.length, 1, "no second install for the same file");
 });
 
-test("does not run pip when requirements.txt unchanged", () => {
+test("a failed install is retried on the next launch", () => {
   const { origin, work } = makeRepos();
-  advanceOrigin(origin); // touches core.py only
+  const stamp = path.join(work, "persistence", "requirements.sha256");
+  ensureDeps({ root: work, stamp, installDeps: () => {} });
+  advanceOrigin(origin, { touchReqs: true });
+  updateFrameworkRepo({ root: work });
+  const failed = ensureDeps({ root: work, stamp, installDeps: () => { throw new Error("pip: no network"); } });
+  assert.strictEqual(failed.status, "error");
+  assert.match(failed.reason, /no network/);
   let called = false;
-  const r = updateFrameworkRepo({ root: work, installDeps: () => { called = true; } });
-  assert.strictEqual(r.status, "updated", JSON.stringify(r));
-  assert.strictEqual(called, false, "installDeps must not be called");
+  const retried = ensureDeps({ root: work, stamp, installDeps: () => { called = true; } });
+  assert.strictEqual(retried.status, "installed");
+  assert.ok(called, "the next launch installs again");
+});
+
+test("an update that leaves requirements.txt alone installs nothing", () => {
+  const { origin, work } = makeRepos();
+  const stamp = path.join(work, "persistence", "requirements.sha256");
+  ensureDeps({ root: work, stamp, installDeps: () => {} });
+  advanceOrigin(origin); // touches core.py only
+  updateFrameworkRepo({ root: work });
+  let called = false;
+  assert.strictEqual(ensureDeps({ root: work, stamp, installDeps: () => { called = true; } }).status, "current");
+  assert.strictEqual(called, false);
 });
 
 // --- gates ------------------------------------------------------------------
@@ -112,6 +126,7 @@ test("skips when tracked files are dirty", () => {
   const r = updateFrameworkRepo({ root: work });
   assert.strictEqual(r.status, "skipped");
   assert.match(r.reason, /tracked/);
+  assert.deepStrictEqual(r.files, ["core.py"], "the skip names what's in the way");
 });
 
 test("tolerates untracked files (still updates)", () => {

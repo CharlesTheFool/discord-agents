@@ -201,6 +201,9 @@ class BotData:
             out.append(rows[0]["n"] if rows else 0)
         return out
 
+    def app_state(self) -> dict:
+        return _read_json(self.root.app_state(), {})
+
     # --- workshop -------------------------------------------------------------
 
     def _workshop(self, bot_id: str, running: bool) -> dict:
@@ -209,7 +212,7 @@ class BotData:
         blocked can't usefully start until that's dealt with."""
         status = _read_json(self.root.workshop_status(bot_id), {})
         state = status.get("state") or "unknown"
-        return {"state": state, "reason": status.get("reason"),
+        return {"state": state, "reason": status.get("reason"), "kind": status.get("kind"),
                 "start_blocked": status.get("reason") if state == "blocked" and not running else None}
 
     # --- bots list ----------------------------------------------------------

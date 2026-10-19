@@ -108,6 +108,7 @@ function renderGlobalBar() {
   const running = bots.filter((b) => b.running).length;
   const t = supervisor.tokens_today;
   const down = !supervisor.online;
+  document.getElementById("notices").innerHTML = noticesHTML(supervisor.app);
   document.getElementById("globalbar").innerHTML = `
     <div class="gb supervisor ${down ? "down" : ""}">
       <span class="gk">Supervisor</span>
@@ -178,18 +179,42 @@ function renderAll() { renderBoard(); renderGlobalBar(); }
 
 const findBot = (id) => bots.find((b) => b.bot_id === id);
 
+async function refreshBots() {
+  bots = await apiGet("/api/bots");
+  renderAll();
+}
+
 async function act(id, action) {
   const bot = findBot(id);
   bot.pending = action;
   renderAll();
-  await apiSend("POST", `/api/bots/${id}/${action}`);
+  try { await apiSend("POST", `/api/bots/${id}/${action}`); }
+  catch (ex) { /* the re-pull below shows what actually happened */ }
   delete bot.pending;
-  if (action === "stop") Object.assign(bot, { running: false, pid: null, uptime_s: 0 });
-  else Object.assign(bot, {
-    running: true, pid: 20000 + Math.floor(Math.random() * 9999),
-    uptime_s: 5, last_activity: new Date().toISOString(),
-  });
-  renderAll();
+  await refreshBots();
+  // a start test-boots the workshop first: running, or refused, lands seconds later
+  if (action !== "stop") [3000, 8000, 15000].forEach((ms) => setTimeout(refreshBots, ms));
+}
+
+// What the app reported about its own update and dependencies (app/main.js
+// writes it; the daemon serves it on /api/supervisor), plus a pending restart.
+function noticesHTML(app) {
+  if (!app) return "";
+  const out = [];
+  if (app.restart_pending)
+    out.push("Restart Windows to finish turning on virtualization: your bots' workshops need it.");
+  const fw = app.framework || {};
+  if (fw.status === "skipped" && fw.files)
+    out.push(`Updates are paused: ${fw.files.map(esc).join(", ")} ${fw.files.length === 1 ? "was" : "were"} ` +
+             `changed locally. Undo or commit the change to resume updates.`);
+  else if (fw.status === "skipped" && /diverged/.test(fw.reason || ""))
+    out.push("Updates are paused: this install's history diverged from the release branch.");
+  else if (fw.status === "error")
+    out.push(`The last update check failed: ${esc(fw.reason || "unknown error")}.`);
+  if (app.deps && app.deps.status === "error")
+    out.push(`Installing dependencies failed (${esc(app.deps.reason || "unknown error")}). ` +
+             `The app tries again on its next launch.`);
+  return out.map((text) => `<div class="notice">${text}</div>`).join("");
 }
 
 async function deleteBot(id) {
