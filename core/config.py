@@ -9,9 +9,10 @@ See internal_constants.py for hardcoded implementation details.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 import yaml
 import os
+import re
 import logging
 
 from core.internal_constants import (
@@ -113,14 +114,6 @@ class WebSearchConfig:
 
 
 @dataclass
-class CodeExecutionConfig:
-    """Code execution tool configuration - always enabled when skills are used"""
-    # Note: enabled field removed in v0.5.1 (Bug #14 fix)
-    # Code execution is now automatically enabled when skills are loaded
-    pass
-
-
-@dataclass
 class ProviderConfig:
     """Which wire API serves the models, and where. Optional: without it
     the bot talks to Anthropic with ANTHROPIC_API_KEY."""
@@ -143,7 +136,6 @@ class APIConfig:
     provider: Optional[ProviderConfig] = None
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
-    code_execution: CodeExecutionConfig = field(default_factory=CodeExecutionConfig)
 
 
 @dataclass
@@ -154,14 +146,31 @@ class MCPConfig:
 
 @dataclass
 class SkillsConfig:
-    """Skills auto-discovery configuration - always enabled"""
-    # Note: enabled field removed in v0.5.1 (Bug #14 fix)
-    # Skills are now always enabled; code_execution is automatically enabled with them
-    include_anthropic_skills: bool = True  # Include built-in xlsx, pptx, docx, pdf
-    # Skills preloaded at conversation start (v0.5.0 Progressive Disclosure).
-    # Empty by default - Claude requests any skill (pdf, xlsx, …) on demand via
-    # request_skill the moment it's needed, so nothing has to be preloaded.
+    """Skills are local folders under skills/, always available."""
+    # Skills preloaded at conversation start. Empty by default - the bot
+    # requests any skill on demand via request_skill when it needs one.
     default_skills: List[str] = field(default_factory=list)
+
+
+# "host" arrives with Host mode (0.14.2)
+WORKSHOP_SETTINGS = ("container", "off")
+_DISCORD_ID = re.compile(r"^\d{5,25}$")
+_HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
+
+
+@dataclass
+class WorkshopConfig:
+    """The workshop (0.14): a microVM sandbox per scope (server, vaulted
+    channel or thread, DM) with a shell, an editor and filtered egress."""
+    enabled: bool = True
+    default_setting: str = "container"
+    # id -> container | off. `off` may name any server, channel or user;
+    # `container` only means something on a scope id (a server, a vaulted
+    # channel or thread, a user for their DM).
+    scopes: Dict[str, str] = field(default_factory=dict)
+    operators: List[str] = field(default_factory=list)      # user ids; default: the app owner
+    allowlist: List[str] = field(default_factory=list)      # hosts added to every scope's preset
+    open_internet: List[str] = field(default_factory=list)  # scope ids allowed any public host (443 only)
 
 
 @dataclass
@@ -229,6 +238,7 @@ class BotConfig:
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     vaults: List[str] = field(default_factory=list)  # channel/server IDs whose content never leaves them
     attachments: AttachmentsConfig = field(default_factory=AttachmentsConfig)
+    workshop: WorkshopConfig = field(default_factory=WorkshopConfig)
 
     @classmethod
     def load(cls, yaml_path: Path) -> 'BotConfig':
@@ -305,7 +315,8 @@ class BotConfig:
             "discord.backfill_in_background": "Internalized - always runs in background",
             "discord.default_timezone": "Renamed to discord.timezone",
             "skills.enabled": "Removed - skills are always enabled (Bug #14 fix)",
-            "api.code_execution.enabled": "Removed - code_execution is automatically enabled with skills (Bug #14 fix)",
+            "api.code_execution": "Removed in 0.14 - the workshop replaces server-side code execution",
+            "skills.include_anthropic_skills": "Removed in 0.14 - skills are local folders under skills/",
             "data_isolation": "Replaced by vaults: [channel/server IDs] - content of a vaulted place never leaves it; the old scope modes are gone",
         }
 
@@ -398,10 +409,6 @@ class BotConfig:
             enabled=web_search_data.get("enabled", False),
         )
 
-        # CodeExecutionConfig no longer has enabled field (Bug #14 fix)
-        # It's automatically enabled when skills are loaded
-        code_execution = CodeExecutionConfig()
-
         # Handle legacy context_management structure
         context_management_data = api_data.get("context_management", {})
         context_messages = api_data.get(
@@ -432,7 +439,6 @@ class BotConfig:
             provider=provider,
             thinking=thinking,
             web_search=web_search,
-            code_execution=code_execution,
         )
 
         # Parse logging config
@@ -448,12 +454,25 @@ class BotConfig:
             enabled=mcp_data.get("enabled", False),
         )
 
-        # SkillsConfig no longer has enabled field (Bug #14 fix)
-        # Skills are always enabled
         skills_data = data.get("skills", {})
         skills = SkillsConfig(
-            include_anthropic_skills=skills_data.get("include_anthropic_skills", True),
             default_skills=skills_data.get("default_skills", []),
+        )
+
+        def setting(value) -> str:
+            # YAML 1.1 reads a bare `off` (or `on`) as a boolean
+            if isinstance(value, bool):
+                return "container" if value else "off"
+            return str(value).lower()
+
+        workshop_data = data.get("workshop") or {}
+        workshop = WorkshopConfig(
+            enabled=bool(workshop_data.get("enabled", True)),
+            default_setting=setting(workshop_data.get("default_setting", "container")),
+            scopes={str(k): setting(v) for k, v in (workshop_data.get("scopes") or {}).items()},
+            operators=[str(v) for v in (workshop_data.get("operators") or [])],
+            allowlist=[str(h).lower().rstrip(".") for h in (workshop_data.get("allowlist") or [])],
+            open_internet=[str(v) for v in (workshop_data.get("open_internet") or [])],
         )
 
         # Parse attachments config
@@ -481,6 +500,7 @@ class BotConfig:
             skills=skills,
             vaults=[str(v) for v in (data.get("vaults") or [])],
             attachments=attachments,
+            workshop=workshop,
         )
 
     def validate(self) -> List[str]:
@@ -576,6 +596,8 @@ class BotConfig:
         if not self.api.background_model or not self.api.background_model.strip():
             errors.append("api.background_model cannot be empty")
 
+        errors.extend(self._validate_workshop())
+
         # Validate logging level
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         if self.logging.level not in valid_levels:
@@ -590,6 +612,37 @@ class BotConfig:
                     f"got '{self.personality.reaction_usage}'"
                 )
 
+        return errors
+
+    def _validate_workshop(self) -> List[str]:
+        """Shape checks only. Whether this host can actually run a sandbox is
+        the bot's start gate, not config validation: the dashboard saves
+        configs through validate() on hosts that can't."""
+        w = self.workshop
+        errors = []
+
+        def setting_error(where: str, value: str):
+            if value == "host":
+                return f"{where}: host mode isn't available in this release (use container or off)"
+            if value not in WORKSHOP_SETTINGS:
+                return f"{where} must be one of {list(WORKSHOP_SETTINGS)}, got '{value}'"
+            return None
+
+        if (e := setting_error("workshop.default_setting", w.default_setting)):
+            errors.append(e)
+        for scope_id, value in w.scopes.items():
+            if not _DISCORD_ID.match(scope_id):
+                errors.append(f"workshop.scopes: '{scope_id}' is not a Discord id")
+            elif (e := setting_error(f"workshop.scopes.{scope_id}", value)):
+                errors.append(e)
+        for where, ids in (("workshop.operators", w.operators), ("workshop.open_internet", w.open_internet)):
+            for v in ids:
+                if not _DISCORD_ID.match(v):
+                    errors.append(f"{where}: '{v}' is not a Discord id")
+        for host in w.allowlist:
+            if not _HOSTNAME.match(host):
+                errors.append(f"workshop.allowlist: '{host}' is not a host name "
+                              f"(no scheme, port, path or wildcard)")
         return errors
 
     # =========================================================================
@@ -618,7 +671,6 @@ class BotConfig:
             "enabled": True,  # Always enabled (Bug #14 fix)
             "skills_dir": "skills",  # Standardized
             "cache_file": SKILLS_CACHE_FILE,
-            "include_anthropic_skills": self.skills.include_anthropic_skills,
         }
 
     def get_mcp_config(self):

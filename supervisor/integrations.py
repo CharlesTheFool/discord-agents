@@ -49,21 +49,17 @@ def skills_catalog(root: SupervisorRoot, config: dict) -> dict:
                     "source": "custom",
                     "enabled": name in enabled,
                 })
-    return {
-        "include_anthropic_skills": skills_config.get("include_anthropic_skills", True),
-        "items": items,
-    }
+    return {"items": items}
 
 
-def apply_skills(root: SupervisorRoot, bot_id: str,
-                 default_skills: List[str], include_anthropic: bool) -> None:
+def apply_skills(root: SupervisorRoot, bot_id: str, default_skills: List[str]) -> None:
     """Rewrite the bot YAML's skills section (toggles = membership)."""
     path = root.bot_yaml(bot_id)
     with open(path, encoding="utf-8-sig") as f:
         config = yaml.safe_load(f) or {}
     config.setdefault("skills", {})
     config["skills"]["default_skills"] = list(default_skills)
-    config["skills"]["include_anthropic_skills"] = bool(include_anthropic)
+    config["skills"].pop("include_anthropic_skills", None)  # removed in 0.14
     with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
 

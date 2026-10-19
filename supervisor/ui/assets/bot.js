@@ -803,7 +803,7 @@ const DEFAULTS = {
     context_tokens: 80000, effort: null, consolidation_model: "claude-sonnet-5",
     thinking: { enabled: true }, web_search: { enabled: false } },
   mcp: { enabled: false },
-  skills: { include_anthropic_skills: true, default_skills: [] },
+  skills: { default_skills: [] },
   attachments: { enabled: false, backfill_enabled: true, backfill_days: 30,
     repository: { enabled: true } },
   logging: { level: "INFO" },
@@ -819,7 +819,8 @@ const HIDDEN = new Set([
   "attachments.backfill_enabled", "attachments.backfill_days",
 ]);
 // Whole sections that belong to the Integrations tab, not Configure.
-const HIDDEN_SECTIONS = new Set(["mcp", "skills"]);
+// The workshop gets its own panel (0.14.1); until then its YAML is the editor.
+const HIDDEN_SECTIONS = new Set(["mcp", "skills", "workshop"]);
 
 const HINTS = {
   "name": { label: "Name", help: "Display name in the dashboard." },
@@ -870,7 +871,6 @@ const HINTS = {
   "api.web_search.enabled": { label: "Web search", help: "Live web lookups when conversation calls for it." },
 
   "mcp.enabled": { label: "MCP servers", help: "Load Model Context Protocol servers (see Integrations)." },
-  "skills.include_anthropic_skills": { label: "Anthropic skills", help: "Make the built-in pdf / xlsx / docx / pptx skills available for the bot to use on demand." },
   "skills.default_skills": { label: "Preloaded skills", help: "Skills loaded at the start of every conversation; anything else is requested only when needed.", widget: "chips" },
 
   "attachments.enabled": { label: "Attachments", help: "Unified file/image handling." },

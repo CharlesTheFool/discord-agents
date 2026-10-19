@@ -428,7 +428,6 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
             })
         return json_response({
             "skills": skills,
-            "include_anthropic_skills": catalog["include_anthropic_skills"],
             "mcp_servers": mcp_servers,
         })
 
@@ -439,8 +438,7 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
         body = await request.json()
         if "skills" in body:
             enabled = [s["name"] for s in body["skills"] if s.get("enabled")]
-            apply_skills(root, bot_id, enabled,
-                         body.get("include_anthropic_skills", True))
+            apply_skills(root, bot_id, enabled)
         if "mcp_servers" in body:
             cleaned = [{
                 "name": s.get("name"),

@@ -124,11 +124,20 @@ api:
 mcp:
   enabled: false
 
-# Skills - modular instruction packages (always enabled)
-# Code execution is automatically enabled with skills
+# Skills - instruction packages in skills/ (always available)
 skills:
-  include_anthropic_skills: true  # xlsx, pptx, docx, pdf
-  default_skills: ["pdf"]         # Loaded initially; the bot can swap via request_skill
+  default_skills: []   # preloaded at conversation start; the bot asks for others via request_skill
+
+# Workshop (0.14) - each server, vaulted channel and DM gets its own small
+# Linux VM (microsandbox) with a shell, an editor and filtered internet:
+# package downloads only, anything else needs your OK in a DM.
+workshop:
+  enabled: true                # false = no execution at all (hosts without virtualization)
+  default_setting: container   # container | off
+  scopes: {}                   # per-id override, e.g. {"123456789012345678": "off"}
+  operators: []                # who approves network requests; default: the app's owner
+  allowlist: []                # extra hosts every scope may download from
+  open_internet: []            # scope ids allowed any public host (still port 443 only)
 
 # Unified attachment system (images, documents, spreadsheets, code files)
 attachments:
