@@ -7,7 +7,7 @@ exactly what went out - message id, attached files - so the model always
 has ground truth about its own I/O.
 
 Execution lives in ReactiveEngine._execute_send_message (it needs the
-channel, the turn's container outputs, and the Files API client).
+channel and the conversation's workshop).
 """
 
 SEND_MESSAGE_TOOL = {
@@ -21,8 +21,8 @@ SEND_MESSAGE_TOOL = {
         "specific message (reply_to_message_id - ids are listed in "
         "<recent_messages> in the context update), then follow with a "
         "separate general message for the rest of the conversation, for "
-        "example. Attach files you created with code execution this turn "
-        "via attach_outputs - writing 'attached' in your text never attaches "
+        "example. Attach files from your workshop with attach_outputs (their "
+        "/workspace paths) - writing 'attached' in your text never attaches "
         "anything; files only ride a message through attach_outputs. Keep "
         "each message texting-sized, no blank lines. The result reports the "
         "sent message's id and exactly which "
@@ -51,9 +51,8 @@ SEND_MESSAGE_TOOL = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    "Filenames of files created via code execution during "
-                    "THIS turn to attach (e.g. [\"chart.png\"]). Files from "
-                    "previous turns no longer exist - regenerate them."
+                    "Files in your workshop to attach, by path (e.g. "
+                    "[\"/workspace/chart.png\"])."
                 ),
             },
         },

@@ -99,8 +99,8 @@ class AttachmentClassifier:
         Check if file can be added as a document content block in Messages API.
 
         Messages API only accepts PDF and plaintext documents for document blocks.
-        Other files (CSV, Excel, DOCX, code) should be uploaded to Files API
-        but accessed via code execution tool instead.
+        Other files (CSV, Excel, DOCX, code) are worked on in the workshop and
+        never uploaded.
 
         Args:
             filename: Name of the file

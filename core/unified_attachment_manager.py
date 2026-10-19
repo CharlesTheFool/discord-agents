@@ -38,30 +38,17 @@ class UnifiedAttachmentManager:
     @classmethod
     def should_use_document_block(cls, filename: str, size_bytes: int) -> bool:
         """
-        Determine if file should use document block vs container_upload.
-
-        Document blocks have their content materialized into context by the API.
-        For large files, use container_upload so Claude accesses via code execution.
-
-        Args:
-            filename: Name of the file
-            size_bytes: Size of the file in bytes
-
-        Returns:
-            True if file should use document block, False for container_upload
+        Does the model read this file as a document block? A document's whole
+        content materializes into context, so only small PDFs and text files
+        qualify; everything else is worked on in the workshop (get_attachment
+        copies it into /workspace/inbox).
         """
-        logger.debug(f"should_use_document_block({filename}, {size_bytes}) - threshold={cls.DOCUMENT_BLOCK_SIZE_THRESHOLD}")
-
-        # First check if file type is eligible for document blocks
         if not AttachmentClassifier.is_document_block_eligible(filename):
-            logger.debug(f"File {filename} not eligible for document blocks (file type)")
             return False
-
-        # Large files should use container_upload regardless of type
         if size_bytes > cls.DOCUMENT_BLOCK_SIZE_THRESHOLD:
             logger.info(
-                f"File {filename} ({size_bytes} bytes) exceeds document block threshold "
-                f"({cls.DOCUMENT_BLOCK_SIZE_THRESHOLD} bytes), will use container_upload"
+                f"File {filename} ({size_bytes} bytes) exceeds the document block threshold "
+                f"({cls.DOCUMENT_BLOCK_SIZE_THRESHOLD} bytes): workshop only"
             )
             return False
 
@@ -174,7 +161,7 @@ class UnifiedAttachmentManager:
         1. Save to local storage (primary)
         2. Store local_path in database
         3. For images: compress to base64 for immediate API use
-        4. Files API used only as temporary cache for code execution
+        4. Files API used only as a cache for documents the model reads
         """
         # Save to local storage
         local_path = await self.local_storage.save(
@@ -286,8 +273,6 @@ class UnifiedAttachmentManager:
 
                 logger.info(f"Uploaded document to Files API: {attachment.filename} -> {file_id}")
 
-                # Check if file should be added as document block vs code execution only
-                # Large files use container_upload to avoid materializing full content
                 use_as_doc_block = self.should_use_document_block(attachment.filename, attachment.size)
 
                 return {
@@ -478,7 +463,7 @@ class UnifiedAttachmentManager:
         size_bytes = attachment_data.get("size_bytes") or 0  # For large file detection
 
         # Images always present as image blocks - a cached file_id must NOT
-        # shortcut them into the document/container route. Prefer cached
+        # shortcut them into the document route. Prefer cached
         # base64, then on-demand processing from the local file (repository
         # rows have no upload-time cache).
         if attachment_type == "image":
@@ -525,29 +510,16 @@ class UnifiedAttachmentManager:
                     "method": "file_id",
                     "data": file_id,
                     "use_as_document_block": use_as_doc_block
-                    # REMOVED: use_as_container_upload (container_upload blocks don't exist in API)
                 }
             else:
                 # File expired/missing - attempt recovery from local storage
                 logger.warning(f"File {file_id} no longer exists in Files API, attempting recovery")
-
-                # Phase 3.2: Use appropriate expiration handler based on file type
-                # Design: Document blocks need simple re-upload, container_upload needs proactive checking
                 if local_path:
                     try:
                         use_as_doc_block = self.should_use_document_block(filename, size_bytes)
-
-                        if use_as_doc_block:
-                            # Document blocks: use reactive recovery (only re-upload if actually expired)
-                            new_file_id = await self._handle_file_expiration(
-                                attachment_id, file_id, local_path, filename
-                            )
-                        else:
-                            # Container upload: use proactive checking (verify before creating block)
-                            new_file_id = await self._handle_container_upload_expiration(
-                                attachment_id, file_id, local_path, filename
-                            )
-
+                        new_file_id = await self._handle_file_expiration(
+                            attachment_id, file_id, local_path, filename
+                        )
                         if new_file_id:
                             # Recovery successful - return with new file_id
                             logger.info(f"Successfully recovered from expiration: {attachment_id}")
@@ -590,7 +562,6 @@ class UnifiedAttachmentManager:
                         "method": "file_id",
                         "data": upload_result["file_id"],
                         "use_as_document_block": use_as_doc_block
-                        # REMOVED: use_as_container_upload (container_upload blocks don't exist in API)
                     }
 
             except Exception as e:
@@ -663,36 +634,6 @@ class UnifiedAttachmentManager:
         except Exception as e:
             logger.error(f"Error recovering from file expiration for {attachment_id}: {e}", exc_info=True)
             return None
-
-    async def _handle_container_upload_expiration(
-        self,
-        attachment_id: str,
-        file_id: str,
-        local_path: str,
-        filename: str
-    ) -> Optional[str]:
-        """
-        Validate a container_upload file_id before embedding it; re-upload
-        from local storage when the Files API entry is gone.
-
-        retrieve() returns None on 404/403 (it never raises), so validity is
-        judged on the return value - the old except branch was unreachable
-        and expired ids were declared "still valid".
-
-        Returns:
-            Valid file_id (original if still live, new if re-uploaded),
-            None when recovery is impossible.
-        """
-        metadata = await self.files_api_client.retrieve(file_id)
-        if metadata:
-            logger.debug(f"container_upload file_id {file_id} is still valid")
-            return file_id
-
-        logger.warning(
-            f"container_upload file_id {file_id} no longer in Files API, "
-            f"re-uploading from local storage"
-        )
-        return await self._handle_file_expiration(attachment_id, file_id, local_path, filename)
 
     async def _process_image(
         self,

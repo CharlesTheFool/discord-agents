@@ -196,7 +196,7 @@ class RepositoryManager:
 
         lines = [
             "<repository>",
-            "Your file space for this server (people can also drop files into the folder directly):",
+            "Your shelf for this server (people can also drop files into the folder directly):",
         ]
         for row in rows:
             marker = "in context" if row["attachment_id"] in in_context_ids else "not in context"

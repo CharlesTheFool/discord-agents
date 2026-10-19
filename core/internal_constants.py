@@ -395,6 +395,20 @@ You cannot search the web. Work from your training knowledge and be clear about 
 
 
 # =============================================================================
+# WORKSHOP PROMPT (0.14, spec 5.7)
+# =============================================================================
+# Joins the cached system prefix where the conversation's scope runs the
+# workshop. Low-key on purpose: a bench the bot may use, not a job it has.
+WORKSHOP_PROMPT = """<workshop>
+You have a workshop here: a small Linux machine of your own, there when it's useful and easy to forget when it isn't. Think of it as your bench. /workspace keeps whatever you leave on it between conversations, files people share land in /workspace/inbox when you fetch them, and send_message's attach_outputs hands anything on it over to the channel.{place}
+When something will take a while, people usually say so before they start.
+</workshop>"""
+WORKSHOP_SHELF_LINE = (" The repository is your shelf: what the server should keep, where people can"
+                       " find it without you, goes there with save_output.")
+WORKSHOP_DM_LINE = " This one belongs to this DM alone."
+
+
+# =============================================================================
 # MEMORY RECONSOLIDATION (v0.7.0, Internal)
 # =============================================================================
 CONSOLIDATION_INTERVAL_DAYS = 7        # weekly per-server pass

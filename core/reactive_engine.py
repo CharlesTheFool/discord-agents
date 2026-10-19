@@ -44,7 +44,8 @@ from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
 from .internal_constants import (
-    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
+    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, WORKSHOP_DM_LINE, WORKSHOP_PROMPT,
+    WORKSHOP_SHELF_LINE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
 )
 from .model.driver import ModelRequest, StaleFileError, Usage, total_input_tokens
 from .model.registry import ToolContext, assemble_tools
@@ -507,8 +508,6 @@ class ReactiveEngine:
         lines += [
             "",
             "Retrieve any 'not in context' file with the discord tool: get_attachment + attachment_id.",
-            "Spreadsheets and large files are processed via code execution; container files are",
-            "mounted at the INPUT_DIR env var and are EPHEMERAL - read them in the same turn.",
             "</attachments_index>",
         ]
         return "\n".join(lines)
@@ -944,16 +943,19 @@ class ReactiveEngine:
         """
         Assemble the request shared by both response paths: tools from the
         registry, message history, thinking and effort. Where the workshop
-        runs, the skills catalog joins the cached system prefix (it changes
-        only when the skills folder does); per-request context rides
-        volatile_tail.
+        runs, its paragraph and the skills catalog join the cached system
+        prefix (both stable per channel; the catalog changes only when the
+        skills folder does); per-request context rides volatile_tail.
 
         is_dm (v0.9): DM requests don't get ask_prime - a DM already IS the
         Prime - nor the repository, which is per server. Tool sets stay
         stable per channel, so the cache holds.
         """
         workshop = self._workshop_on(message)
+        repository = self.repository_manager is not None and not is_dm
         if workshop:
+            place = WORKSHOP_DM_LINE if is_dm else WORKSHOP_SHELF_LINE if repository else ""
+            system_blocks[0]["text"] += "\n\n" + WORKSHOP_PROMPT.format(place=place)
             skills_prompt = self.skills.prompt()
             if skills_prompt:
                 system_blocks[0]["text"] += "\n\n" + skills_prompt
@@ -969,7 +971,7 @@ class ReactiveEngine:
         tools, betas = assemble_tools(ToolContext(
             is_dm=is_dm,
             discord_tools=self.discord_tool_executor is not None,
-            repository=self.repository_manager is not None and not is_dm,
+            repository=repository,
             ask_prime=self.ask_prime_executor is not None,
             web_search=self.web_search_enabled,
             web_citations=self.config.get_web_search_config()["citations_enabled"],

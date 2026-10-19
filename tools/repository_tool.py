@@ -10,8 +10,8 @@ def get_repository_tool() -> dict:
     return {
         "name": "repository",
         "description": (
-            "Your private file space for this server - a local folder that persists across "
-            "restarts. People can drop files in for you, and you can keep whatever you decide "
+            "Your shelf for this server - a local folder that persists across restarts. "
+            "People can drop files in for you, and you can keep whatever you decide "
             "is worth keeping, for whatever reason: something you wrote (save_file), an "
             "attachment from the chat (save_attachment), or a file you made in your workshop "
             "(save_output with its /workspace path). copy_to_workshop puts one of its files "
