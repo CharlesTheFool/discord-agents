@@ -14,6 +14,7 @@ import io
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional, TYPE_CHECKING
@@ -44,7 +45,7 @@ from .vaults import VaultEnforcer
 from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
 from .internal_constants import (
-    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, format_size,
+    TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
 )
 from .model.driver import ModelRequest, StaleFileError, Usage, total_input_tokens
 from .model.registry import ToolContext, assemble_tools
@@ -197,6 +198,11 @@ class ReactiveEngine:
         # ask_prime executor (v0.9) - constructed in on_ready (needs the client)
         self.ask_prime_executor = None
 
+        # The workshop (0.14): set by bot_manager when it runs; its job watcher
+        # starts in async_initialize, once conversation state exists
+        self.workshop = None
+        self.job_watcher = None
+
         # Initialize v0.5.0 managers
         # MCP Manager
         self.mcp_manager = None
@@ -343,6 +349,16 @@ class ReactiveEngine:
                 logger.error(f"Failed to initialize UnifiedAttachmentManager: {e}", exc_info=True)
                 self.attachment_manager = None  # Disable on failure
                 self.repository_manager = None
+
+        if self.workshop is not None and self.conversation_state_manager:
+            from core.workshop.notes import ContextNoteWriter
+            from core.workshop.watcher import JobWatcher
+            self.job_watcher = JobWatcher(
+                self.workshop,
+                ContextNoteWriter(self.conversation_state_manager, self.channel_locks),
+                wake=self.run_note_turn, config=self.config, events=self.message_memory)
+            self.workshop.on_background = self.job_watcher.follow
+            await self.job_watcher.start()
 
     async def _load_conversation_state(self, channel_id: str,
                                        exclude_message_ids: Optional[List[int]] = None):
@@ -845,6 +861,29 @@ class ReactiveEngine:
                 logger.info(f"Added {block['type']} block for {att['filename']}")
         return content, attachment_ids
 
+    async def _workshop_awareness(self, message) -> str:
+        """One line per job running in this conversation's workshop scope."""
+        server_id = str(message.guild.id) if message.guild else None
+        scope = self.workshop.scope(server_id, str(message.channel.id),
+                                    parent_id=getattr(message.channel, "parent_id", None),
+                                    is_thread=isinstance(message.channel, discord.Thread))
+        if scope is None:
+            return ""
+        jobs = await self.workshop.jobs.running(scope.key)
+        if not jobs:
+            return ""
+        now = datetime.now(timezone.utc)
+        lines = []
+        for job in jobs[:5]:
+            minutes = int((now - datetime.fromisoformat(job.started_at)).total_seconds() // 60)
+            where = ""
+            if job.home_channel_id != str(message.channel.id) and self.discord_client:
+                channel = self.discord_client.get_channel(int(job.home_channel_id))
+                where = f", from #{channel.name}" if channel is not None and getattr(channel, "name", None) else ""
+            lines.append(f"- {job.id}: {job.command[:80]} (running {minutes} min{where})")
+        return ("<workshop_jobs>\n(running in your workshop; a note arrives when each finishes)\n"
+                + "\n".join(lines) + "\n</workshop_jobs>")
+
     async def _build_volatile_tail(self, base: str, conversation_state, message=None) -> str:
         """
         Per-request context (timestamp, momentum, attachment index, repository
@@ -886,6 +925,14 @@ class ReactiveEngine:
                     parts.append(repo_manifest)
             except Exception as e:
                 logger.error(f"Failed to generate repository manifest: {e}", exc_info=True)
+
+        if getattr(self, "workshop", None) is not None and message is not None:
+            try:
+                awareness = await self._workshop_awareness(message)
+                if awareness:
+                    parts.append(awareness)
+            except Exception as e:
+                logger.error(f"Failed to build workshop awareness line: {e}")
 
         # Recent message ids (v0.12.0): send_message reply_to targets. The
         # model can't anchor a reply to a message it can't name; ids ride
@@ -1323,6 +1370,7 @@ class ReactiveEngine:
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
         repeat_sig = None  # repeat-call guard: identical consecutive tool calls
         repeat_count = 0
+        started = time.monotonic()
 
         while True:
             loop_iteration += 1
@@ -1377,6 +1425,15 @@ class ReactiveEngine:
                     logger.warning(f"Tool use loop exceeded {MAX_TOOL_LOOP_ITERATIONS} iterations{log_suffix}")
                     if fallback_text and not result.did_send:
                         result.response_text = result.response_text or "I got stuck in a tool loop - try asking again."
+                    break
+                # Turn wall clock (spec 7.1): no new model calls past it; the
+                # workshop's commands carry on as jobs and report back
+                if time.monotonic() - started >= WORKSHOP_TURN_WALL_CLOCK_SECONDS:
+                    logger.warning(f"Turn wall clock reached{log_suffix} - ending the turn")
+                    if fallback_text and not result.did_send:
+                        result.response_text = result.response_text or (
+                            "That's taking longer than one go allows - anything still running "
+                            "keeps going in the workshop, and I'll pick it up when it reports back.")
                     break
                 result.tools_were_used = True
 
@@ -2332,6 +2389,33 @@ class ReactiveEngine:
         # Note: Message already in conversation state from Phase 1 processing
         await self._call_claude_for_response_decision(latest_message, context, triggers)
 
+    async def run_note_turn(self, channel_id: str) -> None:
+        """A may-stay-silent turn about a persisted note (a finished job, an
+        approval) rather than a message. The carrier is the channel's real
+        latest message, so guild, ids and DM detection are real
+        (_SyntheticDMMessage would make it a DM turn); the periodic guards
+        that exist because a scan is about its target are bypassed."""
+        if not self.discord_client:
+            return
+        channel = self.discord_client.get_channel(int(channel_id))
+        if channel is None:
+            try:
+                channel = await self.discord_client.fetch_channel(int(channel_id))
+            except discord.HTTPException as e:
+                logger.warning(f"Note-driven turn: channel {channel_id} unavailable ({e})")
+                return
+        latest = None
+        async for m in channel.history(limit=1):
+            latest = m
+        if latest is None:
+            logger.warning(f"Note-driven turn: no message to anchor in {channel_id}")
+            return
+        context = await self.context_builder.build_context(latest)
+        context["conversation_momentum"] = await self._calculate_conversation_momentum(channel_id)
+        await self._call_claude_for_response_decision(
+            latest, context, [{"user": "workshop", "text": "a note arrived", "addressed": False}],
+            note_driven=True)
+
     async def _calculate_conversation_momentum(self, channel_id: str) -> str:
         """
         Calculate conversation momentum based on message frequency.
@@ -2379,7 +2463,7 @@ class ReactiveEngine:
             return "cold"
 
     async def _call_claude_for_response_decision(self, message: discord.Message, context,
-                                                 triggers: list = None):
+                                                 triggers: list = None, note_driven: bool = False):
         """
         Call Claude API to decide if bot should respond and generate response if yes.
 
@@ -2405,11 +2489,13 @@ class ReactiveEngine:
         async with self.channel_locks.lock(channel_id):
             # Another turn may have held the channel while this scan waited:
             # if anyone (the bot included) spoke since the target, there's
-            # nothing left to decide about it - newer messages get their own scan
+            # nothing left to decide about it - newer messages get their own
+            # scan. A note-driven turn is about its note, not a target.
             try:
                 newest = None
-                async for m in message.channel.history(limit=1):
-                    newest = m
+                if not note_driven:
+                    async for m in message.channel.history(limit=1):
+                        newest = m
                 if newest is not None and newest.id != message.id:
                     logger.info(f"Skipping scan in {channel_id}: the conversation moved past "
                                 f"target {message.id} while it waited")
@@ -2454,7 +2540,8 @@ class ReactiveEngine:
                     self.conversation_logger.log_bot_response("[No response - staying silent]", 0)
                     self.conversation_logger.log_separator()
                     await self._emit_turn_event(
-                        "silent", message, result, triggers, scan_count=len(triggers))
+                        "silent", message, result, triggers, scan_count=len(triggers),
+                        **({"note_driven": True} if note_driven else {}))
                     return
 
                 # Staleness guard: generation takes tens of seconds and the
@@ -2463,7 +2550,7 @@ class ReactiveEngine:
                 # nothing persisted); the next tick re-evaluates fresh.
                 # Tool-sent messages are already out (and can anchor via
                 # reply_to), so a turn that sent skips the discard.
-                if not result.did_send:
+                if not result.did_send and not note_driven:
                     try:
                         newest = None
                         async for m in message.channel.history(limit=1):
@@ -2498,7 +2585,8 @@ class ReactiveEngine:
                 await self._persist_assistant_response(conversation_state, channel_id, result, seed_epoch)
 
                 await self._emit_turn_event(
-                    "scan", message, result, triggers, scan_count=len(triggers))
+                    "scan", message, result, triggers, scan_count=len(triggers),
+                    **({"note_driven": True} if note_driven else {}))
 
                 last_sent = sent_message or result.last_sent_message
                 if last_sent:

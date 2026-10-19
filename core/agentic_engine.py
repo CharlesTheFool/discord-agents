@@ -1099,14 +1099,10 @@ Channel idle time: {await self.get_channel_idle_time(action.channel_id):.1f} hou
         """Persist a <context_update> user turn into a channel's conversation
         state - durable context, unlike the per-request volatile tail.
         Appending a user message is always invariant-safe."""
-        if not self.conversation_state_manager:
+        from core.workshop.notes import ContextNoteWriter
+        writer = ContextNoteWriter(self.conversation_state_manager, self.channel_locks)
+        if not await writer.write(channel_id, note):
             logger.warning("No conversation state manager - context note dropped")
-            return
-        async with self.channel_locks.lock(channel_id):   # never between a turn's tool pairs
-            state = await self.conversation_state_manager.get_or_create(str(channel_id))
-            state.add_message("user", note)
-            state.enforce_message_cap()
-            await self.conversation_state_manager.save(state)
 
     def enqueue_coordination(self, action: ProactiveAction) -> None:
         """Queue a Prime-approved cross-server send (v0.9). Drained
