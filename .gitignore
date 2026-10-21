@@ -73,3 +73,6 @@ CLAUDE.md
 
 app/node_modules/
 app/dist/
+
+# Local agent tooling config (may hold credentials)
+.codex/

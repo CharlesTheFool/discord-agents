@@ -182,7 +182,10 @@ class Workers:
             raise   # shutdown: the row stays running and the next boot marks it interrupted
         except Exception as e:
             logger.exception(f"worker {job.id} failed")
-            state, result = FAILED, f"it stopped on an error ({type(e).__name__}: {e})"
+            # an API error's text can echo account details: the note gets its kind only
+            status = getattr(e, "status_code", None)
+            detail = f"status {status}" if status is not None else str(e)
+            state, result = FAILED, f"it stopped on an error ({type(e).__name__}: {detail})"
         try:
             if transcript is not None:
                 transcript.write("end", state=state, result=result)
@@ -251,7 +254,8 @@ class Workers:
                 return (f"It ran out of output room ({request.max_tokens:,} tokens) before "
                         f"finishing. What it had: {_text(response) or 'nothing yet'}")
             if response.stop_reason == "refusal":
-                return f"It declined the task. {_text(response)}".strip()
+                reason = " ".join(b.text for b in response.content if b.type in ("text", "refusal"))
+                return f"It declined the task. {reason}".strip()
             if response.stop_reason != "tool_use":
                 return _text(response) or "It finished without writing a report."
             remaining = WORKER_MAX_SECONDS - (self.clock() - started)

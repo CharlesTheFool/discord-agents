@@ -82,7 +82,7 @@ CATALOG = (
     _openai("gpt-6-astra", (5.00, 25.00), min_effort="low"),
     # Any other gpt-* id still goes to OpenAI, never to Anthropic; unpriced,
     # and with no known effort floor validate() won't take it for background work
-    _openai("gpt-", None, max_output=16000),
+    _openai("gpt-", None, max_output=16000, cache_semantics="implicit"),
 )
 
 DEFAULT_SPEC = ModelSpec(marker="")

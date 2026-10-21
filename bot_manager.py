@@ -367,7 +367,7 @@ async def _run_consolidation(bot_id: str, server_id: str, force: bool):
             bot_id=bot_id, config=config, message_memory=memory,
             memory_manager=memory_manager,
             user_cache=user_cache,
-            driver=build_driver(config.api),
+            driver=build_driver(config.api, roles=["api.consolidation_model"]),
             vaults=vaults,
         )
         report = await consolidator.consolidate_server(server_id, force=force)
@@ -403,7 +403,7 @@ async def _run_induction(bot_id: str, server_id: str, dry_run: bool,
         inductor = ServerInductor(
             bot_id=bot_id, config=config, message_memory=memory,
             memory_manager=memory_manager, user_cache=user_cache,
-            driver=build_driver(config.api),
+            driver=build_driver(config.api, roles=["api.consolidation_model"]),
             vaults=vaults,
         )
         report = await inductor.induct(server_id, dry_run=dry_run,

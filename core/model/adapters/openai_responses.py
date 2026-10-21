@@ -128,7 +128,7 @@ def _mark(item: dict) -> None:
     item[key][-1] = {**item[key][-1], "prompt_cache_breakpoint": MARK}
 
 
-def _input(request: ModelRequest) -> List[dict]:
+def _input(request: ModelRequest, explicit: bool = True) -> List[dict]:
     items, user_turns = [], []
     for message in request.messages:
         if message["role"] == "assistant":
@@ -137,7 +137,7 @@ def _input(request: ModelRequest) -> List[dict]:
             turn = _user_turn(message["content"])
             items += turn
             user_turns.append(turn)
-    if request.cache_messages:
+    if request.cache_messages and explicit:
         for turn in user_turns[-2:]:
             if turn:
                 _mark(turn[-1])
@@ -158,9 +158,11 @@ def _tool(tool) -> dict:
 def render(request: ModelRequest, spec: Optional[ModelSpec] = None) -> dict:
     """The responses.create kwargs for a request. Pure: the request is untouched."""
     spec = spec or spec_for(request.model)
+    explicit = spec.cache_semantics == "explicit_breakpoints"   # GPT-5.6 and later
     kwargs = {"model": request.model, "max_output_tokens": request.max_tokens, "store": False,
-              "include": REASONING_INCLUDE, "prompt_cache_options": {"mode": "explicit"},
-              "input": _input(request)}
+              "include": REASONING_INCLUDE, "input": _input(request, explicit)}
+    if explicit:
+        kwargs["prompt_cache_options"] = {"mode": "explicit"}
     instructions = _instructions(request.system)
     if instructions:
         kwargs["instructions"] = instructions
@@ -180,7 +182,7 @@ def render(request: ModelRequest, spec: Optional[ModelSpec] = None) -> dict:
 # --- reading a response ------------------------------------------------------------
 
 def _block(item) -> Block:
-    data = item.model_dump(exclude_none=True)
+    data = item.model_dump(exclude_none=True, by_alias=True)   # replayed as the API wrote it
     if item.type == "message":
         refusal = " ".join(p.refusal for p in item.content if p.type == "refusal")
         if refusal:
@@ -191,7 +193,10 @@ def _block(item) -> Block:
         try:
             arguments = json.loads(item.arguments or "{}")
         except json.JSONDecodeError:
-            logger.warning(f"OpenAI {item.name} call with arguments that aren't JSON: {item.arguments[:200]!r}")
+            arguments = None
+        if not isinstance(arguments, dict):   # the tool sees no input and says so
+            logger.warning(f"OpenAI {item.name} call whose arguments aren't a JSON object "
+                           f"({len(item.arguments or '')} chars)")
             arguments = {}
         return Block("tool_use", data, name=item.name, input=arguments, id=item.call_id)
     if item.type == "reasoning":

@@ -23,14 +23,16 @@ def _adapter(provider, max_concurrent: int):
     raise ValueError(f"no driver for wire_api '{provider.wire_api}'")
 
 
-def build_driver(api_config, max_concurrent: int = MODEL_CALL_SLOTS) -> ModelDriver:
+def build_driver(api_config, max_concurrent: int = MODEL_CALL_SLOTS, roles=None) -> ModelDriver:
     """A driver for every model the config names: the resident's, and the
     workers' with their own pool (max_concurrent calls in flight). A bot whose
     every role is on Anthropic gets the bare Anthropic driver, exactly as
     before 0.15.1; otherwise a RoutingDriver over one adapter per wire API
     (each with its own pool: rate limits are per provider). Config
-    validation has already refused what this release doesn't ship."""
-    wires = {spec_for(model).wire_api for model in api_config.role_models().values()}
+    validation has already refused what this release doesn't ship. roles
+    narrows which role models count (the batch CLIs use only consolidation)."""
+    models = api_config.role_models()
+    wires = {spec_for(models[r]).wire_api for r in (roles or models)}
     anthropic = _adapter(api_config.provider_for("anthropic_messages"), max_concurrent)
     if wires <= {"anthropic_messages"}:
         return anthropic

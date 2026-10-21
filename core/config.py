@@ -455,7 +455,7 @@ class BotConfig:
             default = PROVIDER_DEFAULTS.get(wire_api, ProviderConfig(wire_api))
             entry = entry or {}
             providers[str(wire_api)] = ProviderConfig(
-                wire_api=str(wire_api), base_url=entry.get("base_url", default.base_url),
+                wire_api=str(wire_api), base_url=entry.get("base_url") or default.base_url,
                 api_key_env=entry.get("api_key_env", default.api_key_env))
 
         api = APIConfig(
@@ -543,10 +543,13 @@ class BotConfig:
             errors.append(
                 f"api.provider.wire_api must be 'anthropic_messages' (other wire APIs go "
                 f"under api.providers), got '{self.api.provider.wire_api}'")
-        for wire_api in self.api.providers:
+        for wire_api, provider in self.api.providers.items():
             if wire_api not in PROVIDER_DEFAULTS:
                 errors.append(f"api.providers.{wire_api} isn't a wire API this release ships "
                               f"(anthropic_messages, openai_responses)")
+            elif provider.base_url and not str(provider.base_url).startswith("https://"):
+                errors.append(f"api.providers.{wire_api}.base_url must be an https:// URL "
+                              f"(the API key travels with every request)")
         roles = self.api.role_models()
         for role in ("api.model", "api.consolidation_model"):
             if spec_for(roles[role]).wire_api != "anthropic_messages":
