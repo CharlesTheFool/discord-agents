@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.0] - 2026-10-21
+
+**Status:** Beta. What runs in the workshop: projects that come back
+around on their own, helpers that take a task off the bot's hands, and a
+dashboard panel for all of it.
+
+### Added
+- **Projects.** Work that runs over days gets a note in its scope's own
+  memory folder, `projects/<name>.md`, opening with three lines of
+  frontmatter the hourly loop reads without a model call: `status`
+  (active, paused, done), `next_check` (a date), and `home_channel`, which
+  the memory tool fills in with the channel the note was started from.
+  When `next_check` passes, the bot gets one quiet turn in that channel to
+  look in on it: once per `next_check` value, held through quiet hours and
+  the daily caps on unprompted turns, never dropped. Active and paused
+  projects (five at most) ride the per-request context. A note counts only
+  in the scope whose folder holds it, and only if its home channel belongs
+  to that same scope; and the memory tool writes project notes only from
+  their own scope, so no note can aim a turn at another server. Live: a
+  due note fired once a minute after boot; the turn read it, did what it
+  said, moved `next_check` and posted one line.
+- **Helpers.** `delegate` hands a self-contained task to a helper that
+  works on its own in the workshop (same `/workspace`, its own shell)
+  while the conversation goes on; a note with its report lands in the
+  channel when it's done, and the bot passes on what matters. A helper is
+  a background job like any other: it counts against the scope's three,
+  shows in the bot's view of running work, and is interrupted by a
+  restart (the note says so). It runs on `api.worker_model` (default: the
+  main model) with its own two model-call slots, and stops at 40 steps or
+  60 minutes with whatever it has. It reads memory, messages and files
+  under its home channel's vault rules and never sends a message, writes
+  memory, asks for network access or delegates: its tool set is built
+  without those, its dispatch refuses them by name whatever the model
+  emits, and the memory tool refuses its writes. Live: asked to delegate a
+  script that sums the first 30 primes, the bot handed it off, the helper
+  finished in 6 seconds, and the bot reported 1593 unprompted.
+- **The Workshop tab** on each bot's dashboard page: every workshop with
+  its sandbox's state and the disk it takes, the hosts it may reach (add
+  or take back), reset (rebuild from the base image, `/workspace` kept)
+  and wipe (confirmed by typing the scope), network requests waiting for
+  an answer (allow or deny right there), jobs and helpers with each
+  helper's transcript, and the workshop settings. The bot stays the only
+  writer of its workshop state: the dashboard leaves request files it
+  applies within seconds. Live: allowing `api.github.com` there turned the
+  proxy's refusal into a 200 half a minute later.
+- **This computer**, on the dashboard's front page inside the desktop app:
+  keep the computer awake while the app is open (the screen may still
+  sleep), and open the app at sign-in. Both off by default.
+
+### Fixed
+- **A long web-search turn that pauses carries on.** When server tools
+  run long, the API pauses the turn and expects it back as is; the bot
+  answered with its fallback line instead.
+- **The context gauge** on the dashboard read a column nothing had written
+  since 0.6.0, so it always showed 0. It shows the session's real size.
+- **The supervisor's leftover-process cleanup** stays inside its own
+  install. It could kill a bot of the same id run from another checkout,
+  matched `alpha-2` when starting `alpha`, and missed installs under a
+  path with spaces.
+
+### Security
+- **Vault and DM memory rules hold however a path is spelled.** The memory
+  tool's vault and DM-privacy checks compared path names exactly, but
+  Windows (and macOS by default) ignore case: from an ordinary channel,
+  `view /memories/<bot>/Servers/<server>/channels/<vaulted>.md` or
+  `.../Global/DMs/<user>/...` returned the vault's or the DM's notes.
+  Windows also answers to 8.3 short names (`142494~1.MD`), alternate data
+  streams and names with a trailing dot or space. The checks now compare
+  case-folded names, and the memory tool refuses any path segment with
+  `~`, `:` or a trailing dot or space. Present since vaults shipped in
+  0.7.0; found by this release's security review and confirmed on Windows.
+- **Web fetch no longer reaches URLs that appear only in the bot's tool
+  results.** It runs on Anthropic's servers, outside the workshop's proxy,
+  and a URL the bot printed with `bash` was fetchable, query string and
+  all. It now takes URLs from messages and search results only (checked
+  against the API: the same URL is refused from a tool result and fetched
+  from a message). A helper's fetches go further: its only user message
+  is the brief the bot wrote, so it fetches only what its searches find.
+  SECURITY.md keeps what remains.
+- The dashboard's workshop routes read the bot's state file for named
+  fields only, so no proxy credential reaches the API.
+
+### Upgrading
+Nothing to do. Where the workshop runs, the system prompt gains one
+sentence and the tools gain `delegate`, so each channel writes its prompt
+cache once more. The installer carries the new launcher.
+
 ## [0.14.4] - 2026-10-20
 
 **Status:** Beta. A second fix from the end-of-0.14 verification sweep.

@@ -52,35 +52,20 @@ commitments, details are not. Full history with upgrade notes lives in
   to the versions without it.
 - **0.14.4:** web search no longer cuts sessions short (a server-tool
   call's summed usage no longer counts as the context size).
+- **0.15.0:** projects and helpers. A project is a memory note whose
+  `next_check` brings the bot back to it on its own, bound to the scope
+  that holds it; `delegate` hands a task to a helper that works in the
+  workshop and reports back, with hands and no voice (it reads, never
+  sends or writes memory). The dashboard gains a Workshop tab, the app
+  keeps the computer awake on request, and web fetch stops taking URLs
+  from the bot's own tool output.
 
 ## The active plan
 
 Each release below changes one thing, so a regression can be attributed.
 0.13.0 shipped alone for that reason: had concurrency changes ridden along,
 a cache regression would have had two suspects. The workshop came first,
-then what runs in it, then where else it can run.
-
-### 0.15.0: projects and workers
-
-**Projects.** A project is a memory object: a note at `projects/<slug>.md`
-in the scope's own tree, with `status`, `next_check` and `home_channel`
-frontmatter the hourly loop reads without a model call, plus a folder under
-`/workspace/projects/`. Discovery is scope-bound and `home_channel` must
-resolve to the same scope as the note, so a model-written note cannot aim a
-check-in at another server. No command starts a project; the bot opens one
-at its discretion. Work resumes three ways: a job or worker finishes, a
-`next_check` date passes, or someone mentions it.
-
-**Workers.** A worker is a job whose executor is a model loop instead of a
-shell command, started with `delegate`. Workers are hands, never voice: they
-read and search memory, message history and attachments under the same
-vault rules as the resident, and never write memory, send messages, or ask
-the operator for anything. They run on `api.worker_model` (default: the
-main model), draw from their own pool of two concurrent model calls, and
-stop at 40 tool-loop iterations or 60 minutes with a partial report.
-
-**Supervisor and app.** A per-bot workshop panel: scopes, sandbox status,
-disk use, jobs, allowlists, pending approvals, reset and wipe.
+then what runs in it (0.15.0, shipped), then where else it can run.
 
 ### 0.15.1: the second provider
 

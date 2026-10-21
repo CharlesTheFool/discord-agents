@@ -55,7 +55,10 @@ every tool seam threads the current server and channel through it:
 - message search and attachment listings exclude vaulted places in the SQL
   itself, with a vaulted channel's threads expanded into the exclusion;
 - memory paths under a vaulted server or channel can be read or written only
-  from inside it;
+  from inside it. Since 0.15.0 the path is judged case-folded (Windows and
+  macOS ignore case), and a segment Windows could resolve to another name
+  (an 8.3 short name with `~`, an alternate data stream with `:`, a
+  trailing dot or space) is refused outright;
 - repository saves are blocked from vaulted channels;
 - global user-profile writes are refused from inside a vault, so what is
   learned there cannot land on a profile other servers read;
@@ -199,6 +202,32 @@ model wrote never lands in the DM's preview. The first decision wins, a
 request expires after 24 hours, and a host an operator declined can't be
 asked for again from that scope for 24 hours. An operator can also open a
 scope to any public host, still port 443 only.
+
+**Helpers and projects (0.15.0).**
+
+- A helper (`delegate`) runs a model loop in its scope's workshop with a
+  tool set built for it: memory, message and file reads, web search and
+  fetch where enabled, the shell, the editor, skill guides. It never gets
+  `send_message`, memory writes, `request_network_access`, `ask_prime`,
+  the repository, MCP tools or `delegate`, and its own dispatch refuses
+  each of those names whatever the model emits; the memory tool refuses
+  every command but `view` for a helper's call. Its reads follow the vault
+  rules of the channel it was delegated from. Its web fetches take URLs
+  from search results only: its brief is the bot's words, not a person's.
+- A project note counts only in the scope whose memory folder holds it,
+  and only if its `home_channel` resolves to that same scope (a thread
+  through its parent); anything else is skipped and logged. The memory
+  tool writes a path with a `projects` folder only under the
+  conversation's own tree, and a thread whose parent isn't known writes
+  none. Vault rules alone would have let a channel outside every vault
+  plant a note in another server's tree and get turns there.
+- The dashboard's Workshop tab reads the bot's workshop state for named
+  fields only (approved hosts, pending requests), never the proxy
+  credentials beside them, and changes nothing directly: it leaves request
+  files (allow or remove a host, reset, wipe, decide a pending request)
+  the bot validates and applies. A wipe must carry its scope as
+  confirmation, and reset and wipe are refused while the scope has
+  running work.
 
 **Residuals**, stated as they are:
 

@@ -200,6 +200,13 @@ to Discord by path through `send_message`, or onto the server's repository.
   waits up to three minutes, then the job carries on, and when it finishes a
   note lands in the channel's context and starts a turn of its own, so the
   bot reports back unprompted. Jobs survive bot restarts.
+- **Helpers and projects** (0.15.0). `delegate` hands a task to a helper
+  that works in the same workshop and reports back, with hands and no
+  voice: it reads memory and history under the same vault rules, and its
+  tools and dispatch leave out sending, memory writes and network
+  requests. Work that runs over days becomes a project, a memory note
+  whose `next_check` brings the bot back to it on its own, in the scope
+  that holds it and nowhere else.
 - **The network is closed by default.** A sandbox can reach one thing: the
   bot's egress proxy on the host, which allows TLS to an exact-host list
   (package downloads), resolves names itself, refuses private addresses,
@@ -463,13 +470,15 @@ The full policy, including how to report a vulnerability, is in
 
 0.14 is the workshop: the bot's own sandboxed machine per scope, with
 background jobs that report back and a network that is closed unless an
-operator opens it. It follows 0.13.0 and 0.13.1, where the model layer
-landed alone so the request bytes could be compared with nothing else
-changing. Next are projects and workers (0.15.0), a second model
-provider (0.15.1), then a Host mode for trusted single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
+operator opens it. 0.15.0 adds what runs in it: projects the bot comes
+back to on its own, helpers it hands work to, and a dashboard panel for
+both. It follows 0.13.0 and 0.13.1, where the model layer landed alone so
+the request bytes could be compared with nothing else changing. Next are
+a second model provider (0.15.1), then a Host mode for trusted
+single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
 
 The codebase is about fifty core modules plus the supervisor package, with
-about 1,200 unit tests and an integration suite that boots real VMs. Every
+about 1,300 unit tests and an integration suite that boots real VMs. Every
 release cycle also runs live scenario campaigns on a real Discord server,
 because the wire-level bugs that matter most do not reproduce under mocks;
 the [CHANGELOG](CHANGELOG.md) records what each campaign found.
