@@ -287,7 +287,42 @@ document.getElementById("add-bot").addEventListener("click", (e) => {
   document.getElementById("foot-version").textContent =
     `supervisor v${supervisor.version}`;
   renderAll();
+  renderAppSettings();
   setInterval(renderGlobalBar, 30_000);
   // first-run onboarding: the install can't think without a Claude key
   if (setup && !setup.anthropic_key_set) openKeyDialog();
 })();
+
+/* ---------- this computer (0.15.0): the app's own settings ---------- */
+/* Only inside the desktop app: its preload exposes window.discordAgentsApp. */
+
+const APP_TOGGLES = [
+  ["keepAwake", "Keep this computer awake while Discord Agents is open",
+   "Bots can't answer from a sleeping PC. The screen may still turn off."],
+  ["startAtLogin", "Open Discord Agents when you sign in",
+   "Your bots come back on their own after a restart."],
+];
+
+async function renderAppSettings() {
+  const bridge = window.discordAgentsApp;
+  const el = document.getElementById("app-settings");
+  if (!bridge || !el) return;
+  const s = await bridge.getSettings();
+  if (!s) return;
+  el.innerHTML = `<h3>This computer</h3>` + APP_TOGGLES.map(([key, label, help]) => {
+    const off = key === "startAtLogin" && !s.loginSupported;
+    return `<label class="apptoggle ${off ? "off" : ""}">
+      <input type="checkbox" data-key="${key}" ${s[key] ? "checked" : ""} ${off ? "disabled" : ""}>
+      <span><b>${esc(label)}</b><br><span class="help">${esc(off ? "Works in the installed app." : help)}</span></span>
+    </label>`;
+  }).join("") + `<div class="field-error" id="app-settings-err"></div>`;
+  el.querySelectorAll("input[data-key]").forEach((box) => box.addEventListener("change", async () => {
+    try {
+      await bridge.setSetting(box.dataset.key, box.checked);
+      document.getElementById("app-settings-err").textContent = "";
+    } catch (e) {
+      box.checked = !box.checked;
+      document.getElementById("app-settings-err").textContent = `Couldn't change that: ${e.message}`;
+    }
+  }));
+}

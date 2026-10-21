@@ -6,7 +6,7 @@
 // current from GitHub Releases, and updater.js fast-forwards the framework
 // checkout to the latest release before the daemon starts on the new code.
 
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, powerSaveBlocker } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { execFile, spawn } = require("child_process");
 const fs = require("fs");
@@ -14,6 +14,7 @@ const os = require("os");
 const path = require("path");
 const http = require("http");
 const { updateFrameworkRepo, ensureDeps } = require("./updater");
+const { AppSettings } = require("./settings");
 
 const PORT = process.env.SLH_SUPERVISOR_PORT || 8642;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -298,7 +299,22 @@ async function offerVirtualization(win, cfg) {
   }
 }
 
+// The dashboard's toggles for the app's own settings (0.15.0), through the
+// preload bridge. Only pages from our daemon may ask.
+function serveSettings() {
+  const settings = new AppSettings({
+    file: path.join(app.getPath("userData"), "app-settings.json"), app, powerSaveBlocker, log });
+  settings.apply();
+  const ours = (event) => (event.senderFrame?.url || "").startsWith(`${BASE}/`);
+  ipcMain.handle("da-settings:get", (event) => (ours(event) ? settings.view() : null));
+  ipcMain.handle("da-settings:set", (event, key, value) => {
+    if (!ours(event)) throw new Error("not from the dashboard");
+    return settings.set(key, value);
+  });
+}
+
 async function createWindow() {
+  serveSettings();
   const win = new BrowserWindow({
     width: 1320,
     height: 860,
@@ -307,6 +323,7 @@ async function createWindow() {
     autoHideMenuBar: true,
     title: "Discord Agents",
     icon: path.join(__dirname, "build", "icon.png"),
+    webPreferences: { preload: path.join(__dirname, "preload.js") },
   });
   setupShellAutoUpdate(win);
   if (await ensureDaemon()) {

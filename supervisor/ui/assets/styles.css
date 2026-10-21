@@ -1033,3 +1033,12 @@ dialog.wide { width: min(900px, 92vw); }
 .ws-transcript { max-height: 64vh; overflow: auto; margin: 10px 0; }
 .ws-line { border-bottom: 1px solid var(--rule); padding: 8px 0; }
 .ws-line pre { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+
+/* ---------- this computer (0.15.0) ---------- */
+.appsettings { margin-top: 34px; border-top: 2px solid var(--ink); padding-top: 12px; }
+.appsettings:empty { display: none; }
+.appsettings h3 { font-family: var(--mono); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; margin-bottom: 10px; }
+.apptoggle { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+.apptoggle input { margin-top: 4px; }
+.apptoggle .help { font-size: 14px; color: var(--ink-soft); }
+.apptoggle.off { cursor: default; opacity: .6; }

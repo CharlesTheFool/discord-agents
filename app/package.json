@@ -11,7 +11,7 @@
     "bundle": "node build-bundle.js",
     "dist": "electron-builder --win nsis",
     "release": "electron-builder --win nsis --publish always",
-    "test": "node test/updater.test.js"
+    "test": "node test/updater.test.js && node test/settings.test.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -34,6 +34,8 @@
     "files": [
       "main.js",
       "updater.js",
+      "settings.js",
+      "preload.js",
       "placeholder.html",
       "build/icon.png"
     ],
