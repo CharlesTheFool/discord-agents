@@ -61,6 +61,11 @@ class SupervisorRoot:
         dependency install, a pending restart (app/main.js writes it)."""
         return self.persistence_dir() / "app_state.json"
 
+    def workshop_dir(self, bot_id: str) -> Path:
+        """The bot's workshop files: status.json, state.json, panel.json,
+        requests/ (the panel's way in) and workers/ (transcripts)."""
+        return self.persistence_dir() / "workshop" / bot_id
+
     def workshop_status(self, bot_id: str) -> Path:
         """The bot's start-gate outcome (core/workshop/gate.py writes it)."""
         return self.persistence_dir() / "workshop" / bot_id / "status.json"

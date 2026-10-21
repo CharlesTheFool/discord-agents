@@ -264,6 +264,15 @@ class Approvals:
                                           f"{interaction.user.display_name}."), view=None)
         await self._tell_requester(decided)
 
+    async def decide_from_dashboard(self, rid: str, allow: bool) -> str:
+        """A decision from the workshop panel (0.15.0): the dashboard is the
+        owner's own machine, behind its per-install token."""
+        decided, why = self.book.decide(rid, "dashboard", allow=allow)
+        if decided is None:
+            raise ValueError(why)
+        await self._tell_requester(decided)
+        return f"{decided['host']} {decided['decision']}"
+
     async def _tell_requester(self, record: dict) -> None:
         note = NOTE_HEAD + DECISION_NOTES[record["decision"]].format(host=record["host"]) + NOTE_TAIL
         if await self.notes.write(record["channel_id"], note):

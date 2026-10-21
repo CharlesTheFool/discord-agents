@@ -87,6 +87,16 @@ class WorkshopState:
             hosts.append(host)
             self.save()
 
+    def revoke_host(self, scope_key: str, host: str) -> bool:
+        hosts = self.data["approved_hosts"].get(scope_key, [])
+        if host not in hosts:
+            return False
+        hosts.remove(host)
+        if not hosts:
+            del self.data["approved_hosts"][scope_key]
+        self.save()
+        return True
+
     # --- project check-ins (0.15.0) ------------------------------------------
 
     def fired_check(self, path: str) -> Optional[str]:

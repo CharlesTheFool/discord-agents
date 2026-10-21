@@ -30,6 +30,7 @@
     <a data-tab="monitor" class="active">Monitor</a>
     <a data-tab="configure">Configure</a>
     <a data-tab="integrations">Integrations</a>
+    <a data-tab="workshop">Workshop</a>
     <a data-tab="memories">Memories</a>
     <a data-tab="repository">Repository</a>
   </nav>
@@ -94,6 +95,9 @@
     </div>
   </section>
 
+  <!-- WORKSHOP (0.15.0) -->
+  <section class="tabpanel" id="tab-workshop"></section>
+
   <!-- MEMORIES -->
   <section class="tabpanel" id="tab-memories"></section>
 
@@ -140,6 +144,12 @@
       <button type="submit" class="btn primary">Create</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dlg-worker" class="wide">
+  <h2>Helper</h2>
+  <div class="ws-transcript"></div>
+  <form method="dialog"><div class="actions"><button class="btn quiet">Close</button></div></form>
 </dialog>
 
 <dialog id="dlg-mcp">

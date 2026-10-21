@@ -363,6 +363,38 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
         return json_response({"saved": True,
                               "restart_required": pm.is_running(bot_id)})
 
+    # --- the workshop panel (0.15.0) -------------------------------------------------
+
+    async def get_workshop(request):
+        bot_id = bot_or_404(request)
+        return json_response(data.workshop_view(bot_id, pm.is_running(bot_id)))
+
+    async def get_worker(request):
+        bot_id = bot_or_404(request)
+        try:
+            lines = data.worker_transcript(bot_id, request.match_info["job_id"])
+        except (ValueError, PathJailError) as e:
+            return json_response({"error": str(e)}, status=400)
+        return json_response({"lines": lines})
+
+    async def post_workshop_request(request):
+        """Shape-checked here; the bot validates again before applying."""
+        bot_id = bot_or_404(request)
+        body = await request.json()
+        action = body.get("action")
+        fields = {"allow_host": ("scope", "host"), "remove_host": ("scope", "host"),
+                  "reset": ("scope",), "wipe": ("scope",), "decide": ("approval_id", "allow")}
+        if action not in fields:
+            return json_response({"error": f"unknown action {action!r}"}, status=400)
+        missing = [f for f in fields[action] if body.get(f) in (None, "")]
+        if missing:
+            return json_response({"error": f"{action} needs {', '.join(missing)}"}, status=400)
+        if action == "wipe" and body.get("confirm") != body.get("scope"):
+            return json_response({"error": "a wipe must be confirmed with its scope"}, status=400)
+        request_id = data.queue_workshop_request(
+            bot_id, {"action": action, **{f: body[f] for f in fields[action]}})
+        return json_response({"queued": request_id, "running": pm.is_running(bot_id)})
+
     # --- trees + files ------------------------------------------------------------------
 
     async def get_memory_tree(request):
@@ -747,6 +779,9 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
     app.router.add_get("/api/bots/{bot_id}/skills", get_skills)
     app.router.add_get("/api/bots/{bot_id}/config", get_config)
     app.router.add_put("/api/bots/{bot_id}/config", put_config)
+    app.router.add_get("/api/bots/{bot_id}/workshop", get_workshop)
+    app.router.add_get("/api/bots/{bot_id}/workshop/workers/{job_id}", get_worker)
+    app.router.add_post("/api/bots/{bot_id}/workshop/requests", post_workshop_request)
     app.router.add_get("/api/bots/{bot_id}/memory/tree", get_memory_tree)
     app.router.add_get("/api/bots/{bot_id}/memory/file", get_memory_file)
     app.router.add_put("/api/bots/{bot_id}/memory/file", put_memory_file)

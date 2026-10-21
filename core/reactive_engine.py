@@ -58,6 +58,7 @@ from tools.skills_tool import run_request_skill
 from .workshop.notes import ProactiveLimits
 from .workshop.projects import CheckIns, ProjectBook, manifest as projects_manifest
 from .workshop.scopes import tree_of
+from .workshop.panel import Panel
 from .workshop.workers import Workers, copy_to_inbox
 
 logger = logging.getLogger(__name__)
@@ -366,6 +367,9 @@ class ReactiveEngine:
                                 self.job_watcher.request_turn, self.config, self.proactive_limits,
                                 events=self.message_memory)
             self._track_task(asyncio.ensure_future(checkins.run()))
+            panel = Panel(self.workshop, Path("persistence") / "workshop" / self.config.bot_id,
+                          approvals=lambda: self.approvals)
+            self._track_task(asyncio.ensure_future(panel.run()))
             # its own task: reconciling jobs (and their tails) talks to the
             # runtime, which must never hold up the rest of on_ready
             self._track_task(asyncio.ensure_future(self._start_watcher()))

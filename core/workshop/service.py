@@ -352,6 +352,18 @@ class Workshop:
         logger.info(f"workshop running cap: stopping {victim.name}")
         await self.backend.stop(victim.name)
 
+    async def reset(self, scope: Scope, *, wipe: bool = False) -> str:
+        """The dashboard's reset (rebuild the sandbox from the template, keep
+        /workspace) and wipe (the volume too). Never under running work."""
+        if await self.jobs.running(scope.key):
+            raise WorkshopUnavailable("it has running work; try again when that's done")
+        name = self.spec(scope).name
+        async with self._ensure_locks[name]:
+            await self.backend.remove(name, keep_volume=not wipe)
+        self._skills_seen.pop(name, None)
+        self.last_used.pop(name, None)
+        return "wiped" if wipe else "reset"
+
     # --- commands --------------------------------------------------------------
 
     async def run_command(self, scope: Scope, executor_key: str, command: str, *,

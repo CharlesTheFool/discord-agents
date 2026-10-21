@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 from core.workshop.backend import (BootFailure, DirEntry, FileTooLarge, JobOutcome, SandboxInfo,
-                                   SandboxSpec, SandboxUnavailable, TemplateFailed)
+                                   SandboxSpec, SandboxUnavailable, TemplateFailed, VolumeInfo)
 
 
 @dataclass
@@ -149,6 +149,10 @@ class FakeBackend:
     async def status(self) -> List[SandboxInfo]:
         return [SandboxInfo(n, "running" if sb.running else "stopped", dict(sb.spec.labels))
                 for n, sb in self.sandboxes.items()]
+
+    async def volume_usage(self) -> List[VolumeInfo]:
+        return [VolumeInfo(n, sum(len(b) for b in files.values()), 10 * 2**30)
+                for n, files in self.volumes.items()]
 
     async def has_sandbox(self, name: str) -> bool:
         return name in self.sandboxes

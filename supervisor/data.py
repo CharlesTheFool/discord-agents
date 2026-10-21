@@ -222,6 +222,77 @@ class BotData:
         return {"state": state, "reason": status.get("reason"), "kind": status.get("kind"),
                 "start_blocked": status.get("reason") if state == "blocked" and not running else None}
 
+    def _scope_label(self, key: str, names: dict, users: dict) -> str:
+        kind, _, scope_id = key.partition(":")
+        meta = names.get(scope_id) or {}
+        if kind == "server":
+            return meta.get("name") or f"server {scope_id}"
+        if kind == "vault":
+            return f"#{meta['name']} (vault)" if meta.get("name") else f"vault {scope_id}"
+        if kind == "dm":
+            return f"DM · {users.get(scope_id) or scope_id}"
+        return meta.get("name") or f"DM {scope_id}"
+
+    def workshop_view(self, bot_id: str, running: bool) -> dict:
+        """The workshop panel (0.15.0): settings from the YAML, what the bot
+        last published, jobs and helpers, pending approvals. state.json is
+        read for named keys only, so no credential ever leaves it."""
+        folder = self.root.workshop_dir(bot_id)
+        state = _read_json(folder / "state.json", {})
+        panel = _read_json(folder / "panel.json", {})
+        names, users = self._names(bot_id), self._user_names(bot_id)
+        approved = state.get("approved_hosts") or {}
+        pending = [{"id": r.get("id"), "scope": r.get("scope_key"), "host": r.get("host"),
+                    "reason": r.get("reason"), "created_at": r.get("created_at"),
+                    "channel": self._display(names, r.get("channel_id") or "")}
+                   for r in (state.get("pending_approvals") or {}).values() if not r.get("decision")]
+        rows = _query(self.root.messages_db(bot_id),
+                      "SELECT id, scope_key, home_channel_id, kind, command, state, started_at,"
+                      " finished_at, exit_code, result FROM jobs ORDER BY started_at DESC LIMIT 40")
+        jobs = [{**dict(r), "channel": self._display(names, r["home_channel_id"])} for r in rows]
+        live = panel.get("scopes") or {}
+        keys = sorted({*live, *approved, *(j["scope_key"] for j in jobs), *(a["scope"] for a in pending)}
+                      - {None})
+        scopes = [{"key": key, "label": self._scope_label(key, names, users),
+                   "sandbox": live.get(key, {}).get("sandbox"),
+                   "used_bytes": live.get(key, {}).get("used_bytes"),
+                   "capacity_bytes": live.get(key, {}).get("capacity_bytes"),
+                   "hosts": list(approved.get(key, [])),
+                   "running": sum(1 for j in jobs if j["scope_key"] == key and j["state"] == "running")}
+                  for key in keys]
+        settings = self.load_config(bot_id).get("workshop") or {}
+        return {"status": self._workshop(bot_id, running), "settings": settings,
+                "snapshot_at": panel.get("written_at"), "template_ready": panel.get("template_ready"),
+                "runtime_error": panel.get("runtime_error"), "requests": panel.get("requests") or [],
+                "scopes": scopes, "jobs": jobs, "approvals": pending}
+
+    def worker_transcript(self, bot_id: str, job_id: str) -> List[dict]:
+        """A worker's transcript lines, oldest first."""
+        if not re.fullmatch(r"job_[0-9a-f]{12}", job_id or ""):
+            raise ValueError(f"{job_id!r} isn't a job id")
+        path = self.root.jailed(self.root.workshop_dir(bot_id) / "workers", f"{job_id}.jsonl")
+        if not path.exists():
+            return []
+        out = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return out
+
+    def queue_workshop_request(self, bot_id: str, request: dict) -> str:
+        """A panel edit, as a request file the bot applies on its next tick
+        (the bot is its workshop state's one writer)."""
+        import secrets
+        rid = secrets.token_hex(6)
+        folder = self.root.workshop_dir(bot_id) / "requests"
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = self.root.jailed(folder, f"{rid}.tmp")
+        tmp.write_text(json.dumps(request), encoding="utf-8")
+        tmp.replace(self.root.jailed(folder, f"{rid}.json"))
+        return rid
+
     # --- bots list ----------------------------------------------------------
 
     async def list_bots(self, running_status: Callable[[str], dict]) -> List[dict]:

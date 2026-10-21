@@ -110,10 +110,10 @@ function showTab(tab) {
   if (tab !== "monitor") {
     stopMonitorRefresh();   // don't hold the refresh timer or SSE open off-tab
   }
-  // memories/repository re-fetch on every visit - the bot writes to both
-  // behind the dashboard's back. configure/integrations keep load-once
-  // (they hold unsaved client-side state).
-  if (!loaded[tab] || tab === "memories" || tab === "repository") {
+  // memories/repository/workshop re-fetch on every visit - the bot writes
+  // to them behind the dashboard's back. configure/integrations keep
+  // load-once (they hold unsaved client-side state).
+  if (!loaded[tab] || tab === "memories" || tab === "repository" || tab === "workshop") {
     loaded[tab] = true;
     LOADERS[tab]();
   } else if (tab === "monitor") {
@@ -531,6 +531,8 @@ function turnStream(t, chan) {
     case "relay":     verb = "reached across via the Prime"; break;
     case "watch":     verb = "standing watch resolved"; break;
     case "job":       verb = "a workshop job finished · a note landed"; break;
+    case "worker":    verb = "a helper finished · its report landed"; break;
+    case "project":   verb = "a project check-in"; break;
     case "scan":      verb = `pulse · weighed ${nMsgs} message${nMsgs !== 1 ? "s" : ""} · replied`; break;
     case "silent":    verb = `pulse · weighed ${nMsgs} message${nMsgs !== 1 ? "s" : ""} · stayed quiet`; break;
     default:          verb = t.response ? "replied" : "no action";
@@ -828,7 +830,7 @@ const HIDDEN = new Set([
   "attachments.backfill_enabled", "attachments.backfill_days",
 ]);
 // Whole sections that belong to the Integrations tab, not Configure.
-// The workshop gets its own panel (0.14.1); until then its YAML is the editor.
+// The workshop's settings live in the Workshop tab (0.15.0).
 const HIDDEN_SECTIONS = new Set(["mcp", "skills", "workshop"]);
 
 const HINTS = {
@@ -2101,12 +2103,230 @@ async function saveAndRestart() {
   setTimeout(() => { if (!intPending.length) bar.className = "restart-bar"; }, 4000);
 }
 
+/* ============================ Workshop (0.15.0) ============================ */
+/* The bot owns its workshop state: this tab reads what it publishes and asks
+   for changes through request files (POST /workshop/requests) it applies on
+   its next tick. Settings are the YAML's workshop section (restart to apply). */
+
+let ws = null, wsSettings = null, wsSettingsDirty = false, wsWaiting = null;
+
+const fmtBytes = (n) => n == null ? "—"
+  : n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${Math.round(n / 2 ** 20)} MB`
+  : `${Math.round(n / 1024)} KB`;
+
+async function loadWorkshop() {
+  ws = await apiGet(A("/workshop"));
+  if (!wsSettingsDirty) wsSettings = structuredClone(ws.settings || {});
+  renderWorkshop();
+}
+
+async function wsRequest(body) {
+  const r = await apiFetch(A("/workshop/requests"), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) { wsNote(out.error || `request failed (${r.status})`, true); return; }
+  if (!out.running) wsNote("Queued: the bot applies it when it next runs.");
+  else wsNote("Sent to the bot…");
+  wsWaiting = out.queued;
+  for (let i = 0; i < 8 && wsWaiting; i++) {          // the bot ticks every 5 s
+    await new Promise((res) => setTimeout(res, 2000));
+    await loadWorkshop();
+    const done = (ws.requests || []).find((q) => q.id === wsWaiting);
+    if (done) { wsWaiting = null; wsNote(done.outcome, !done.ok); }
+  }
+}
+
+function wsNote(text, err = false) {
+  const el = document.getElementById("ws-note");
+  if (!el) return;
+  el.className = `cfg-banner ${err ? "err" : "ok"}`;
+  el.textContent = text;
+}
+
+function wsStatusLine() {
+  const st = ws.status || {};
+  const chip = st.state === "on" ? "on" : st.state === "blocked" ? "blocked" : "off";
+  const fresh = ws.snapshot_at ? `updated ${agoInWords(ws.snapshot_at)}` : "no snapshot yet";
+  return `<div class="ws-status">
+    <span class="chip ${chip}"><span class="led"></span>${esc(st.state || "unknown")}</span>
+    ${st.reason ? `<span class="ws-why">${esc(st.reason)}</span>` : ""}
+    <span class="spacer"></span>
+    <span class="ws-meta">${ws.template_ready === false ? "base image building · " : ""}${esc(fresh)}</span>
+    <button class="btn quiet" id="ws-refresh">Refresh</button></div>
+    ${ws.runtime_error ? `<div class="cfg-banner err">The sandbox runtime didn't answer: ${esc(ws.runtime_error)}</div>` : ""}`;
+}
+
+function wsScopes() {
+  if (!ws.scopes.length) return `<p class="ws-empty">No workshop has been used yet.</p>`;
+  return ws.scopes.map((s) => `
+    <div class="ws-scope" data-scope="${esc(s.key)}">
+      <div class="ws-scope-head">
+        <b>${esc(s.label)}</b><code>${esc(s.key)}</code>
+        <span class="chip ${s.sandbox === "running" ? "on" : "off"}"><span class="led"></span>${esc(s.sandbox || "no sandbox")}</span>
+        <span class="ws-meta">${s.used_bytes != null ? `${fmtBytes(s.used_bytes)} of ${fmtBytes(s.capacity_bytes)}` : ""}${s.running ? ` · ${s.running} running` : ""}</span>
+        <span class="spacer"></span>
+        <button class="btn quiet" data-act="reset" ${s.running ? "disabled" : ""} title="Rebuild the sandbox from the base image; /workspace stays">Reset</button>
+        <button class="btn danger" data-act="wipe" ${s.running ? "disabled" : ""} title="Delete its /workspace too">Wipe</button>
+      </div>
+      <div class="ws-hosts">
+        <span class="ws-label">Allowed hosts</span>
+        ${s.hosts.map((h) => `<span class="chip">${esc(h)}<a class="ws-x" data-act="remove_host" data-host="${esc(h)}" title="Take it back">×</a></span>`).join("")
+          || `<span class="ws-empty">downloads only</span>`}
+        <input type="text" class="ws-host-input" placeholder="add a host, e.g. api.github.com" autocomplete="off">
+        <button class="btn quiet" data-act="allow_host">Allow</button>
+      </div>
+    </div>`).join("");
+}
+
+function wsJobs() {
+  if (!ws.jobs.length) return `<p class="ws-empty">Nothing has run yet.</p>`;
+  return `<table class="ws-table"><tr><th>job</th><th>what</th><th>where</th><th>state</th><th>started</th><th></th></tr>
+    ${ws.jobs.map((j) => `<tr class="${j.state === "running" ? "live" : ""}">
+      <td><code>${esc(j.id)}</code></td>
+      <td>${j.kind === "worker" ? "<b>helper</b> · " : ""}${esc((j.command || "").slice(0, 90))}</td>
+      <td>${esc(j.channel)}</td>
+      <td>${esc(j.state)}${j.exit_code != null ? ` (${j.exit_code})` : ""}</td>
+      <td>${esc(agoInWords(j.started_at))}</td>
+      <td>${j.kind === "worker" ? `<button class="btn quiet" data-transcript="${esc(j.id)}">Transcript</button>` : ""}</td>
+    </tr>`).join("")}</table>`;
+}
+
+function wsApprovals() {
+  if (!ws.approvals.length) return `<p class="ws-empty">No request is waiting.</p>`;
+  return ws.approvals.map((a) => `
+    <div class="ws-approval">
+      <b>${esc(a.host)}</b> <code>${esc(a.scope)}</code> <span class="ws-meta">from ${esc(a.channel)} · ${esc(agoInWords(a.created_at))}</span>
+      <div class="ws-reason">${esc(a.reason || "(no reason given)")}</div>
+      <button class="btn primary" data-decide="${esc(a.id)}" data-allow="1">Allow</button>
+      <button class="btn quiet" data-decide="${esc(a.id)}" data-allow="0">Deny</button>
+    </div>`).join("");
+}
+
+function wsChips(field, placeholder) {
+  const items = wsSettings[field] || [];
+  return `<div class="ws-chips" data-field="${field}">
+    ${items.map((v, i) => `<span class="chip">${esc(v)}<a class="ws-x" data-chip="${i}">×</a></span>`).join("")}
+    <input type="text" placeholder="${esc(placeholder)}" autocomplete="off"></div>`;
+}
+
+function wsSettingsForm() {
+  const scopes = Object.entries(wsSettings.scopes || {});
+  const sel = (v, name) => `<select data-${name}>${["container", "off"].map((o) =>
+    `<option value="${o}" ${o === v ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+  return `
+    <label class="ws-row"><input type="checkbox" id="ws-enabled" ${wsSettings.enabled !== false ? "checked" : ""}> The workshop is on for this bot</label>
+    <div class="ws-row"><span class="ws-label">Everywhere else</span>${sel(wsSettings.default_setting || "container", "default")}</div>
+    <div class="ws-row ws-col"><span class="ws-label">Per server, channel or DM (most specific id wins)</span>
+      ${scopes.map(([id, v]) => `<div class="ws-place"><code>${esc(id)}</code>${sel(v, `place="${esc(id)}"`)}<a class="ws-x" data-unplace="${esc(id)}">×</a></div>`).join("")}
+      <div class="ws-place"><input type="text" id="ws-place-id" placeholder="server, channel or user id" autocomplete="off">
+        <select id="ws-place-set"><option>container</option><option>off</option></select>
+        <button class="btn quiet" id="ws-place-add">Add</button></div></div>
+    <div class="ws-row ws-col"><span class="ws-label">Hosts every workshop may reach</span>${wsChips("allowlist", "host name")}</div>
+    <div class="ws-row ws-col"><span class="ws-label">Open internet (ids)</span>${wsChips("open_internet", "server or channel id")}</div>
+    <div class="ws-row ws-col"><span class="ws-label">Operators (Discord user ids, approve network access)</span>${wsChips("operators", "user id")}</div>
+    <div class="cfg-actions"><button class="btn primary" id="ws-save" ${wsSettingsDirty ? "" : "disabled"}>Save settings</button>
+      <span class="dirty">${wsSettingsDirty ? "unsaved · restart the bot to apply" : ""}</span></div>`;
+}
+
+function renderWorkshop() {
+  const el = document.getElementById("tab-workshop");
+  el.innerHTML = `
+    ${wsStatusLine()}
+    <div class="cfg-banner" id="ws-note"></div>
+    <div class="int-sec"><div class="sechead"><h3>Workshops</h3><span class="count">${ws.scopes.length}</span></div>${wsScopes()}</div>
+    <div class="int-sec"><div class="sechead"><h3>Waiting for you</h3><span class="count">${ws.approvals.length}</span></div>${wsApprovals()}</div>
+    <div class="int-sec"><div class="sechead"><h3>Jobs and helpers</h3><span class="count">${ws.jobs.filter((j) => j.state === "running").length} running</span></div>${wsJobs()}</div>
+    <div class="int-sec"><div class="sechead"><h3>Settings</h3></div>${wsSettingsForm()}</div>`;
+  wireWorkshop(el);
+}
+
+function wsDirty() { wsSettingsDirty = true; renderWorkshop(); }
+
+function wireWorkshop(el) {
+  el.querySelector("#ws-refresh").onclick = () => loadWorkshop();
+  el.querySelectorAll(".ws-scope").forEach((row) => {
+    const scope = row.dataset.scope;
+    row.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", (e) => {
+      e.preventDefault();
+      const act = b.dataset.act;
+      if (act === "allow_host") {
+        const host = row.querySelector(".ws-host-input").value.trim();
+        if (host) wsRequest({ action: act, scope, host });
+      } else if (act === "remove_host") wsRequest({ action: act, scope, host: b.dataset.host });
+      else if (act === "reset") wsRequest({ action: act, scope });
+      else if (act === "wipe") {
+        const typed = prompt(`Wiping deletes everything in this workshop's /workspace. Type ${scope} to confirm.`);
+        if (typed === scope) wsRequest({ action: act, scope, confirm: typed });
+      }
+    }));
+  });
+  el.querySelectorAll("[data-decide]").forEach((b) => b.addEventListener("click", () =>
+    wsRequest({ action: "decide", approval_id: b.dataset.decide, allow: b.dataset.allow === "1" })));
+  el.querySelectorAll("[data-transcript]").forEach((b) => b.addEventListener("click", () =>
+    showTranscript(b.dataset.transcript)));
+
+  el.querySelector("#ws-enabled").onchange = (e) => { wsSettings.enabled = e.target.checked; wsDirty(); };
+  el.querySelector("[data-default]").onchange = (e) => { wsSettings.default_setting = e.target.value; wsDirty(); };
+  el.querySelectorAll("[data-place]").forEach((s) => s.addEventListener("change", () => {
+    wsSettings.scopes[s.dataset.place] = s.value; wsDirty(); }));
+  el.querySelectorAll("[data-unplace]").forEach((x) => x.addEventListener("click", () => {
+    delete wsSettings.scopes[x.dataset.unplace]; wsDirty(); }));
+  el.querySelector("#ws-place-add").onclick = () => {
+    const id = el.querySelector("#ws-place-id").value.trim();
+    if (!/^\d{5,20}$/.test(id)) { wsNote("An id is the number Discord shows with Copy ID.", true); return; }
+    wsSettings.scopes = { ...(wsSettings.scopes || {}), [id]: el.querySelector("#ws-place-set").value };
+    wsDirty();
+  };
+  el.querySelectorAll(".ws-chips").forEach((box) => {
+    const field = box.dataset.field;
+    box.querySelectorAll("[data-chip]").forEach((x) => x.addEventListener("click", () => {
+      wsSettings[field].splice(Number(x.dataset.chip), 1); wsDirty(); }));
+    box.querySelector("input").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || !e.target.value.trim()) return;
+      wsSettings[field] = [...(wsSettings[field] || []), e.target.value.trim()];
+      wsDirty();
+    });
+  });
+  el.querySelector("#ws-save").onclick = saveWorkshopSettings;
+}
+
+async function saveWorkshopSettings() {
+  const full = await apiGet(A("/config"));
+  full.workshop = wsSettings;
+  const r = await apiFetch(A("/config"), {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(full) });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) { wsNote((out.errors || [`save failed (${r.status})`]).join(" · "), true); return; }
+  wsSettingsDirty = false;
+  loaded.configure = false;   // the Configure tab reloads the YAML on its next visit
+  await loadWorkshop();
+  wsNote(out.restart_required ? "Saved. Restart the bot to apply." : "Saved.");
+}
+
+async function showTranscript(jobId) {
+  const dlg = document.getElementById("dlg-worker");
+  const body = dlg.querySelector(".ws-transcript");
+  dlg.querySelector("h2").textContent = `Helper ${jobId}`;
+  body.textContent = "Loading…";
+  dlg.showModal();
+  const { lines } = await apiGet(A(`/workshop/workers/${jobId}`));
+  const textOf = (content) => (content || []).map((b) =>
+    b.type === "text" ? b.text : b.type === "tool_use" ? `→ ${b.name} ${JSON.stringify(b.input)}`
+      : b.type === "tool_result" ? `← ${typeof b.content === "string" ? b.content
+        : (b.content || []).map((c) => c.text || `[${c.type}]`).join(" ")}` : `[${b.type}]`).join("\n");
+  body.innerHTML = lines.map((l) => `<div class="ws-line ${esc(l.kind)}"><span class="ws-meta">${esc(l.kind)}</span>
+    <pre>${esc(l.kind === "task" ? l.task + (l.context ? `\n\n${l.context}` : "")
+      : l.kind === "end" ? `${l.state}: ${l.result}` : textOf(l.content))}</pre></div>`).join("")
+    || "No transcript was kept.";
+}
+
 /* ============================ wiring ============================ */
 
 const LOADERS = {
   monitor: loadMonitor,
   configure: loadConfigure,
   integrations: loadIntegrations,
+  workshop: loadWorkshop,
   memories: loadMemories,
   repository: loadRepository,
 };

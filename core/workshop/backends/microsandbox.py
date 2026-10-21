@@ -34,7 +34,7 @@ from core.internal_constants import (
     WORKSHOP_VOLUME_MIB,
 )
 from core.workshop.backend import (BootFailure, DirEntry, FileTooLarge, JobOutcome, SandboxInfo,
-                                   SandboxSpec, SandboxUnavailable, TemplateFailed)
+                                   SandboxSpec, SandboxUnavailable, TemplateFailed, VolumeInfo)
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +386,13 @@ class MicrosandboxBackend:
             cursor = page.next_cursor
             if not cursor:
                 return out
+
+    async def volume_usage(self) -> List[VolumeInfo]:
+        from microsandbox import Volume
+        suffix = self.volume_name("")
+        return [VolumeInfo(v.name[:-len(suffix)], v.used_bytes, v.capacity_bytes)
+                for v in await _bounded("volume list", Volume.list(), SDK_CALL_SECONDS)
+                if v.name.endswith(suffix)]
 
     def use_template(self, ref: Optional[str]) -> None:
         self.template = ref

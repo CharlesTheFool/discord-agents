@@ -37,6 +37,14 @@ class SandboxInfo:
     labels: Dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class VolumeInfo:
+    """A sandbox's /workspace volume (0.15.0, the dashboard's disk use)."""
+    sandbox: str                     # the sandbox the volume belongs to
+    used_bytes: int
+    capacity_bytes: Optional[int]
+
+
 class SandboxUnavailable(Exception):
     """The runtime can't serve this sandbox (not running, crashed, no
     runtime, didn't answer in time). Every runtime failure surfaces as this
@@ -92,6 +100,8 @@ class ExecutorBackend(Protocol):
         keep_volume is False (the dashboard's wipe)."""
 
     async def status(self) -> List[SandboxInfo]: ...
+
+    async def volume_usage(self) -> List[VolumeInfo]: ...
 
     async def has_sandbox(self, name: str) -> bool: ...
 
