@@ -41,6 +41,7 @@ from .mcp_manager import MCPManager
 from .skills import SkillCatalog
 from .unified_attachment_manager import UnifiedAttachmentManager
 from .vaults import VaultEnforcer
+from .conversation_state import without_ref
 from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
 from .internal_constants import (
@@ -48,7 +49,7 @@ from .internal_constants import (
     NOTE_TURN_LINE, NOTE_TURN_SILENT,
     WORKSHOP_SHELF_LINE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
 )
-from .model.driver import ModelRequest, StaleFileError, Usage, total_input_tokens
+from .model.driver import DocumentRefusedError, ModelRequest, StaleFileError, Usage, total_input_tokens
 from .model.registry import ToolContext, assemble_tools
 from tools.bash_tool import run_bash
 from tools.editor_tool import EDITOR_NAME, run_editor
@@ -679,12 +680,17 @@ class ReactiveEngine:
         message after the tool_results, and is persisted as its own annotated
         user message. Any other file goes into the workshop's inbox as bytes,
         and so does a document where the workshop is on (to merge, edit,
-        convert - reading it is not enough).
+        convert - reading it is not enough). Where the workshop is off, a
+        larger document is read instead, its ref marked read (0.14.1).
         """
         content_blocks = [{"type": "text", "text": result["text"]}]
         file_block = None
         file_data = result["file_data"]
         metadata = result["metadata"]
+        workshop = self._workshop_on(message)
+        read = (file_data.get("method") == "inbox" and not workshop and self.attachment_manager
+                and self.attachment_manager.should_use_document_block(
+                    metadata["filename"], metadata.get("size_bytes") or 0, read=True))
 
         if file_data.get("method") == "base64":
             content_blocks.append({
@@ -695,13 +701,15 @@ class ReactiveEngine:
                     "data": file_data["data"],
                 },
             })
-        elif file_data.get("method") == "ref":
+        elif file_data.get("method") == "ref" or read:
             file_block = {"type": "attachment_ref", "attachment_id": metadata["attachment_id"]}
+            if read:
+                file_block["read"] = True
             content_blocks[0]["text"] += "\nFile attached to the conversation as a readable document."
             if conversation_state:
                 conversation_state.add_message("user", [file_block], [metadata["attachment_id"]])
                 logger.info(f"Added fetched attachment to conversation state: {metadata['filename']}")
-            if self._workshop_on(message):
+            if workshop:
                 content_blocks[0]["text"] += " " + await self._copy_to_inbox(
                     metadata, message=message, server_id=server_id, channel_id=channel_id)
         elif file_data.get("method") == "inbox":
@@ -1349,6 +1357,7 @@ class ReactiveEngine:
         """
         result = ToolLoopResult(model=request.model)
         recovered_file_ids = set()  # stale file_ids already recovered this turn
+        refused_documents = set()   # documents swapped for a note this turn
         loop_iteration = 0
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
         repeat_sig = None  # repeat-call guard: identical consecutive tool calls
@@ -1379,6 +1388,21 @@ class ReactiveEngine:
                         request.messages = conversation_state.get_messages_for_api()
                         continue
                 raise
+            except DocumentRefusedError as e:
+                # A document read on request was past what the provider takes:
+                # a note replaces it, in state too (or every later turn in the
+                # channel fails on it), and the call is retried once
+                if e.attachment_id in refused_documents:
+                    raise
+                refused_documents.add(e.attachment_id)
+                logger.warning(f"Document {e.attachment_id} refused ({e.reason}); replaced with a note")
+                note = {"type": "text", "text": f"\n[A document read here ({e.attachment_id}) couldn't be "
+                                                f"opened: {e.reason}]"}
+                request.messages = without_ref(request.messages, e.attachment_id, note)
+                if conversation_state:
+                    conversation_state.messages = without_ref(conversation_state.messages, e.attachment_id, note)
+                    await self.conversation_state_manager.save(conversation_state)
+                continue
 
             result.usage = response.usage
             result.total_usage = result.total_usage + response.usage

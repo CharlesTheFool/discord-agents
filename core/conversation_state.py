@@ -18,6 +18,23 @@ from core.model.messages import INTERNAL_FIELDS
 logger = logging.getLogger(__name__)
 
 
+def without_ref(messages: List[Dict[str, Any]], attachment_id: str, block: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """messages with every attachment_ref to attachment_id swapped for block.
+    New dicts where anything changed: message dicts are shared between
+    persisted state and in-flight requests."""
+    def swap(b):
+        is_ref = isinstance(b, dict) and b.get("type") == "attachment_ref" and b.get("attachment_id") == attachment_id
+        return block if is_ref else b
+
+    out = []
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, list) and any(swap(b) is not b for b in content):
+            m = {**m, "content": [swap(b) for b in content]}
+        out.append(m)
+    return out
+
+
 class ConversationState:
     """
     Persistent conversation state for a single channel.

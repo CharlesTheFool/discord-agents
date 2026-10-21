@@ -96,6 +96,17 @@ class StaleFileError(Exception):
         self.file_id = file_id
 
 
+class DocumentRefusedError(Exception):
+    """The provider refused a request carrying a document read on request
+    (0.14.1: past its page or size limits). The caller swaps that document
+    for a note and retries."""
+
+    def __init__(self, attachment_id: str, reason: str):
+        super().__init__(f"document {attachment_id} refused: {reason}")
+        self.attachment_id = attachment_id
+        self.reason = reason
+
+
 class BatchTimeoutError(Exception):
     """A batch didn't finish within its time budget; nothing was applied."""
 

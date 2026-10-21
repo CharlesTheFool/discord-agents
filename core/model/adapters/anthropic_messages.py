@@ -15,7 +15,7 @@ import time
 from dataclasses import replace
 from typing import Awaitable, Callable, List, Optional, Tuple
 
-from anthropic import AsyncAnthropic, NotFoundError
+from anthropic import AsyncAnthropic, BadRequestError, NotFoundError
 
 from core.internal_constants import (
     CONSOLIDATION_BATCH_POLL_SECONDS,
@@ -26,6 +26,7 @@ from core.model.catalog import ModelSpec, spec_for
 from core.model.driver import (
     BatchItem,
     BatchTimeoutError,
+    DocumentRefusedError,
     ModelRequest,
     ModelResponse,
     StaleFileError,
@@ -124,6 +125,17 @@ def with_message_cache_breakpoint(messages: list) -> list:
         new_msg = {**messages[mi], "content": new_content}
         return messages[:mi] + [new_msg] + messages[mi + 1:]
     return messages
+
+
+def _newest_read_ref(messages: list) -> Optional[str]:
+    """The attachment id of the last document in the request that was read
+    on request (an attachment_ref marked read), if any."""
+    for m in reversed(messages):
+        content = m.get("content")
+        for block in reversed(content if isinstance(content, list) else []):
+            if _is_ref(block) and block.get("read"):
+                return block["attachment_id"]
+    return None
 
 
 def stale_file_id(error: Exception) -> Optional[str]:
@@ -271,9 +283,10 @@ class AnthropicMessagesDriver:
     async def _resolve_block(self, block: dict) -> dict:
         if self.resolve_attachment is None:
             return {"type": "text", "text": "\n[An attachment that can't be opened here]"}
-        return await self.resolve_attachment(block["attachment_id"])
+        return await self.resolve_attachment(block["attachment_id"], read=bool(block.get("read")))
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
+        read = _newest_read_ref(request.messages)   # gone once refs resolve
         request = await self._resolve_refs(request)
         surface, kwargs = render(request)
         try:
@@ -290,6 +303,12 @@ class AnthropicMessagesDriver:
             file_id = stale_file_id(e)
             if file_id:
                 raise StaleFileError(file_id) from e
+            raise
+        except BadRequestError as e:
+            # A large document read on request is the likely cause (its page
+            # count or size); ordinary documents are small enough never to be
+            if read:
+                raise DocumentRefusedError(read, getattr(e, "message", str(e))[:200]) from e
             raise
         return to_response(message)
 

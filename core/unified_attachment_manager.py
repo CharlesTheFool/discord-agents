@@ -34,22 +34,25 @@ class UnifiedAttachmentManager:
     # materialize their whole content into the context window; they go to
     # the workshop through get_attachment instead
     DOCUMENT_BLOCK_SIZE_THRESHOLD = 100 * 1024  # 100KB
+    # Where the workshop is off, a document asked for with get_attachment is
+    # read as one up to this size (0.14.1). The API's own limits (pages,
+    # context) still apply; a refusal heals in the tool loop.
+    READ_DOCUMENT_MAX_BYTES = 4 * 1024 * 1024
 
     @classmethod
-    def should_use_document_block(cls, filename: str, size_bytes: int) -> bool:
+    def should_use_document_block(cls, filename: str, size_bytes: int, read: bool = False) -> bool:
         """
         Does the model read this file as a document block? A document's whole
         content materializes into context, so only small PDFs and text files
         qualify; everything else is worked on in the workshop (get_attachment
-        copies it into /workspace/inbox).
+        copies it into /workspace/inbox). read: asked for explicitly where
+        there's no workshop to open it in, so a larger one qualifies.
         """
         if not AttachmentClassifier.is_document_block_eligible(filename):
             return False
-        if size_bytes > cls.DOCUMENT_BLOCK_SIZE_THRESHOLD:
-            logger.info(
-                f"File {filename} ({size_bytes} bytes) exceeds the document block threshold "
-                f"({cls.DOCUMENT_BLOCK_SIZE_THRESHOLD} bytes): workshop only"
-            )
+        limit = cls.READ_DOCUMENT_MAX_BYTES if read else cls.DOCUMENT_BLOCK_SIZE_THRESHOLD
+        if size_bytes > limit:
+            logger.info(f"File {filename} ({size_bytes} bytes) is over the document limit ({limit} bytes)")
             return False
 
         return True
@@ -376,17 +379,17 @@ class UnifiedAttachmentManager:
             row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def resolve_ref(self, attachment_id: str) -> Dict:
+    async def resolve_ref(self, attachment_id: str, read: bool = False) -> Dict:
         """What an attachment_ref becomes in a request (spec 4.6): small
-        PDFs and text files as a document through the Files API, used as a
-        cache (uploaded from local storage when the id is missing or stale);
-        images inline; anything else a note pointing at get_attachment,
-        which copies the bytes into the workshop."""
+        PDFs and text files (larger ones when read on request) as a document
+        through the Files API, used as a cache (uploaded from local storage
+        when the id is missing or stale); images inline; anything else a note
+        pointing at get_attachment."""
         row = await self._row(attachment_id)
         if row is None:
             return {"type": "text", "text": "\n[An attachment that is no longer available]"}
         filename, size = row["filename"], row.get("size_bytes") or 0
-        document = row.get("attachment_type") != "image" and self.should_use_document_block(filename, size)
+        document = row.get("attachment_type") != "image" and self.should_use_document_block(filename, size, read)
         if document and row.get("file_id"):
             # the cached id as is: checking it costs a GET per document per
             # model call, and a transient failure there would re-upload and
@@ -401,7 +404,7 @@ class UnifiedAttachmentManager:
                 return {"type": "image", "source": {"type": "base64", "media_type": data["media_type"],
                                                     "data": data["data"]}}
         return {"type": "text", "text": (f"\n[Attachment: {filename} ({format_size(size)}) - "
-                                         f"get_attachment copies it into your workshop]")}
+                                         f"open it with get_attachment]")}
 
     async def attachment_for_file_id(self, file_id: str) -> Optional[str]:
         """Which attachment a provider file id belongs to (healing old states)."""
