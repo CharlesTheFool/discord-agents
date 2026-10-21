@@ -156,14 +156,15 @@ class Workers:
                                                  is_thread=is_thread)
         except WorkshopUnavailable as e:
             return f"The workshop isn't available: {e}."
-        if await self.workshop.jobs.background_count(scope.key) >= WORKSHOP_BACKGROUND_PER_SCOPE:
-            return (f"This workshop already has {WORKSHOP_BACKGROUND_PER_SCOPE} jobs and helpers "
-                    f"running - wait for one to finish (a note lands here) before delegating more.")
-        job_id = new_job_id()
-        job = await self.workshop.jobs.create(
-            scope_key=scope.key, home_server_id=server_id, home_channel_id=channel_id,
-            kind="worker", executor_key=f"worker:{job_id}", command=task, foreground=False,
-            job_id=job_id)
+        async with self.workshop.cap_lock(scope):
+            if await self.workshop.jobs.background_count(scope.key) >= WORKSHOP_BACKGROUND_PER_SCOPE:
+                return (f"This workshop already has {WORKSHOP_BACKGROUND_PER_SCOPE} jobs and helpers "
+                        f"running - wait for one to finish (a note lands here) before delegating more.")
+            job_id = new_job_id()
+            job = await self.workshop.jobs.create(
+                scope_key=scope.key, home_server_id=server_id, home_channel_id=channel_id,
+                kind="worker", executor_key=f"worker:{job_id}", command=task, foreground=False,
+                job_id=job_id)
         home = Home(scope, server_id, str(channel_id), str(parent_id) if parent_id else None, is_thread)
         runner = asyncio.ensure_future(self._run(job, home, task, (tool_input.get("context") or "").strip()))
         self._tasks.add(runner)
@@ -172,8 +173,9 @@ class Workers:
                 f"when it's done.")
 
     async def _run(self, job, home: Home, task: str, context: str) -> None:
-        transcript = Transcript(self.transcripts / f"{job.id}.jsonl")
+        transcript = None
         try:
+            transcript = Transcript(self.transcripts / f"{job.id}.jsonl")
             report = await self._loop(job, home, task, context, transcript)
             state, result = DONE, report
         except asyncio.CancelledError:
@@ -181,9 +183,13 @@ class Workers:
         except Exception as e:
             logger.exception(f"worker {job.id} failed")
             state, result = FAILED, f"it stopped on an error ({type(e).__name__}: {e})"
-        transcript.write("end", state=state, result=result)
-        await self.workshop.jobs.mark_finished(job.id, state, result=result[:WORKER_REPORT_CHARS])
-        await self.deliver(job.id)
+        try:
+            if transcript is not None:
+                transcript.write("end", state=state, result=result)
+            await self.workshop.jobs.mark_finished(job.id, state, result=result[:WORKER_REPORT_CHARS])
+            await self.deliver(job.id)
+        except Exception:   # the row stays running; the next boot settles it
+            logger.exception(f"worker {job.id} finished but couldn't be recorded")
 
     # --- the loop -------------------------------------------------------------------
 

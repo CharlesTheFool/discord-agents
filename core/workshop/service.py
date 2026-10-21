@@ -169,6 +169,7 @@ class Workshop:
         self.proxy_port: Optional[int] = None
         self.last_used: Dict[str, float] = {}
         self._ensure_locks = defaultdict(asyncio.Lock)
+        self._cap_locks = defaultdict(asyncio.Lock)   # scope key -> count-then-create
         self._template_task: Optional[asyncio.Task] = None
         self._template_tried = 0.0                  # monotonic time of the last build attempt
         self._skills_seen: Dict[str, str] = {}      # sandbox -> skills fingerprint it holds
@@ -378,10 +379,14 @@ class Workshop:
         if background and await self.jobs.background_count(scope.key) >= WORKSHOP_BACKGROUND_PER_SCOPE:
             return CommandResult(self._at_cap(), None, False)
         name = await self.sandbox(scope)
-        job = await self.jobs.create(scope_key=scope.key, home_server_id=home_server_id,
-                                     home_channel_id=home_channel_id, kind="shell",
-                                     executor_key=executor_key, command=command,
-                                     foreground=not background)
+        async with self.cap_lock(scope):
+            # again under the lock: two channels of one scope can race here
+            if background and await self.jobs.background_count(scope.key) >= WORKSHOP_BACKGROUND_PER_SCOPE:
+                return CommandResult(self._at_cap(), None, False)
+            job = await self.jobs.create(scope_key=scope.key, home_server_id=home_server_id,
+                                         home_channel_id=home_channel_id, kind="shell",
+                                         executor_key=executor_key, command=command,
+                                         foreground=not background)
         log = f"/workspace/.logs/{job.id}.log"
         limit = min(timeout_s or WORKSHOP_SHELL_JOB_MAX_SECONDS, WORKSHOP_SHELL_JOB_MAX_SECONDS)
         try:
@@ -430,6 +435,11 @@ class Workshop:
         preview = await self.preview(name, log)
         return CommandResult(format_result(outcome.exit_code, preview, log, timed_out=outcome.timed_out),
                              job.id, False)
+
+    def cap_lock(self, scope: Scope) -> asyncio.Lock:
+        """Held from counting a scope's background work to recording a new
+        one (shell jobs and workers share the cap)."""
+        return self._cap_locks[scope.key]
 
     def _at_cap(self) -> str:
         return (f"This workshop already has {WORKSHOP_BACKGROUND_PER_SCOPE} jobs running in the "

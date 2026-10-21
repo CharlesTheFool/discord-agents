@@ -81,6 +81,10 @@ def memory_intent(kind: str, text: str, display_name: str) -> str:
     )
 
 
+class _AlreadyBuilt(Exception):
+    """async_initialize ran before (on_ready again after a re-identify)."""
+
+
 class _SyntheticDMMessage:
     """Message-shaped carrier for /memory commands (no discord.Message exists
     for a slash interaction). Carries exactly the attributes the context
@@ -271,8 +275,13 @@ class ReactiveEngine:
         Async initialization for managers that require I/O.
         Should be called after bot is ready.
         """
-        # Initialize Conversation State Manager (v0.5.0 - dual-cap context management)
+        # Initialize Conversation State Manager (v0.5.0 - dual-cap context management).
+        # Once: on_ready runs again after a re-identify, and the note writers
+        # (job watcher, check-ins, approvals) keep the manager they were built
+        # with - a second one would save over the first's newer states
         try:
+            if self.conversation_state_manager is not None:
+                raise _AlreadyBuilt
             db_path = Path("persistence") / f"{self.config.bot_id}_conversation_states.db"
             self.conversation_state_manager = ConversationStateManager(
                 db_path=db_path,
@@ -284,6 +293,8 @@ class ReactiveEngine:
                 f"ConversationStateManager initialized "
                 f"(max_messages={self.config.api.context_messages})"
             )
+        except _AlreadyBuilt:
+            pass
         except Exception as e:
             logger.error(f"Failed to initialize ConversationStateManager: {e}", exc_info=True)
             self.conversation_state_manager = None  # Disable on failure
@@ -1709,6 +1720,7 @@ class ReactiveEngine:
                 # request, so the tail it was generated after becomes a real
                 # message before it, where the model saw it
                 logger.info(f"Server tools paused the turn{log_suffix} - resuming")
+                result.ended_on_send = False   # searches ran after any send: what follows isn't a restatement
                 if request.volatile_tail:
                     request.messages.append({"role": "user", "content": [
                         {"type": "text", "text": request.volatile_tail}]})
