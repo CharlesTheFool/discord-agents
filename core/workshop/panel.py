@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 REQUEST_TICK_SECONDS = 5
 SNAPSHOT_SECONDS = 60
 ACTIONS = ("allow_host", "remove_host", "reset", "wipe", "decide")
-SCOPE_KEY = re.compile(r"^(server|vault|dm|dm-channel):\d{1,20}$")
+SCOPE_KEY = re.compile(r"(server|vault|dm|dm-channel):[0-9]{1,20}")
 REQUEST_FILE = re.compile(r"^[0-9a-f]{12}\.json$")
 
 
@@ -87,7 +87,7 @@ class Panel:
             return await approvals.decide_from_dashboard(str(request.get("approval_id")),
                                                          request.get("allow") is True)
         scope_key = str(request.get("scope") or "")
-        if not SCOPE_KEY.match(scope_key):
+        if not SCOPE_KEY.fullmatch(scope_key):
             raise ValueError(f"{scope_key!r} isn't a workshop scope")
         state = self.workshop.state
         if action == "allow_host":

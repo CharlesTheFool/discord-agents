@@ -14,6 +14,7 @@ model-written note must not aim turns at another scope or server.
 import asyncio
 import logging
 import pathlib
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -28,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 STATUSES = ("active", "paused", "done")
 MANIFEST_MAX = 5
+FRONTMATTER_MAX_CHARS = 8192        # a note's head is all the loop reads
+CHANNEL_ID = re.compile(r"[0-9]{1,20}")
+# Frontmatter values the loop accepts: anything else (a list, a mapping, a
+# YAML alias tree whose str() would explode) makes the note invalid
+_PLAIN = (str, int, float, date, datetime)
 # Every place a scope keeps its tree, as globs under the bot's memory root
 TREE_GLOBS = ("servers/*", "servers/*/channels/*", "servers/*/channels/*/threads/*",
               "global/dms/*", "global/dms/_unresolved/*")
@@ -67,7 +73,7 @@ class Project:
 
 def frontmatter(text: str) -> Optional[dict]:
     """The YAML block between a leading --- and the next --- line, or None."""
-    text = text.lstrip("﻿")
+    text = text.lstrip("\ufeff")
     if not text.startswith("---"):
         return None
     end = text.find("\n---", 3)
@@ -75,7 +81,7 @@ def frontmatter(text: str) -> Optional[dict]:
         return None
     try:
         data = yaml.safe_load(text[3:end])
-    except yaml.YAMLError:
+    except (yaml.YAMLError, ValueError):   # PyYAML raises ValueError for 2026-11-31
         return None
     return data if isinstance(data, dict) else None
 
@@ -84,10 +90,12 @@ def with_home(text: str, channel_id: str) -> Optional[str]:
     """text with home_channel added to its frontmatter (a frontmatter block
     is opened if there's none), or None when it already names one."""
     data = frontmatter(text)
+    body = text.lstrip("\ufeff")
+    if data is None and body.startswith("---"):
+        return None   # frontmatter that doesn't parse: left as written, skipped as malformed
     if data is not None and data.get("home_channel") not in (None, ""):
         return None
     line = f"home_channel: '{channel_id}'"
-    body = text.lstrip("﻿")
     if data is not None:
         return body.replace("---", f"---\n{line}", 1)
     return f"---\n{line}\n---\n{body}"
@@ -160,8 +168,11 @@ class ProjectBook:
         for fs_path in sorted(folder.glob("*.md")):
             if fs_path.is_symlink() or not fs_path.is_file():
                 continue
-            project = self._read(fs_path, f"/memories/{self.bot_id}/{tree}/projects/{fs_path.name}",
-                                 scope, server_id)
+            path = f"/memories/{self.bot_id}/{tree}/projects/{fs_path.name}"
+            try:
+                project = self._read(fs_path, path, scope, server_id)
+            except Exception as e:   # one bad note must not stop every scope's check-ins
+                project = self._skip(path, fs_path.stat(), f"unreadable ({type(e).__name__}: {e})")
             if project is not None:
                 out.append(project)
         return out
@@ -169,9 +180,13 @@ class ProjectBook:
     def _read(self, fs_path: pathlib.Path, path: str, scope: Scope,
               server_id: Optional[str]) -> Optional[Project]:
         stat = fs_path.stat()
-        data = frontmatter(fs_path.read_text(encoding="utf-8", errors="replace"))
+        with open(fs_path, encoding="utf-8", errors="replace") as f:
+            data = frontmatter(f.read(FRONTMATTER_MAX_CHARS))
         if data is None:
             return self._skip(path, stat, "no frontmatter")
+        if any(data.get(k) is not None and not isinstance(data.get(k), _PLAIN)
+               for k in ("status", "next_check", "home_channel")):
+            return self._skip(path, stat, "status, next_check and home_channel must be plain values")
         status = str(data.get("status", "")).strip().lower()
         if status not in STATUSES:
             return self._skip(path, stat, f"status {data.get('status')!r} isn't active, paused or done")
@@ -180,7 +195,7 @@ class ProjectBook:
         except ValueError:
             return self._skip(path, stat, f"next_check {data.get('next_check')!r} isn't an ISO date")
         home = str(data.get("home_channel") or "").strip()
-        if not home.isdigit():
+        if not CHANNEL_ID.fullmatch(home):
             return self._skip(path, stat, "no home_channel")
         place = self.channel_place(home)
         if place is None:
