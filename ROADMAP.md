@@ -43,6 +43,10 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.14.1:** polish. Automated turns stay quiet when nothing needs saying;
   text-only skills and documents up to 4 MB where the workshop is off;
   scope proxy credentials rotate on every start; an MIT license.
+- **0.14.2:** the message cap stops breaking the prompt cache. A full
+  channel used to drop one message per turn, shifting everything after the
+  system prompt; it now trims to a quarter below the cap, so the cache
+  holds for several turns.
 
 ## The active plan
 
@@ -50,15 +54,6 @@ Each release below changes one thing, so a regression can be attributed.
 0.13.0 shipped alone for that reason: had concurrency changes ridden along,
 a cache regression would have had two suspects. The workshop came first,
 then what runs in it, then where else it can run.
-
-### 0.14.2: the message cap stops breaking the cache
-
-Once a channel's history reaches its message cap, every turn drops the
-oldest message, which shifts everything after the system prompt, so the
-conversation part of the prompt cache misses on every turn. Re-writing the
-cache was about 72% of production's scan spend. Over the cap, the history
-drops to a quarter below it instead, so its head holds for several turns. It
-ships alone, so the measured change in cost has one cause.
 
 ### 0.15.0: projects and workers
 

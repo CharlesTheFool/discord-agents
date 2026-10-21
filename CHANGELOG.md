@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.2] - 2026-10-20
+
+**Status:** Beta, and the last of 0.14. One change, so its effect on cost
+has one cause.
+
+### Changed
+- **The message cap stops breaking the prompt cache.** Once a channel's
+  history reached its message cap, every turn dropped the oldest message,
+  which shifted everything after the system prompt: the conversation part
+  of the cache missed on every turn, and re-writing it was about 72% of
+  production's scan spend. Over the cap, the history now drops to a quarter
+  below it (a cap of 30 trims to 23), so its head holds for several turns
+  and only the turn right after a trim re-writes the cache. Measured on the
+  test channel at its cap of 20, three mentions in a row: the first after
+  the trim wrote 21,043 tokens; the next two read 21,043 and 21,139 from
+  the cache and wrote 96 and 53. Before, the second of two such mentions
+  read only the tools and system prompt (17,180) and wrote 3,752.
+
+### Upgrading
+Nothing to do. A full channel keeps between three quarters of its
+`api.context_messages` and all of it, instead of exactly all of it.
+
 ## [0.14.1] - 2026-10-20
 
 **Status:** Pre-release (beta). Polish on the workshop release: quieter

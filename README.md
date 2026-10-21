@@ -331,7 +331,7 @@ agentic:
 api:
   model: "claude-sonnet-5"
   background_model: "claude-haiku-4-5"   # episode distillation, watch checks
-  context_messages: 30          # rolling window of Discord messages
+  context_messages: 30          # most Discord messages kept live (trims to 3/4 when over)
   context_tokens: 80000         # session threshold: episodize and reseed past this
   effort: "medium"              # optional cost/depth dial: low | medium | high | max
 
@@ -465,9 +465,8 @@ The full policy, including how to report a vulnerability, is in
 background jobs that report back and a network that is closed unless an
 operator opens it. It follows 0.13.0 and 0.13.1, where the model layer
 landed alone so the request bytes could be compared with nothing else
-changing. Next are a prompt-cache fix (0.14.2), projects and workers
-(0.15.0), a second model provider (0.15.1), then a Host mode for trusted
-single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
+changing. Next are projects and workers (0.15.0), a second model
+provider (0.15.1), then a Host mode for trusted single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
 
 The codebase is about fifty core modules plus the supervisor package, with
 about 1,200 unit tests and an integration suite that boots real VMs. Every
