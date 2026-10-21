@@ -83,6 +83,7 @@ MCP_CONFIG_FILE = "mcp_servers.json"
 # =============================================================================
 WEB_SEARCH_CITATIONS_ENABLED = True  # Required for end-user applications
 WEB_SEARCH_MAX_USES = 8  # Per-request cap on search/fetch calls (cost guard)
+WEB_FETCH_MAX_CONTENT_TOKENS = 25000  # Per fetched page: without dynamic filtering a page lands whole (0.14.3)
 
 
 # =============================================================================

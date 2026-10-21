@@ -238,6 +238,13 @@ scope to any public host, still port 443 only.
 - **Deleting a Discord message doesn't reach the workshop.** A file the bot
   copied into `/workspace` (a fetched attachment, a repository copy) stays
   there after the message is deleted.
+- **Web fetch is a second way out, and it isn't the workshop's.** Where web
+  search is on (`api.web_search.enabled`, off by default), `web_fetch` runs
+  on Anthropic's servers, outside the proxy and its allowlist. It fetches
+  only URLs that appeared in the conversation, but that includes the bot's
+  own tool results, so a URL the bot printed with `bash` is fetchable, query
+  string and all. Leave web search off where that matters; restricting
+  fetches to URLs from people and search results is planned.
 - **The hypervisor is the boundary.** The VM monitor runs as the operator's
   user. A VM escape would land with that user's privileges, which is one
   more reason to run the app under an account that isn't an administrator.

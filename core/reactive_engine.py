@@ -1177,7 +1177,10 @@ class ReactiveEngine:
 
             if block.name == "memory":
                 command = block.input.get('command', 'unknown')
-                path = block.input.get('path', 'unknown')
+                # rename names its paths old_path/new_path
+                path = block.input.get('path') or (
+                    f"{block.input.get('old_path', '?')} -> {block.input.get('new_path', '?')}"
+                    if command == "rename" else "unknown")
                 logger.debug(f"Executing memory tool: {command} {path}")
 
                 result = self.memory_tool_executor.execute(
