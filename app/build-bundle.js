@@ -98,6 +98,7 @@ function download(url, dest) {
     ["-c", "import sys, os, tempfile; sys.path.insert(0, 'framework'); " +
            "import discord, anthropic, aiohttp, aiosqlite, yaml, PIL, dotenv; " +
            "import core.reactive_engine, core.agentic_engine, supervisor.api, core.workshop.gate; " +
+           "import openai, core.model.adapters.openai_responses, core.model.routing; " +
            "from core.workshop.backends.microsandbox import pin_runtime; " +
            "from pathlib import Path; pin_runtime(Path(tempfile.mkdtemp()) / 'msb'); " +
            "assert os.path.exists(os.environ['MSB_PATH']), 'no bundled msb'; " +

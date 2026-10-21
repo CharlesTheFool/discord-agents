@@ -52,7 +52,7 @@ class UnifiedAttachmentManager:
             return False
         limit = cls.READ_DOCUMENT_MAX_BYTES if read else cls.DOCUMENT_BLOCK_SIZE_THRESHOLD
         if size_bytes > limit:
-            logger.info(f"File {filename} ({size_bytes} bytes) is over the document limit ({limit} bytes)")
+            logger.debug(f"File {filename} ({size_bytes} bytes) is over the document limit ({limit} bytes)")
             return False
 
         return True
