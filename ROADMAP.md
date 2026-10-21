@@ -65,6 +65,9 @@ commitments, details are not. Full history with upgrade notes lives in
   caching was measured before it was built: OpenAI matches only at
   breakpoints still present in the request, so the adapter keeps the last
   two.
+- **0.15.2:** two bots that answer each other stop on their own: past six
+  bot messages in a row, unaddressed bot chatter isn't scanned until a
+  person speaks.
 
 ## The active plan
 

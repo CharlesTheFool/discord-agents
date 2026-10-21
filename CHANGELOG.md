@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.2] - 2026-10-21
+
+**Status:** Beta. One fix, found while testing 0.15.1.
+
+### Fixed
+- **Two bots no longer talk to each other forever.** With
+  `discord.allow_bot_interactions` on, a bot answers another bot's message
+  on its periodic scan. Two such bots in one channel never stopped: on the
+  test server the dev bot and the production bot traded "*silence*" and
+  "*nothing to add*" once a minute in two channels until one was stopped.
+  Past six bot messages in a row since the last person spoke, another
+  bot's unaddressed message is no longer scanned; a person speaking resets
+  it, and an explicit @mention from a bot is still answered. Live: the
+  production bot answered the dev bot, and the dev bot let it be.
+
+  Also measured: telling the scan to reply with a `<silent/>` marker when
+  it has nothing to say (what fixed automated turns in 0.14.1) changed
+  nothing at the moment that started the loop: 8 of 8 runs answered either
+  way, with real banter, not a statement of silence. So the scan prompt is
+  unchanged and every request is byte-identical to 0.15.1.
+
+### Upgrading
+Nothing to do.
+
 ## [0.15.1] - 2026-10-21
 
 **Status:** Beta. A second model provider, as the proof that the model
