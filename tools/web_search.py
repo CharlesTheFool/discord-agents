@@ -9,7 +9,7 @@ quota manager was never wired into any engine and has been removed).
 from core.internal_constants import WEB_FETCH_MAX_CONTENT_TOKENS, WEB_SEARCH_MAX_USES
 
 
-def get_web_search_tools(citations_enabled: bool = True) -> list:
+def get_web_search_tools(citations_enabled: bool = True, worker: bool = False) -> list:
     """
     Generate web search tool definitions for Claude API.
 
@@ -17,7 +17,13 @@ def get_web_search_tools(citations_enabled: bool = True) -> list:
 
     Args:
         citations_enabled: Enable citations for web_fetch (required for end-user apps)
+        worker: a helper's request (0.15.0): its only user message is a brief
+            the bot wrote, so URLs in it don't count either - a helper fetches
+            what its searches find
     """
+    url_sources = {"client_tool_results": {"type": "none"}}
+    if worker:
+        url_sources["user_input"] = {"type": "none"}
     # Not the 20260209 versions: their dynamic filtering brings Anthropic's
     # code execution with it, a second sandbox outside the workshop the
     # model then writes files into (0.14.3, measured: with them it ran
@@ -39,6 +45,6 @@ def get_web_search_tools(citations_enabled: bool = True) -> list:
             # conversation brought up, so `bash -c "echo https://x/?<data>"`
             # made anything the bot can read fetchable (0.15.0). Only URLs
             # from messages and from search results now.
-            "url_sources": {"client_tool_results": {"type": "none"}},
+            "url_sources": url_sources,
         }
     ]

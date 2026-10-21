@@ -124,6 +124,6 @@ def _worker_tools(ctx: ToolContext, spec: ModelSpec) -> List[ToolDef]:
         tools += [client_tool(t) for t in get_discord_tools()]
     if ctx.web_search:
         tools += [ToolDef(t["name"], "server", t, requires=("server_web_tools",))
-                  for t in get_web_search_tools(citations_enabled=ctx.web_citations)]
+                  for t in get_web_search_tools(citations_enabled=ctx.web_citations, worker=True)]
     tools += [BASH, EDITOR, REQUEST_SKILL]
     return _capable(tools, spec)
