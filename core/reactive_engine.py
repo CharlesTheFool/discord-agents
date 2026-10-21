@@ -45,6 +45,7 @@ from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, WORKSHOP_DM_LINE, WORKSHOP_PROMPT,
+    NOTE_TURN_LINE, NOTE_TURN_SILENT,
     WORKSHOP_SHELF_LINE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
 )
 from .model.driver import ModelRequest, StaleFileError, Usage, total_input_tokens
@@ -842,13 +843,14 @@ class ReactiveEngine:
         return ("<workshop_jobs>\n(running in your workshop; a note arrives when each finishes)\n"
                 + "\n".join(lines) + "\n</workshop_jobs>")
 
-    async def _build_volatile_tail(self, base: str, conversation_state, message=None) -> str:
+    async def _build_volatile_tail(self, base: str, conversation_state, message=None,
+                                   closing: str = "") -> str:
         """
         Per-request context (timestamp, momentum, attachment index, repository
         manifest) that must stay OUT of the cached prompt prefix. It rides as
         a transient user message appended at request time in _run_tool_loop -
         downstream of both cache breakpoints, never persisted to conversation
-        state.
+        state. closing, when given, is its last line.
         """
         parts = [base] if base else []
 
@@ -932,6 +934,8 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Failed to build recent-messages index: {e}")
 
+        if closing:
+            parts.append(closing)
         if not parts:
             return ""
         return (
@@ -2468,6 +2472,7 @@ class ReactiveEngine:
                  + f"\nConversation momentum right now: {context['conversation_momentum'].upper()}"),
                 conversation_state,
                 message,
+                closing=NOTE_TURN_LINE if note_driven else "",
             )
 
             request = self._build_request(
@@ -2483,6 +2488,8 @@ class ReactiveEngine:
                 result = await self._run_tool_loop(
                     request, message, conversation_state, log_suffix=" (periodic)",
                 )
+                if note_driven and result.response_text.strip() == NOTE_TURN_SILENT:
+                    result.response_text = ""
 
                 # Empty text and no tool sends = Claude decided to stay silent
                 if not result.response_text.strip() and not result.did_send:

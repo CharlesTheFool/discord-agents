@@ -407,6 +407,19 @@ WORKSHOP_SHELF_LINE = (" The repository is your shelf: what the server should ke
                        " find it without you, goes there with save_output.")
 WORKSHOP_DM_LINE = " This one belongs to this DM alone."
 
+# A note-driven turn (a finished job, an expired approval) answers a note,
+# not a person, and models explain their silence to it instead of keeping
+# it. Measured 2026-10-20 on a captured request, 8 runs per wording: no line,
+# 8/8 posted an explanation; "write nothing" wordings 2/8 to 7/8; this line
+# 0/8, while a report the bot had promised still went out 8/8. The sentinel
+# is what makes it hold: models emit a token far more reliably than nothing.
+NOTE_TURN_SILENT = "<silent/>"
+NOTE_TURN_LINE = (
+    "This turn started because of the note above, not because anyone spoke, and anything "
+    "you write is posted to the channel. If someone is waiting on what the note says "
+    "(you said you'd report back, or it answers their request), tell them. If it needs "
+    f"nothing said, reply with exactly {NOTE_TURN_SILENT} and nothing else.")
+
 
 # =============================================================================
 # MEMORY RECONSOLIDATION (v0.7.0, Internal)
