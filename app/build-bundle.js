@@ -45,13 +45,6 @@ function download(url, dest) {
   });
 }
 
-function copyFiltered(src, dest) {
-  fs.cpSync(src, dest, {
-    recursive: true,
-    filter: (p) => !EXCLUDE_DIRS.has(path.basename(p)),
-  });
-}
-
 (async function main() {
   // 0. sanity: local python matches the embedded minor
   const pyv = execFileSync("python", ["--version"], { encoding: "utf-8" }).trim();
@@ -82,14 +75,19 @@ function copyFiltered(src, dest) {
     "--target", path.join(RUNTIME, "Lib", "site-packages"),
     "--quiet"], { stdio: "inherit" });
 
-  // 4. the framework source
+  // 4. the framework source: tracked files only, so an installer holds
+  // exactly its commit (0.14.0's picked up an untracked skill folder)
   log("copying framework…");
   fs.mkdirSync(FRAMEWORK, { recursive: true });
-  for (const item of FRAMEWORK_ITEMS) {
-    const src = path.join(ROOT, item);
-    if (!fs.existsSync(src)) { log(`  (skip ${item} - not present)`); continue; }
-    copyFiltered(src, path.join(FRAMEWORK, item));
+  const tracked = execFileSync("git", ["ls-files", "-z", "--", ...FRAMEWORK_ITEMS],
+                               { cwd: ROOT, encoding: "utf-8" }).split("\0").filter(Boolean);
+  for (const rel of tracked) {
+    if (rel.split("/").some((part) => EXCLUDE_DIRS.has(part))) continue;
+    const dest = path.join(FRAMEWORK, rel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, rel), dest);
   }
+  log(`  ${tracked.length} tracked files`);
 
   // 5. prove the bundle stands alone: the embedded python imports the
   // dependencies AND the framework's own entry points (a missing framework

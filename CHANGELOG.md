@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.1] - 2026-10-20
+
+**Status:** Pre-release (beta). Polish on the workshop release: quieter
+automated turns, skills and documents where the workshop is off, and
+rotating proxy credentials.
+
+### Fixed
+- **Automated turns stay quiet when nothing needs saying.** A turn started
+  by a note (a finished job, an expired approval) sometimes posted the
+  bot's reason for staying silent ("No response needed here - just the
+  network access request expiring"). That turn now ends with a line saying
+  nobody spoke, that anything written is posted, to tell whoever is waiting
+  on the note, and otherwise to reply with exactly `<silent/>`, which the
+  bot treats as silence. Measured on the captured request that produced
+  the bug, 8 runs each: before, 8 of 8 posted an explanation; after, 0 of
+  8, while a report the bot had promised still went out every time.
+- **The installer holds exactly its commit.** The 0.14.0 installer also
+  carried a skill folder that was present on the build machine but not in
+  the repository (Anthropic's `canvas-design`, with its own license file).
+  The bundle is now built from tracked files only.
+
+### Added
+- **Skills without the workshop.** A skill that is only its `SKILL.md` can
+  say so in its frontmatter (`metadata: {text-only: true}`) and is then
+  offered in channels and DMs where the workshop is off. None of the
+  bundled skills qualifies: even the fiction guides read reference files
+  and keep a story bible in `/workspace`.
+- **Larger documents without the workshop.** Where the workshop is off,
+  `get_attachment` now reads a PDF or text file up to 4 MB (it was 100 KB),
+  and says plainly when one is past that. If the model API refuses one
+  (over 100 pages, say), the bot replaces it with a note and carries on,
+  instead of failing every later turn in that channel.
+- **LICENSE.** The project is MIT-licensed.
+
+### Changed
+- **Proxy credentials rotate on every start.** A scope's proxy credential
+  is visible to its model, so a leaked one now lasts until the next
+  restart. A job still running across restarts keeps the credential it
+  started with until it ends.
+
+### Upgrading
+Nothing to do. A channel whose context holds a large attachment re-writes
+its prompt cache once after the update: that attachment's placeholder line
+was reworded.
+
 ## [0.14.0] - 2026-10-19
 
 **Status:** Pre-release (beta). The workshop: each bot gets a sandboxed
