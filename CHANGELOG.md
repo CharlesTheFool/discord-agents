@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.4] - 2026-10-20
+
+**Status:** Beta. A second fix from the end-of-0.14 verification sweep.
+
+### Fixed
+- **Web search no longer cuts sessions short.** A session closes into an
+  episode once its context passes `api.context_tokens`, measured from the
+  last model call's input. For a call that runs server tools (web search,
+  web fetch), the API sums every internal pass, so that measure read two
+  or three times the real context: on the test bot a turn that fetched two
+  pages reported 114,426 input tokens on a context of about 25,000, and
+  sessions were closed and reseeded four times in four minutes. The
+  measure now comes from the last call before a server tool ran in the
+  turn (later calls carry its results). Nothing is lost by skipping them: the
+  fetched pages are never kept in the conversation, so such a turn doesn't
+  grow it, and the next ordinary turn measures the real size.
+
+### Upgrading
+Nothing to do. A session whose measure was already inflated by an earlier
+search turn keeps that reading until its next reseed.
+
 ## [0.14.3] - 2026-10-20
 
 **Status:** Beta. A fix found by the end-of-0.14 verification sweep.

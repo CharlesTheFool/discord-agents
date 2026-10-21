@@ -50,6 +50,8 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.14.3:** the workshop is the only sandbox again. The web tools'
   newest versions brought Anthropic's code execution along; they're pinned
   to the versions without it.
+- **0.14.4:** web search no longer cuts sessions short (a server-tool
+  call's summed usage no longer counts as the context size).
 
 ## The active plan
 
