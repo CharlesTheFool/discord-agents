@@ -13,6 +13,8 @@ virtualization on shouldn't need the operator either.
 
 import asyncio
 import json
+import os
+import re
 import logging
 import subprocess
 import sys
@@ -31,13 +33,22 @@ BACKOFF_BASE_SECONDS = 60  # 1, 2, 4, 8, 16 minutes
 BLOCKED_RETRY_SECONDS = 600
 
 
-def find_orphan_pids(bot_id: str, owned: Optional[List[int]] = None) -> List[int]:
-    """Best-effort process-table scan for `bot_manager.py spawn <bot_id>`
-    processes this daemon doesn't own (e.g. a previous daemon was killed
-    without shutting its bots down). A venv shim spawns the real interpreter
-    as a child with an identical command line, so exclusion covers owned pids
-    AND their direct children. Returns [] on any platform hiccup."""
-    needle = f"bot_manager.py spawn {bot_id}"
+def _spawns(command_line: str, script: Path, bot_id: str) -> bool:
+    """Does this command line run `<script> spawn <bot_id>` (quotes and, on
+    Windows, case and slashes aside; `spawn alpha` isn't `spawn alpha-2`)?"""
+    norm = lambda s: os.path.normcase(s.replace('"', ""))
+    return re.search(re.escape(norm(f"{script} spawn {bot_id}")) + r"(\s|$)",
+                     norm(command_line or "")) is not None
+
+
+def find_orphan_pids(bot_id: str, script: Path, owned: Optional[List[int]] = None) -> List[int]:
+    """Best-effort process-table scan for this install's `<script> spawn
+    <bot_id>` processes this daemon doesn't own (e.g. a previous daemon was
+    killed without shutting its bots down). Only this install's own script
+    counts: a dev checkout and the app on one machine can share a bot id.
+    A venv shim spawns the real interpreter as a child with an identical
+    command line, so exclusion covers owned pids AND their direct children.
+    Returns [] on any platform hiccup."""
     owned_set = set(owned or [])
     found = []  # (pid, ppid)
     try:
@@ -52,14 +63,14 @@ def find_orphan_pids(bot_id: str, owned: Optional[List[int]] = None) -> List[int
             if isinstance(rows, dict):
                 rows = [rows]
             for r in rows:
-                if needle in (r.get("CommandLine") or ""):
+                if _spawns(r.get("CommandLine"), script, bot_id):
                     found.append((int(r["ProcessId"]),
                                   int(r.get("ParentProcessId") or 0)))
         else:
             out = subprocess.run(["ps", "-eo", "pid,ppid,args"],
                                  capture_output=True, text=True, timeout=15).stdout
             for line in out.splitlines():
-                if needle in line:
+                if _spawns(line, script, bot_id):
                     parts = line.split(None, 2)
                     found.append((int(parts[0]), int(parts[1])))
     except Exception as e:
@@ -159,7 +170,7 @@ class ProcessManager:
             return self.status(bot_id)
         # Orphan guard: a bot process left over from a killed daemon would
         # double-login on the same token. Reclaim it before spawning.
-        orphans = find_orphan_pids(bot_id, owned=self._owned_pids())
+        orphans = find_orphan_pids(bot_id, self.root.bot_manager_script(), owned=self._owned_pids())
         if orphans:
             logger.warning(f"{bot_id} already running unmanaged "
                            f"(pids {orphans}) - reclaiming")
