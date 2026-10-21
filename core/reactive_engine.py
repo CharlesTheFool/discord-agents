@@ -102,7 +102,12 @@ class ToolLoopResult:
     thinking_block: Any = None
     tools_were_used: bool = False
     model: str = ""  # the model that wrote this turn (stamped on persisted assistant messages)
-    usage: Any = None  # the final call's usage: its input is the live context size
+    usage: Any = None  # the final call's usage
+    # The session watermark (0.14.4): the last call before any server tool
+    # (web search/fetch) ran this turn. A server-tool call's usage sums its
+    # internal passes, and every later call carries its never-persisted
+    # results, so neither measures the conversation. None: nothing clean.
+    context_usage: Any = None
     total_usage: Usage = field(default_factory=Usage)  # every call this turn, for cost
     ended_on_send: bool = False  # the turn's last tool call was a send that posted
     dropped_text_chars: int = 0  # trailing text the send guard held back
@@ -1370,6 +1375,7 @@ class ReactiveEngine:
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         refused_documents = set()   # documents swapped for a note this turn
         unsaved_refusals = {}       # ...not yet in state: only after a call succeeds without them
+        ran_server_tools = False    # once any call has, no later one measures the conversation
         loop_iteration = 0
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
         repeat_sig = None  # repeat-call guard: identical consecutive tool calls
@@ -1422,6 +1428,9 @@ class ReactiveEngine:
             unsaved_refusals = {}
 
             result.usage = response.usage
+            ran_server_tools = ran_server_tools or any(b.type == "server_tool_use" for b in response.content)
+            if not ran_server_tools:
+                result.context_usage = response.usage
             result.total_usage = result.total_usage + response.usage
 
             self.conversation_logger.log_tool_use_loop(loop_iteration, response.stop_detail)
@@ -1733,8 +1742,8 @@ class ReactiveEngine:
                 logger.info(f"Message cap enforced after response: removed {removed_count} oldest messages")
 
             # Record session usage watermark and stub old tool results (v0.6.0)
-            if result.usage is not None:
-                conversation_state.record_usage(total_input_tokens(result.usage), seed_epoch)
+            if result.context_usage is not None:
+                conversation_state.record_usage(total_input_tokens(result.context_usage), seed_epoch)
             conversation_state.stub_old_tool_results(keep_turns=TOOL_STUB_KEEP_TURNS)
 
             await self.conversation_state_manager.save(conversation_state)
