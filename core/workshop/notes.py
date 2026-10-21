@@ -5,7 +5,7 @@ check-ins (0.14.1). They live here, not in AgenticEngine, which exists only
 when `agentic.enabled`.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 
 NOTE_HEAD = "<context_update>\n(Automated context, not a user message)\n"
 NOTE_TAIL = "\n</context_update>"
@@ -35,6 +35,34 @@ def quiet_now(config, now: Optional[datetime] = None) -> bool:
     """Quiet hours are local host-clock hours (config.agentic.proactive)."""
     hours = config.agentic.proactive.quiet_hours or []
     return (now or datetime.now()).hour in hours
+
+
+class ProactiveLimits:
+    """Daily caps on turns the bot starts unasked (the proactive intensity
+    preset), one count for everything that does: proactive engagement,
+    coordination sends, project check-ins. In memory, reset each local day."""
+
+    def __init__(self, config):
+        values = config.agentic.proactive.get_intensity_values()
+        self.max_global = values.max_per_day_global
+        self.max_per_channel = values.max_per_day_per_channel
+        self._day = datetime.now().date()
+        self.total = 0
+        self.per_channel: Dict[str, int] = {}
+
+    def _roll(self) -> None:
+        if datetime.now().date() > self._day:
+            self._day, self.total, self.per_channel = datetime.now().date(), 0, {}
+
+    def allows(self, channel_id: str) -> bool:
+        self._roll()
+        return (self.total < self.max_global
+                and self.per_channel.get(str(channel_id), 0) < self.max_per_channel)
+
+    def count(self, channel_id: str) -> None:
+        self._roll()
+        self.total += 1
+        self.per_channel[str(channel_id)] = self.per_channel.get(str(channel_id), 0) + 1
 
 
 def _duration(seconds: float) -> str:

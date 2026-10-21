@@ -55,7 +55,8 @@ from tools.bash_tool import run_bash
 from tools.editor_tool import EDITOR_NAME, run_editor
 from tools.network_access_tool import run_request_network_access
 from tools.skills_tool import run_request_skill
-from .workshop.projects import ProjectBook, manifest as projects_manifest
+from .workshop.notes import ProactiveLimits
+from .workshop.projects import CheckIns, ProjectBook, manifest as projects_manifest
 from .workshop.scopes import tree_of
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,8 @@ class ReactiveEngine:
         self.job_watcher = None
         self.approvals = None      # network approvals, wired in on_ready (needs the client)
         self.projects = None       # project notes (0.15.0), read where the workshop runs
+        # Daily caps on unprompted turns, shared with the agentic engine
+        self.proactive_limits = ProactiveLimits(config)
 
         # Initialize v0.5.0 managers
         # MCP Manager
@@ -350,6 +353,11 @@ class ReactiveEngine:
             self.workshop.on_background = self.job_watcher.follow
             self.projects = ProjectBook(self.memory_tool_executor.base_path, self.config.bot_id,
                                         self.vaults, self._channel_place)
+            checkins = CheckIns(self.projects, self.workshop,
+                                ContextNoteWriter(self.conversation_state_manager, self.channel_locks),
+                                self.job_watcher.request_turn, self.config, self.proactive_limits,
+                                events=self.message_memory)
+            self._track_task(asyncio.ensure_future(checkins.run()))
             # its own task: reconciling jobs (and their tails) talks to the
             # runtime, which must never hold up the rest of on_ready
             self._track_task(asyncio.ensure_future(self._start_watcher()))

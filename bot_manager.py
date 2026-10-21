@@ -192,6 +192,8 @@ class BotManager:
                 driver=driver,
                 channel_locks=channel_locks,
             )
+            # one count of unprompted turns: proactive, coordination, check-ins
+            agentic_engine.proactive_limits = reactive_engine.proactive_limits
             logger.info("Agentic engine initialized")
 
         if agentic_engine:

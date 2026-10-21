@@ -416,6 +416,10 @@ WORKSHOP_DM_LINE = " This one belongs to this DM alone."
 # 0/8, while a report the bot had promised still went out 8/8. The sentinel
 # is what makes it hold: models emit a token far more reliably than nothing.
 NOTE_TURN_SILENT = "<silent/>"
+
+# Project check-ins (0.15.0, spec 6): the tick's first run after boot, then hourly
+PROJECT_CHECK_FIRST_SECONDS = 60
+PROJECT_CHECK_SECONDS = 3600
 NOTE_TURN_LINE = (
     "This turn started because of the note above, not because anyone spoke, and anything "
     "you write is posted to the channel. If someone is waiting on what the note says "

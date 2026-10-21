@@ -161,10 +161,10 @@ class AgenticEngine:
         self._task = None
         self._running = False
 
-        # Rate limit tracking (resets daily)
-        self._proactive_counts_global = 0
-        self._proactive_counts_per_channel = {}  # {channel_id: count}
-        self._rate_limit_reset_date = datetime.now().date()
+        # Daily caps on unprompted turns; bot_manager shares one instance with
+        # the workshop's project check-ins (0.15.0)
+        from core.workshop.notes import ProactiveLimits
+        self.proactive_limits = ProactiveLimits(config)
 
         # Initialize engagement tracker (Phase 4)
         tracker_file = Path("persistence") / f"{config.bot_id}_engagement_stats.json"
@@ -1317,48 +1317,15 @@ this room talks - brief, natural, and honest about where it comes from."""
         return await self.message_memory.get_server_for_channel(channel_id)
 
     async def _check_proactive_rate_limits(self, server_id: str, channel_id: str) -> bool:
-        """
-        Check if proactive engagement rate limits allow action.
-
-        Args:
-            server_id: Discord server ID
-            channel_id: Discord channel ID
-
-        Returns:
-            True if within limits
-        """
-        # Check if we need to reset daily counters
-        current_date = datetime.now().date()
-        if current_date > self._rate_limit_reset_date:
-            self._reset_rate_limits()
-
-        # Check global daily limit
-        max_global = self._proactive_config["max_per_day_global"]
-        if self._proactive_counts_global >= max_global:
-            logger.debug(f"Global daily limit reached: {self._proactive_counts_global}/{max_global}")
-            return False
-
-        # Check per-channel daily limit
-        max_per_channel = self._proactive_config["max_per_day_per_channel"]
-        channel_count = self._proactive_counts_per_channel.get(channel_id, 0)
-        if channel_count >= max_per_channel:
-            logger.debug(f"Per-channel daily limit reached for {channel_id}: {channel_count}/{max_per_channel}")
-            return False
-
-        return True
-
-    def _reset_rate_limits(self):
-        """Reset daily rate limit counters."""
-        logger.info("Resetting daily rate limit counters")
-        self._proactive_counts_global = 0
-        self._proactive_counts_per_channel = {}
-        self._rate_limit_reset_date = datetime.now().date()
+        """Do the daily caps on unprompted turns allow one more here?"""
+        if self.proactive_limits.allows(channel_id):
+            return True
+        logger.debug(f"Proactive daily limit reached for {channel_id} "
+                     f"(today: {self.proactive_limits.total} bot-wide)")
+        return False
 
     def _increment_proactive_counter(self, channel_id: str):
-        """Increment proactive message counters for rate limiting."""
-        self._proactive_counts_global += 1
-        self._proactive_counts_per_channel[channel_id] = self._proactive_counts_per_channel.get(channel_id, 0) + 1
-        logger.debug(f"Proactive counters: global={self._proactive_counts_global}, channel {channel_id}={self._proactive_counts_per_channel[channel_id]}")
+        self.proactive_limits.count(channel_id)
 
     async def shutdown(self):
         """Stop agentic loop"""

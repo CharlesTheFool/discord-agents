@@ -17,7 +17,8 @@ class WorkshopState:
         self.data: Dict[str, Any] = {}
         if path.exists():
             self.data = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("credentials", "retired_credentials", "approved_hosts", "pending_approvals"):
+        for key in ("credentials", "retired_credentials", "approved_hosts", "pending_approvals",
+                    "checkins"):
             self.data.setdefault(key, {})
 
     def save(self) -> None:
@@ -84,6 +85,23 @@ class WorkshopState:
         hosts = self.data["approved_hosts"].setdefault(scope_key, [])
         if host not in hosts:
             hosts.append(host)
+            self.save()
+
+    # --- project check-ins (0.15.0) ------------------------------------------
+
+    def fired_check(self, path: str) -> Optional[str]:
+        """The next_check value this project's last check-in answered."""
+        return self.data["checkins"].get(path)
+
+    def fire_check(self, path: str, check: str) -> None:
+        self.data["checkins"][path] = check
+        self.save()
+
+    def forget_checks(self, still_there) -> None:
+        """Drop the record of notes that are gone."""
+        kept = {p: c for p, c in self.data["checkins"].items() if still_there(p)}
+        if kept != self.data["checkins"]:
+            self.data["checkins"] = kept
             self.save()
 
     # --- template and skills ----------------------------------------------

@@ -11,6 +11,7 @@ belongs to a real scope and its home channel resolves to that same scope.
 Anything else is skipped and logged once per file version, never guessed: a
 model-written note must not aim turns at another scope or server.
 """
+import asyncio
 import logging
 import pathlib
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import yaml
 
+from core.internal_constants import PROJECT_CHECK_FIRST_SECONDS, PROJECT_CHECK_SECONDS
+from core.workshop.notes import NOTE_HEAD, NOTE_TAIL, quiet_now
 from core.workshop.scopes import Scope
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,7 @@ class Project:
     next_check: Union[date, datetime, None]
     home_channel: str
     home_server: Optional[str]
+    home_parent: Optional[str]   # the home channel's thread parent
     scope: Scope
     mtime: float
 
@@ -128,6 +132,7 @@ class ProjectBook:
         self.vaults = vaults
         self.channel_place = channel_place
         self._logged: Dict[str, tuple] = {}   # path -> the file version already logged
+        self.skipped: List[Tuple[str, str, str]] = []   # newly logged: (path, reason, home channel)
 
     def in_scope(self, scope: Scope, tree: str) -> List[Project]:
         """Valid projects in one scope's tree (any status)."""
@@ -179,21 +184,26 @@ class ProjectBook:
             return self._skip(path, stat, "no home_channel")
         place = self.channel_place(home)
         if place is None:
-            return self._skip(path, stat, f"home channel {home} isn't known")
+            return self._skip(path, stat, f"home channel {home} isn't known", home)
         home_server, parent, is_thread = place
         if home_server != server_id or self.vaults.resolve_scope(
                 home_server, home, parent_id=parent, is_thread=is_thread) != scope:
-            return self._skip(path, stat, f"home channel {home} is outside the scope that holds the note")
+            return self._skip(path, stat, f"home channel {home} is outside the scope that holds the note", home)
         self._logged.pop(path, None)
         return Project(slug=fs_path.stem, path=path, status=status, next_check=next_check,
-                       home_channel=home, home_server=home_server, scope=scope, mtime=stat.st_mtime)
+                       home_channel=home, home_server=home_server, home_parent=parent,
+                       scope=scope, mtime=stat.st_mtime)
 
-    def _skip(self, path: str, stat, reason: str) -> None:
+    def _skip(self, path: str, stat, reason: str, home: str = "") -> None:
         version = (stat.st_mtime_ns, stat.st_size)
         if self._logged.get(path) != version:
             self._logged[path] = version
+            self.skipped.append((path, reason, home))
             logger.warning(f"project note skipped ({reason}): {path}")
         return None
+
+    def fs_path(self, path: str) -> pathlib.Path:
+        return self.root / path[len(f"/memories/{self.bot_id}/"):]
 
 
 def manifest(projects: List[Project], tree_path: str) -> str:
@@ -210,3 +220,86 @@ def manifest(projects: List[Project], tree_path: str) -> str:
     lines += ["Ambient context, not a task: pick one up when it's relevant or its check comes round.",
               "</projects>"]
     return "\n".join(lines)
+
+
+def checkin_note(project: Project) -> str:
+    """What a due project tells its home channel (persisted, like a job's note)."""
+    return NOTE_HEAD + (
+        f'Your project "{project.slug}" is due a look: its next_check ({project.check_key}) '
+        f"has come round. Its note: {project.path}\n"
+        "See where it stands and carry on if there's something to do. Move next_check to when "
+        "you'd like to look in again, or mark it paused or done: it won't come round again "
+        "until next_check changes.") + NOTE_TAIL
+
+
+class CheckIns:
+    """The hourly check-in tick (spec 6). An active project whose next_check
+    has passed gets a persisted note and one may-stay-silent turn in its home
+    channel, once per next_check value: a turn that doesn't move it leaves
+    the project waiting, not firing every hour. Quiet hours and the daily
+    caps on unprompted turns defer a check-in to a later tick, never drop it.
+    Owned by the workshop, not the agentic engine, which exists only when
+    agentic.enabled."""
+
+    def __init__(self, book: ProjectBook, workshop, notes, request_turn, config, limits, events=None):
+        self.book = book
+        self.workshop = workshop
+        self.notes = notes
+        self.request_turn = request_turn
+        self.config = config
+        self.limits = limits
+        self.events = events
+        self._deferred: set = set()   # (path, check, reason) already reported
+
+    async def run(self) -> None:
+        await asyncio.sleep(PROJECT_CHECK_FIRST_SECONDS)
+        while True:
+            try:
+                await self.tick()
+            except Exception:
+                logger.exception("project check-in tick failed")
+            await asyncio.sleep(PROJECT_CHECK_SECONDS)
+
+    async def tick(self, now: Optional[datetime] = None) -> None:
+        now = now or datetime.now().astimezone()
+        state = self.workshop.state
+        projects = self.book.everywhere()
+        for path, reason, home in self.book.skipped:
+            await self._event(home, None, {"outcome": "skipped", "path": path, "reason": reason})
+        self.book.skipped.clear()
+        state.forget_checks(lambda path: self.book.fs_path(path).exists())
+        for project in projects:
+            if not project.due(now) or state.fired_check(project.path) == project.check_key:
+                continue
+            if self.workshop.setting(project.scope, server_id=project.home_server,
+                                     channel_id=project.home_channel,
+                                     parent_id=project.home_parent) != "container":
+                continue
+            reason = ("quiet hours" if quiet_now(self.config, now)
+                      else None if self.limits.allows(project.home_channel)
+                      else "the daily cap on unprompted turns")
+            if reason:
+                await self._defer(project, reason)
+                continue
+            if not await self.notes.write(project.home_channel, checkin_note(project)):
+                continue
+            state.fire_check(project.path, project.check_key)
+            self.limits.count(project.home_channel)
+            await self._event(project.home_channel, project.home_server, {
+                "outcome": "fired", "project": project.slug, "path": project.path,
+                "next_check": project.check_key})
+            self.request_turn(project.home_channel)
+
+    async def _defer(self, project: Project, reason: str) -> None:
+        key = (project.path, project.check_key, reason)
+        if key in self._deferred:
+            return
+        self._deferred.add(key)
+        logger.info(f"project check-in deferred ({reason}): {project.path}")
+        await self._event(project.home_channel, project.home_server, {
+            "outcome": "deferred", "project": project.slug, "path": project.path,
+            "next_check": project.check_key, "reason": reason})
+
+    async def _event(self, channel_id: str, server_id, payload: dict) -> None:
+        if self.events is not None and channel_id:
+            await self.events.add_event("project", server_id, channel_id, payload)
