@@ -36,6 +36,10 @@ class ModelSpec:
     files: bool = True
     batches: bool = True
     typed_tools: bool = True        # memory_20250818 / text_editor_20250728
+    # OpenAI reasoning models (0.15.1): the lowest reasoning.effort accepted
+    # ("none" = reasoning can be off); None = no effort knob below the default
+    min_effort: Optional[str] = None
+    cache_read_ratio: float = 0.1   # a cache read bills at this x the input price
 
     @property
     def live_prices(self) -> Optional[Tuple[float, float]]:
@@ -44,6 +48,12 @@ class ModelSpec:
             return None
         batch_in, batch_out = self.batch_prices
         return (batch_in * 2, batch_out * 2)
+
+
+def _openai(marker: str, batch_prices, max_output: int = 128000, **kw) -> ModelSpec:
+    return ModelSpec(marker, wire_api="openai_responses", max_output=max_output,
+                     batch_prices=batch_prices, effort=True, server_web_tools=False,
+                     files=False, batches=False, typed_tools=False, **kw)
 
 
 _SONNET_PRICES = (1.50, 7.50)
@@ -64,6 +74,15 @@ CATALOG = (
     ModelSpec("opus", max_output=32000),
     ModelSpec("sonnet", max_output=32000),
     ModelSpec("haiku", thinking=False),
+    # OpenAI Responses (0.15.1): background roles and workers only (validate()
+    # keeps the main model and the batch roles on Anthropic). Explicit cache
+    # breakpoints; no server web tools, Files API, batches or typed tools here
+    _openai("gpt-6-luna", (0.05, 0.25), min_effort="none"),
+    _openai("gpt-6.1-sol", (1.00, 5.00), min_effort="low", cache_read_ratio=0.05),
+    _openai("gpt-6-astra", (5.00, 25.00), min_effort="low"),
+    # Any other gpt-* id still goes to OpenAI, never to Anthropic; unpriced,
+    # and with no known effort floor validate() won't take it for background work
+    _openai("gpt-", None, max_output=16000),
 )
 
 DEFAULT_SPEC = ModelSpec(marker="")
