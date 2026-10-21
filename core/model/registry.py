@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple
 from core.model.catalog import ModelSpec
 from tools.ask_prime import ASK_PRIME_TOOL
 from tools.bash_tool import BASH_TOOL
+from tools.delegate_tool import DELEGATE_TOOL
 from tools.discord_tools import get_discord_tools
 from tools.editor_tool import EDITOR_DECLARATION, EDITOR_DESCRIPTION, EDITOR_NAME, EDITOR_SCHEMA
 from tools.network_access_tool import NETWORK_ACCESS_TOOL
@@ -59,6 +60,7 @@ EDITOR = ToolDef(EDITOR_NAME, "client", EDITOR_DECLARATION, schema=EDITOR_SCHEMA
 NETWORK_ACCESS = client_tool(NETWORK_ACCESS_TOOL)
 REQUEST_SKILL = client_tool(SKILL_REQUEST_TOOL)
 READ_SKILL = client_tool(SKILL_READ_TOOL)   # request_skill without the workshop
+DELEGATE = client_tool(DELEGATE_TOOL)      # workers (0.15.0)
 
 
 @dataclass
@@ -74,11 +76,14 @@ class ToolContext:
     workshop: bool = False            # this conversation's scope runs a sandbox
     text_skills: bool = False         # text-only skills exist (offered without the workshop)
     files: bool = False               # documents may ride as Files API ids
+    role: str = "resident"            # "worker" (0.15.0): reads and works, never writes
 
 
 def assemble_tools(ctx: ToolContext, spec: ModelSpec) -> Tuple[List[ToolDef], list]:
     """(tools, betas) for one request, in the order the model sees them.
     The order is part of the cached prompt prefix - don't reshuffle it."""
+    if ctx.role == "worker":
+        return _worker_tools(ctx, spec), []
     tools = [MEMORY]
     if ctx.discord_tools:
         tools += [client_tool(t) for t in get_discord_tools()]
@@ -93,7 +98,7 @@ def assemble_tools(ctx: ToolContext, spec: ModelSpec) -> Tuple[List[ToolDef], li
     tools += [client_tool(t) for t in ctx.mcp_tools]
 
     if ctx.workshop:
-        tools += [BASH, EDITOR, NETWORK_ACCESS, REQUEST_SKILL]
+        tools += [BASH, EDITOR, NETWORK_ACCESS, REQUEST_SKILL, DELEGATE]
     elif ctx.text_skills:
         tools.append(READ_SKILL)
 
@@ -101,5 +106,24 @@ def assemble_tools(ctx: ToolContext, spec: ModelSpec) -> Tuple[List[ToolDef], li
     if ctx.files:
         betas.append(FILES_BETA)
 
-    tools = [t for t in tools if all(getattr(spec, flag) for flag in t.requires)]
-    return tools, betas
+    return _capable(tools, spec), betas
+
+
+def _capable(tools: List[ToolDef], spec: ModelSpec) -> List[ToolDef]:
+    return [t for t in tools if all(getattr(spec, flag) for flag in t.requires)]
+
+
+def _worker_tools(ctx: ToolContext, spec: ModelSpec) -> List[ToolDef]:
+    """A worker's set (spec 7.2): memory (the executor refuses its writes),
+    message and file reads, web tools where the provider runs them, the
+    workshop. Never send_message, the repository, ask_prime, MCP tools,
+    network approvals or delegate - and the worker's dispatch refuses those
+    names too, whatever the model emits."""
+    tools = [MEMORY]
+    if ctx.discord_tools:
+        tools += [client_tool(t) for t in get_discord_tools()]
+    if ctx.web_search:
+        tools += [ToolDef(t["name"], "server", t, requires=("server_web_tools",))
+                  for t in get_web_search_tools(citations_enabled=ctx.web_citations)]
+    tools += [BASH, EDITOR, REQUEST_SKILL]
+    return _capable(tools, spec)

@@ -65,6 +65,10 @@ class JobRecord:
     notified: bool
 
 
+def new_job_id() -> str:
+    return "job_" + secrets.token_hex(6)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -87,8 +91,8 @@ class JobStore:
 
     async def create(self, *, scope_key: str, home_server_id: Optional[str],
                      home_channel_id: str, kind: str, executor_key: str,
-                     command: str, foreground: bool) -> JobRecord:
-        job_id = "job_" + secrets.token_hex(6)
+                     command: str, foreground: bool, job_id: Optional[str] = None) -> JobRecord:
+        job_id = job_id or new_job_id()
         await self.db.execute(
             "INSERT INTO jobs (id, bot_id, scope_key, home_server_id, home_channel_id, kind,"
             " executor_key, command, foreground, state, started_at)"

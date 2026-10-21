@@ -115,10 +115,11 @@ class JobWatcher:
             return
         started = datetime.fromisoformat(job.started_at)
         finished = datetime.fromisoformat(job.finished_at) if job.finished_at else datetime.now(timezone.utc)
-        await self.events.add_event("job", job.home_server_id, job.home_channel_id, {
+        await self.events.add_event(job.kind if job.kind == "worker" else "job",
+                                    job.home_server_id, job.home_channel_id, {
             "job_id": job.id, "state": job.state, "exit_code": job.exit_code,
             "seconds": round((finished - started).total_seconds(), 1),
-            "command": job.command[:300], "result": job.result,
+            "command": job.command[:300], "result": (job.result or "")[:2000] or None,
         })
 
     # --- wake-up turns -----------------------------------------------------

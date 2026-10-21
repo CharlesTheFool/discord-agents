@@ -3,7 +3,7 @@
 Our own JSON schema on every driver (no provider-typed tool): the semantics
 - stateless commands with restored cwd/env, jobs past a ceiling - are ours.
 """
-from core.internal_constants import WORKSHOP_SHELL_JOB_MAX_SECONDS
+from core.internal_constants import WORKSHOP_FOREGROUND_CEILING_SECONDS, WORKSHOP_SHELL_JOB_MAX_SECONDS
 from core.workshop.backend import SandboxUnavailable
 from core.workshop.service import WorkshopUnavailable
 
@@ -39,7 +39,10 @@ def executor_key(scope, channel_id) -> str:
 
 
 async def run_bash(workshop, tool_input: dict, *, server_id, channel_id,
-                   parent_id=None, is_thread=False) -> str:
+                   parent_id=None, is_thread=False, worker: str = "",
+                   ceiling_s: int = WORKSHOP_FOREGROUND_CEILING_SECONDS) -> str:
+    """worker: the job id of a worker running the command (0.15.0): its own
+    shell state, and never a background start (a worker waits on its work)."""
     command = (tool_input.get("command") or "").strip()
     if not command:
         return "Error: no command given."
@@ -47,10 +50,10 @@ async def run_bash(workshop, tool_input: dict, *, server_id, channel_id,
     try:
         scope = workshop.scope_for_turn(server_id, channel_id, parent_id=parent_id, is_thread=is_thread)
         result = await workshop.run_command(
-            scope, executor_key(scope, channel_id), command,
+            scope, f"worker:{worker}" if worker else executor_key(scope, channel_id), command,
             home_server_id=server_id, home_channel_id=channel_id,
-            background=bool(tool_input.get("background")),
-            timeout_s=int(timeout_s) if timeout_s else None)
+            background=bool(tool_input.get("background")) and not worker,
+            timeout_s=int(timeout_s) if timeout_s else None, ceiling_s=ceiling_s)
     except WorkshopUnavailable as e:
         return f"The workshop isn't available: {e}."
     except SandboxUnavailable as e:

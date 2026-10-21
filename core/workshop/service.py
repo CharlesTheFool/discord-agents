@@ -450,6 +450,9 @@ class Workshop:
         for job in await self.jobs.running():
             kind, _, scope_id = job.scope_key.partition(":")
             name = Scope(kind, scope_id).sandbox_name(self.install_id, self.bot_id)
+            if job.kind == "worker":   # its loop lived in the process that's gone
+                await self.jobs.mark_interrupted([job.id], "the bot restarted while it worked")
+                continue
             if not job.sandbox_job_id:
                 await self.jobs.mark_interrupted([job.id], "the bot stopped before the command started")
                 continue

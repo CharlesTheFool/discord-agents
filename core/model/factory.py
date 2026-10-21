@@ -2,13 +2,15 @@
 
 import os
 
+from core.internal_constants import MODEL_CALL_SLOTS
 from core.model.driver import ModelDriver
 
 
-def build_driver(api_config) -> ModelDriver:
-    """One driver per bot process, from the api.provider block (default:
-    Anthropic with ANTHROPIC_API_KEY). Config validation has already
-    rejected wire APIs this release doesn't ship."""
+def build_driver(api_config, max_concurrent: int = MODEL_CALL_SLOTS) -> ModelDriver:
+    """A driver from the api.provider block (default: Anthropic with
+    ANTHROPIC_API_KEY): the resident's, and the workers' with their own pool
+    (max_concurrent calls in flight). Config validation has already rejected
+    wire APIs this release doesn't ship."""
     provider = api_config.provider
     wire_api = provider.wire_api if provider else "anthropic_messages"
     key_env = provider.api_key_env if provider else "ANTHROPIC_API_KEY"
@@ -19,5 +21,6 @@ def build_driver(api_config) -> ModelDriver:
         raise RuntimeError(f"{key_env} is not set - the model API needs it")
     if wire_api == "anthropic_messages":
         from core.model.adapters.anthropic_messages import AnthropicMessagesDriver
-        return AnthropicMessagesDriver(api_key=api_key, base_url=base_url)
+        return AnthropicMessagesDriver(api_key=api_key, base_url=base_url,
+                                       max_concurrent=max_concurrent)
     raise ValueError(f"no driver for wire_api '{wire_api}'")

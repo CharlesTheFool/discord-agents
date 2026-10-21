@@ -81,6 +81,8 @@ def completion_note(job, tail: str, now: Optional[datetime] = None) -> str:
     started = datetime.fromisoformat(job.started_at)
     finished = datetime.fromisoformat(job.finished_at) if job.finished_at else (now or started)
     took = _duration((finished - started).total_seconds())
+    if job.kind == "worker":
+        return _worker_note(job, took)
     if job.state == "interrupted":
         outcome = f"was interrupted ({job.result})"
     elif job.result:
@@ -94,4 +96,18 @@ def completion_note(job, tail: str, now: Optional[datetime] = None) -> str:
     if job.log_path:
         lines.append(f"Full log: {job.log_path}")
     lines.append("Pick it up from here if it matters to the conversation.")
+    return NOTE_HEAD + "\n".join(lines) + NOTE_TAIL
+
+
+def _worker_note(job, took: str) -> str:
+    """A worker's report (0.15.0); interrupted ones say nothing more is coming."""
+    if job.state == "interrupted":
+        head = (f"Your helper {job.id} was interrupted ({job.result}); nothing more is coming from "
+                f"it. Delegate again if the task still matters.")
+    elif job.state == "failed":
+        head = f"Your helper {job.id} stopped after {took}: {job.result}."
+    else:
+        head = f"Your helper {job.id} finished after {took}. Its report:\n{job.result}"
+    lines = [head, f"The task was: {job.command[:300]}",
+             "Pick it up from here if it matters to the conversation."]
     return NOTE_HEAD + "\n".join(lines) + NOTE_TAIL

@@ -30,6 +30,8 @@ TOOL_STUB_KEEP_TURNS = 3            # Turns whose tool results stay full
 # Model calls in flight at once, bot-wide (0.13.1): channels run turns in
 # parallel, but never more than this many requests at the provider
 MODEL_CALL_SLOTS = 3
+# Workers (0.15.0) draw from their own pool, so they never starve the resident's
+WORKER_CALL_SLOTS = 2
 TOOL_STUB_MIN_CHARS = 500           # Results shorter than this are never stubbed
 TOOL_STUB_TEXT = "[tool result cleared at turn boundary - re-run the tool if the information is needed again]"
 
@@ -409,6 +411,18 @@ WORKSHOP_SHELF_LINE = (" The repository is your shelf: what the server should ke
                        " find it without you, goes there with save_output.")
 WORKSHOP_DM_LINE = " This one belongs to this DM alone."
 
+# A worker's prompt (spec 7.2): short and about the task. It never speaks in
+# Discord; its last reply is a report the resident reads and passes on.
+WORKER_PROMPT = """You're a helper doing one piece of work for {name}, who's part of a Discord community and handed it to you. You work out of sight: what you write at the end is your report to {name}, who passes on whatever matters.
+
+You work in {name}'s workshop, a small Linux machine (Debian, Python 3.12, Node 24, git, ffmpeg). Its /workspace is shared with {name}; your shell is your own. The internet reaches package downloads only{web}. You can read {name}'s memory under /memories/{bot_id} and look through the community's messages and files with discord_tools. You can't write memory, send messages or ask for network access: if the work needs a host opened, say so in your report.
+
+Work until the task is done or you're stuck, then reply without calling a tool. Your report: what you did, what you found, where any files are, and what's left open. Today is {date}."""
+WORKER_WEB_LINE = ", and you have web search and fetch"
+WORKER_BUDGET_NOTE = (
+    "That's the end of your budget ({why}). Don't call any more tools: reply now with your "
+    "report - what you did, what you found, where any files are, and what's left.")
+
 # A note-driven turn (a finished job, an expired approval) answers a note,
 # not a person, and models explain their silence to it instead of keeping
 # it. Measured 2026-10-20 on a captured request, 8 runs per wording: no line,
@@ -459,6 +473,11 @@ WORKSHOP_TURN_WALL_CLOCK_SECONDS = 20 * 60
 WORKSHOP_SHELL_JOB_MAX_SECONDS = 6 * 3600
 WORKSHOP_TOOL_OUTPUT_CHARS = 30_000    # head + tail beyond this; the full log stays in the workspace
 WORKSHOP_APPROVAL_EXPIRY_HOURS = 24
+# Workers (spec 7.2): either budget ends one with a partial report
+WORKER_MAX_ITERATIONS = 40
+WORKER_MAX_SECONDS = 60 * 60
+WORKER_COMMAND_CEILING_SECONDS = 20 * 60   # a worker waits longer on a command than a turn does
+WORKER_REPORT_CHARS = 6000                 # what the completion note carries
 WORKSHOP_PENDING_APPROVALS_PER_SCOPE = 5
 
 # Egress (spec 5.6): exact host names, CONNECT to port 443 only

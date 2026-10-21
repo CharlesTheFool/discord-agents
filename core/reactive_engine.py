@@ -58,6 +58,7 @@ from tools.skills_tool import run_request_skill
 from .workshop.notes import ProactiveLimits
 from .workshop.projects import CheckIns, ProjectBook, manifest as projects_manifest
 from .workshop.scopes import tree_of
+from .workshop.workers import Workers, copy_to_inbox
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +216,7 @@ class ReactiveEngine:
         self.job_watcher = None
         self.approvals = None      # network approvals, wired in on_ready (needs the client)
         self.projects = None       # project notes (0.15.0), read where the workshop runs
+        self.workers = None        # delegated workers (0.15.0), with the job watcher
         # Daily caps on unprompted turns, shared with the agentic engine
         self.proactive_limits = ProactiveLimits(config)
 
@@ -353,6 +355,12 @@ class ReactiveEngine:
             self.workshop.on_background = self.job_watcher.follow
             self.projects = ProjectBook(self.memory_tool_executor.base_path, self.config.bot_id,
                                         self.vaults, self._channel_place)
+            self.workers = Workers(
+                workshop=self.workshop, config=self.config, memory=self.memory_tool_executor,
+                skills=self.skills, deliver=self.job_watcher.deliver,
+                transcripts=Path("persistence") / "workshop" / self.config.bot_id / "workers",
+                discord_tools=lambda: self.discord_tool_executor,
+                attachments=lambda: self.attachment_manager)
             checkins = CheckIns(self.projects, self.workshop,
                                 ContextNoteWriter(self.conversation_state_manager, self.channel_locks),
                                 self.job_watcher.request_turn, self.config, self.proactive_limits,
@@ -773,27 +781,17 @@ class ReactiveEngine:
     async def _copy_to_inbox(self, metadata: dict, *, message, server_id, channel_id) -> str:
         """A fetched non-document file, as bytes, into /workspace/inbox (the
         attachment's own vault check already ran in get_attachment)."""
-        from core.workshop.backend import SandboxUnavailable
         from core.workshop.service import WorkshopUnavailable
         if self.workshop is None:
             return "This kind of file opens in the workshop, which isn't running here."
-        data = await self.attachment_manager.local_bytes(metadata["attachment_id"])
-        if data is None:
-            return "Its stored copy is gone, so it can't be opened."
-        name = re.sub(r"[^A-Za-z0-9._-]", "_", metadata["filename"]).lstrip(".") or "attachment"
         channel = getattr(message, "channel", None)
         try:
             scope = self.workshop.scope_for_turn(
                 server_id, channel_id, parent_id=getattr(channel, "parent_id", None),
                 is_thread=isinstance(channel, discord.Thread))
-            sandbox = await self.workshop.sandbox(scope)
-            await self.workshop.backend.write_file(sandbox, f"/workspace/inbox/{name}", data)
-        except (WorkshopUnavailable, SandboxUnavailable) as e:
+        except WorkshopUnavailable as e:
             return f"Couldn't put it in the workshop ({e})."
-        except Exception as e:   # a broken sandbox must not break reading the file itself
-            logger.warning(f"inbox copy of {name} failed: {e!r}")
-            return f"Couldn't put it in the workshop ({type(e).__name__}: {e})."
-        return f"Saved into your workshop at /workspace/inbox/{name}."
+        return await copy_to_inbox(self.workshop, self.attachment_manager, metadata, scope)
 
     # ========== SHARED RESPONSE PIPELINE ==========
 
@@ -898,7 +896,8 @@ class ReactiveEngine:
             if job.home_channel_id != str(message.channel.id) and self.discord_client:
                 channel = self.discord_client.get_channel(int(job.home_channel_id))
                 where = f", from #{channel.name}" if channel is not None and getattr(channel, "name", None) else ""
-            lines.append(f"- {job.id}: {job.command[:80]} (running {minutes} min{where})")
+            what = f"helper working on: {job.command[:80]}" if job.kind == "worker" else job.command[:80]
+            lines.append(f"- {job.id}: {what} (running {minutes} min{where})")
         return ("<workshop_jobs>\n(running in your workshop; a note arrives when each finishes)\n"
                 + "\n".join(lines) + "\n</workshop_jobs>")
 
@@ -1031,6 +1030,10 @@ class ReactiveEngine:
         if error:
             result["is_error"] = True
         return result
+
+    @staticmethod
+    async def _no_workers() -> str:
+        return "Delegating isn't available right now."
 
     def _workshop_on(self, message) -> bool:
         """Does this conversation's scope run the workshop (container setting)?"""
@@ -1338,6 +1341,13 @@ class ReactiveEngine:
                     block, lambda: runner(self.workshop, block.input, server_id=server_id,
                                           channel_id=channel_id, parent_id=parent_id,
                                           is_thread=is_thread)))
+
+            elif block.name == "delegate":
+                note("workshop", "delegate", (block.input.get("task") or "")[:120])
+                tool_results.append(await self._workshop_tool(block, lambda: (
+                    self.workers.delegate(block.input, server_id=server_id, channel_id=channel_id,
+                                          parent_id=parent_id, is_thread=is_thread)
+                    if self.workers is not None else self._no_workers())))
 
             # ask_prime (v0.9) - MUST precede the MCP "_" fallthrough
             elif block.name == "ask_prime":
@@ -2177,7 +2187,7 @@ class ReactiveEngine:
 
         # The workshop's own tasks, before the states they write close. Its
         # sandboxes stay up: jobs survive a restart, idle ones stop themselves
-        for part in (self.approvals, self.job_watcher, self.workshop):
+        for part in (self.workers, self.approvals, self.job_watcher, self.workshop):
             if part is not None:
                 try:
                     await part.close()

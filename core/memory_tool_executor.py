@@ -48,6 +48,7 @@ class MemoryToolExecutor:
         write_grant: Optional[str] = None,
         parent_id: Optional[str] = None,
         is_thread: bool = False,
+        read_only: bool = False,
     ) -> str:
         """
         Execute memory tool command, returning result string for Claude.
@@ -60,7 +61,11 @@ class MemoryToolExecutor:
                 global profile is writable from their DM for this turn
             parent_id, is_thread: the live channel's thread parent, when the
                 caller holds it (project notes resolve the conversation's scope)
+            read_only: a worker's call (0.15.0) - every command but view is
+                refused, whatever the model sends
         """
+        if read_only and tool_input.get("command") != "view":
+            return "Error: Access denied - a worker reads memory; writing it is for the one who delegated."
         # The trained tool (memory_20250818) names rename's source old_path
         # and insert's text insert_text; this executor long read path and
         # new_str, so renames failed and inserts wrote empty lines. Mapped
