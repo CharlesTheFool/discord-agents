@@ -146,6 +146,20 @@
   </form>
 </dialog>
 
+<dialog id="dlg-wipe">
+  <h2>Wipe this workshop?</h2>
+  <p>Everything in its <code>/workspace</code> is deleted, and the next command
+     starts on a fresh machine. Type <b id="wipe-scope"></b> to confirm.</p>
+  <form method="dialog" novalidate>
+    <input type="text" id="wipe-confirm" autocomplete="off">
+    <div class="field-error" id="wipe-err"></div>
+    <div class="actions">
+      <button type="button" class="btn quiet" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn danger">Wipe</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-worker" class="wide">
   <h2>Helper</h2>
   <div class="ws-transcript"></div>

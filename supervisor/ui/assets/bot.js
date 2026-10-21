@@ -2254,10 +2254,7 @@ function wireWorkshop(el) {
         if (host) wsRequest({ action: act, scope, host });
       } else if (act === "remove_host") wsRequest({ action: act, scope, host: b.dataset.host });
       else if (act === "reset") wsRequest({ action: act, scope });
-      else if (act === "wipe") {
-        const typed = prompt(`Wiping deletes everything in this workshop's /workspace. Type ${scope} to confirm.`);
-        if (typed === scope) wsRequest({ action: act, scope, confirm: typed });
-      }
+      else if (act === "wipe") confirmWipe(scope);   // Electron has no window.prompt
     }));
   });
   el.querySelectorAll("[data-decide]").forEach((b) => b.addEventListener("click", () =>
@@ -2288,6 +2285,24 @@ function wireWorkshop(el) {
     });
   });
   el.querySelector("#ws-save").onclick = saveWorkshopSettings;
+}
+
+function confirmWipe(scope) {
+  const dlg = document.getElementById("dlg-wipe");
+  const input = dlg.querySelector("#wipe-confirm");
+  dlg.querySelector("#wipe-scope").textContent = scope;
+  dlg.querySelector("#wipe-err").textContent = "";
+  input.value = "";
+  dlg.querySelector("form").onsubmit = (e) => {
+    if (input.value.trim() !== scope) {
+      e.preventDefault();
+      dlg.querySelector("#wipe-err").textContent = `Type ${scope} exactly.`;
+      return;
+    }
+    wsRequest({ action: "wipe", scope, confirm: scope });
+  };
+  dlg.showModal();
+  input.focus();
 }
 
 async function saveWorkshopSettings() {
