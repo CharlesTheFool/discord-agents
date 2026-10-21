@@ -89,7 +89,9 @@ def completion_note(job, tail: str, now: Optional[datetime] = None) -> str:
         outcome = f"{job.result} (exit code {job.exit_code})"
     else:
         outcome = f"finished with exit code {job.exit_code} after {took}"
-    lines = [f"Your background job {job.id} in the workshop {outcome}.",
+    whose = (f"A command your helper {job.executor_key[len('worker:'):]} started ({job.id})"
+             if job.executor_key.startswith("worker:") else f"Your background job {job.id}")
+    lines = [f"{whose} in the workshop {outcome}.",
              f"Command: {job.command[:300]}"]
     if tail.strip():
         lines += ["Last lines of its output:", "```", tail.rstrip()[-2000:], "```"]

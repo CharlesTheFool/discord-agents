@@ -901,6 +901,8 @@ class ReactiveEngine:
                 channel = self.discord_client.get_channel(int(job.home_channel_id))
                 where = f", from #{channel.name}" if channel is not None and getattr(channel, "name", None) else ""
             what = f"helper working on: {job.command[:80]}" if job.kind == "worker" else job.command[:80]
+            if job.kind == "shell" and job.executor_key.startswith("worker:"):   # outlives its helper
+                what += f" (started by helper {job.executor_key[len('worker:'):]}, not you)"
             lines.append(f"- {job.id}: {what} (running {minutes} min{where})")
         return ("<workshop_jobs>\n(running in your workshop; a note arrives when each finishes)\n"
                 + "\n".join(lines) + "\n</workshop_jobs>")
