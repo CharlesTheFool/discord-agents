@@ -247,6 +247,11 @@ class Workers:
             request.messages.append({"role": "assistant", "content": response.content})
             if response.stop_reason == "pause":   # a long server-tool turn, resumed as is
                 continue
+            if response.stop_reason == "max_tokens":   # reasoning counts against the limit too
+                return (f"It ran out of output room ({request.max_tokens:,} tokens) before "
+                        f"finishing. What it had: {_text(response) or 'nothing yet'}")
+            if response.stop_reason == "refusal":
+                return f"It declined the task. {_text(response)}".strip()
             if response.stop_reason != "tool_use":
                 return _text(response) or "It finished without writing a report."
             remaining = WORKER_MAX_SECONDS - (self.clock() - started)
