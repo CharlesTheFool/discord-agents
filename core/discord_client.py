@@ -8,6 +8,7 @@ import discord
 import asyncio
 import logging
 from typing import Optional, TYPE_CHECKING
+from .internal_constants import BOT_CHAIN_LIMIT
 
 if TYPE_CHECKING:
     from .config import BotConfig
@@ -488,6 +489,18 @@ class DiscordClient(discord.Client):
 
         logger.info("Bot is ready!")
 
+    async def _bot_run(self, channel_id: str) -> int:
+        """How many of the channel's newest stored messages, in a row, are
+        from bots (this one included); lifecycle markers don't count."""
+        run = 0
+        for m in reversed(await self.message_memory.get_recent(channel_id, limit=BOT_CHAIN_LIMIT + 4)):
+            if m.is_system:
+                continue
+            if not m.is_bot:
+                break
+            run += 1
+        return run
+
     async def on_message(self, message: discord.Message):
         """
         New message received.
@@ -621,8 +634,7 @@ class DiscordClient(discord.Client):
             if not self.config.discord.allow_bot_interactions:
                 logger.debug(f"Ignoring message from bot: {message.author.name}")
                 return
-            else:
-                logger.debug(f"Processing message from bot: {message.author.name} (allow_bot_interactions=True)")
+            logger.debug(f"Processing message from bot: {message.author.name} (allow_bot_interactions=True)")
 
         # Register DM channel so the bot remembers this surface across restarts (v0.9)
         if message.guild is None and message.author.id != self.user.id:
@@ -696,6 +708,16 @@ class DiscordClient(discord.Client):
                     pass
 
         else:
+            # Two bots that each scan-answer the other never stop: past the
+            # limit, unaddressed bot chatter gets no scan until a person
+            # speaks (an explicit @mention from a bot is still answered)
+            if message.author.bot:
+                run = await self._bot_run(str(message.channel.id))
+                if run >= BOT_CHAIN_LIMIT:
+                    logger.info(f"Not scanning {message.author.name} in "
+                                f"#{getattr(message.channel, 'name', 'DM')}: {run} bot messages in "
+                                f"a row - waiting for a person")
+                    return
             # Non-urgent message - add to pending for periodic check
             # Bug #7 fix: Track individual message IDs, not just channel IDs
             channel_id = str(message.channel.id)

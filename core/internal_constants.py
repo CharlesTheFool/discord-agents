@@ -433,6 +433,13 @@ WORKER_BUDGET_NOTE = (
 # is what makes it hold: models emit a token far more reliably than nothing.
 NOTE_TURN_SILENT = "<silent/>"
 
+# Two bots that each answer the other never stop on their own (seen live
+# 2026-10-21: SLH-Alpha and SLH-01 traded "*silence*" once a minute until
+# one was stopped). Past this many bot messages in a row in a channel,
+# another bot's unaddressed message gets no scan until a person speaks; an
+# explicit @mention from a bot is still answered (0.15.2)
+BOT_CHAIN_LIMIT = 6
+
 # Project check-ins (0.15.0, spec 6): the tick's first run after boot, then hourly
 PROJECT_CHECK_FIRST_SECONDS = 60
 PROJECT_CHECK_SECONDS = 3600
