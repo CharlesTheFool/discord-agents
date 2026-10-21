@@ -108,6 +108,22 @@ api:
   # Sonnet default; Haiku = cheap, Opus/Fable = premium.
   consolidation_model: "claude-sonnet-5"
 
+  # Episode distillation and watch checks: cheap and small. Claude Haiku by
+  # default; "gpt-6-luna" runs them on OpenAI (needs OPENAI_API_KEY). That
+  # sends every conversation the bot distills (vaults and DMs included) to
+  # OpenAI too - see SECURITY.md.
+  # background_model: "claude-haiku-4-5"
+
+  # Helpers (the delegate tool). Default: the main model. "gpt-6.1-sol"
+  # runs them on OpenAI (no web search or fetch there).
+  # worker_model: "gpt-6.1-sol"
+
+  # Where OpenAI lives, if not the defaults below
+  # providers:
+  #   openai_responses:
+  #     api_key_env: OPENAI_API_KEY
+  #     base_url: https://api.openai.com/v1
+
   # Adaptive thinking - model decides when and how much to think
   thinking:
     enabled: true

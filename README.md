@@ -172,6 +172,14 @@ the Anthropic adapter has to reproduce each one byte for byte. Assistant
 messages are stamped with the model that wrote them, so a future adapter
 can drop thinking blocks that a different model produced.
 
+Since 0.15.1 a second adapter speaks OpenAI's Responses API, the wire shape
+least like Anthropic's: background work and helpers can run on OpenAI
+models, each request routed by its model's catalog entry, while every
+request an all-Claude bot sends stays byte-identical (its own golden suite
+pins the OpenAI side). Prompt caching there was measured before it was
+built: OpenAI matches only at breakpoints still present in the request, so
+the adapter keeps one on each of the last two user turns.
+
 ### Native sending
 
 The bot posts through a `send_message` tool rather than only through its
@@ -337,7 +345,8 @@ agentic:
 
 api:
   model: "claude-sonnet-5"
-  background_model: "claude-haiku-4-5"   # episode distillation, watch checks
+  background_model: "claude-haiku-4-5"   # episode distillation, watch checks (or gpt-6-luna)
+  # worker_model: "gpt-6.1-sol"          # helpers; default the main model (OPENAI_API_KEY needed)
   context_messages: 30          # most Discord messages kept live (trims to 3/4 when over)
   context_tokens: 80000         # session threshold: episodize and reseed past this
   effort: "medium"              # optional cost/depth dial: low | medium | high | max
@@ -472,10 +481,10 @@ The full policy, including how to report a vulnerability, is in
 background jobs that report back and a network that is closed unless an
 operator opens it. 0.15.0 adds what runs in it: projects the bot comes
 back to on its own, helpers it hands work to, and a dashboard panel for
-both. It follows 0.13.0 and 0.13.1, where the model layer landed alone so
-the request bytes could be compared with nothing else changing. Next are
-a second model provider (0.15.1), then a Host mode for trusted
-single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
+both. 0.15.1 adds a second model provider for background work and helpers.
+It follows 0.13.0 and 0.13.1, where the model layer landed alone so the
+request bytes could be compared with nothing else changing. Next is a Host
+mode for trusted single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
 
 The codebase is about fifty core modules plus the supervisor package, with
 about 1,300 unit tests and an integration suite that boots real VMs. Every

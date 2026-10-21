@@ -59,24 +59,20 @@ commitments, details are not. Full history with upgrade notes lives in
   sends or writes memory). The dashboard gains a Workshop tab, the app
   keeps the computer awake on request, and web fetch stops taking URLs
   from the bot's own tool output.
+- **0.15.1:** the second provider. Background work and helpers can run on
+  OpenAI's Responses API through a native adapter, routed by each model's
+  catalog entry; an all-Claude bot's requests stay byte-identical. Prompt
+  caching was measured before it was built: OpenAI matches only at
+  breakpoints still present in the request, so the adapter keeps the last
+  two.
 
 ## The active plan
 
 Each release below changes one thing, so a regression can be attributed.
 0.13.0 shipped alone for that reason: had concurrency changes ridden along,
 a cache regression would have had two suspects. The workshop came first,
-then what runs in it (0.15.0, shipped), then where else it can run.
-
-### 0.15.1: the second provider
-
-A native OpenAI Responses adapter, deliberately the wire shape most unlike
-Anthropic Messages, as the proof that the model layer's seams hold.
-Stateless requests, reasoning items replayed with their encrypted content,
-prompt caching mapped to OpenAI's own, effort mapped to `reasoning.effort`,
-function calls and outputs mapped to Responses items. It ships on the
-background roles first (episode distillation, watch checks), then workers.
-Claude remains the model the framework is built and tested on.
-Chat-completions-shaped providers and Google are later.
+then what runs in it (0.15.0) and a second provider (0.15.1), both
+shipped, then where else it can run.
 
 ### 0.16.0: Host mode
 

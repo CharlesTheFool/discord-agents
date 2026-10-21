@@ -4,7 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.14.x  | Yes       |
+| 0.15.x  | Yes       |
 | < 0.14  | No        |
 
 Beta versions receive security patches on a best-effort basis. A formal
@@ -296,6 +296,19 @@ execution capability at all, and the dashboard says so.
   chooses, so an injected instruction can run code there. What bounds it is
   the VM and the proxy above: the scope's own files, the allowed hosts, no
   secrets.
+- **A second processor, if you choose one (0.15.1).** With an OpenAI
+  `background_model`, every conversation the bot distills into episodes
+  goes to OpenAI: channels, threads, vaulted channels and DMs alike, the
+  bot's own replies included, together with that place's current notes
+  file; so do the messages a watch checks. With an OpenAI `worker_model`, a
+  helper's task (written by the bot, from whatever conversation delegated
+  it, DMs included) and everything the helper reads. Requests are sent with `store: false` to a pinned base URL, but
+  `store: false` is not zero retention: OpenAI's abuse-monitoring retention
+  applies unless your organization has zero data retention. Both settings
+  are opt-in, per role, in the YAML; the main model and the consolidation
+  batches always stay on Anthropic. The OpenAI SDK also honors
+  `OPENAI_ORG_ID` and `OPENAI_PROJECT_ID` from the environment, which
+  decide whose retention terms apply.
 - **External content.** Fetched pages, attachments and MCP tool results
   reach the model as text. Citations show where search results came from;
   review them before trusting a claim. Report patterns of injected behavior
@@ -306,7 +319,8 @@ execution capability at all, and the dashboard says so.
 API keys and Discord tokens live in environment variables, loaded from
 `.env`, which is gitignored. Each bot config names its token variable
 (`discord.token_env_var`), and `api.provider.api_key_env` can point a bot at
-its own API key. The desktop app writes secrets to the data root's `.env`
+its own API key (`api.providers.openai_responses.api_key_env` for OpenAI,
+default `OPENAI_API_KEY`). The desktop app writes secrets to the data root's `.env`
 through the write-only API above. Rotate a key immediately if it is
 exposed, and regenerate a Discord token the same way; a token's first
 base64 segment decodes to its bot id, which is the quickest way to confirm

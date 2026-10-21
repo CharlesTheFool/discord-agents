@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.1] - 2026-10-21
+
+**Status:** Beta. A second model provider, as the proof that the model
+layer's seams hold: background work and helpers can run on OpenAI. Claude
+stays the model the framework is built and tested on, and every request an
+all-Claude bot sends is byte-identical to 0.15.0.
+
+### Added
+- **OpenAI Responses as a second wire API.** `api.background_model`
+  (episode distillation, watch checks) and `api.worker_model` (helpers) can
+  name an OpenAI model: `gpt-6-luna` for background work, `gpt-6.1-sol` for
+  helpers, `gpt-6-astra` cataloged. Each request goes, untouched, to the
+  adapter its model's catalog entry names; a bot with every role on Claude
+  keeps the bare Anthropic driver and never imports the OpenAI SDK. The
+  main model and the consolidation batches stay on Claude, and validate()
+  says why if a config tries otherwise. Live on the test bot: a helper on
+  Sol wrote and ran a script and reported back; Luna distilled a real
+  episode ($0.0013) and answered a watch check.
+- **Prompt caching on OpenAI, measured first.** OpenAI matches a cache only
+  at breakpoints present in the request, so a single marker moved forward
+  each step (the Anthropic pattern) read nothing at all. A breakpoint on
+  each of the last two user turns does: a helper's later steps read about
+  3,000 tokens and write about 46. One-shots carry none, so they write
+  nothing.
+- **`api.providers`** names where another wire API lives
+  (`openai_responses: {api_key_env, base_url}`); OpenAI defaults to
+  `OPENAI_API_KEY` and an explicit `https://api.openai.com/v1`. The 0.13
+  `api.provider` block stays Anthropic's.
+- One log line per OpenAI call with tokens and an estimated cost: nothing
+  else records what OpenAI work costs.
+
+### Fixed
+- A helper whose last call hit its output limit said it "finished without
+  writing a report"; it now says it ran out of room, with what it had, and
+  a refusal says it declined.
+
+### Known limits
+- A helper on OpenAI has no web search or fetch (those are Anthropic's
+  server tools) and no network beyond package downloads.
+- Role models and providers are set in the YAML; the dashboard has no
+  controls for them yet.
+
+### Upgrading
+Nothing to do for an all-Claude bot: the update installs the `openai`
+package, which only a bot with an OpenAI role imports. To try it, put
+`OPENAI_API_KEY` in the data root's `.env` and set `api.background_model:
+gpt-6-luna` or `api.worker_model: gpt-6.1-sol`. To roll back, take those
+lines out first: 0.15.0 would send a `gpt-*` id to Anthropic.
+
 ## [0.15.0] - 2026-10-21
 
 **Status:** Beta. What runs in the workshop: projects that come back
