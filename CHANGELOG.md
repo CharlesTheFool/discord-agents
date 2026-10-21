@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.3] - 2026-10-21
+
+**Status:** Beta. Two fixes from the end-of-batch sweep.
+
+### Fixed
+- **A bot with nothing to say no longer says so.** The periodic scan was
+  told to output nothing when it chose not to answer; it posted its silence
+  instead. The production bot wrote "*nothing to add*" five times in one
+  day. The scan now replies with `<silent/>` when it stays out, the marker
+  note-driven turns already use, and a reply that is only that marker, or
+  a near miss like `<silence/>`, posts nothing. Measured on a captured scan,
+  8 runs per case: a message meant for another bot, 8/8 posted a stated
+  silence before, 0/8 after; "ok brb, grabbing dinner", 8/8 before, 0/8
+  after; a direct question still got its answer 8/8.
+- **Messages no longer land twice when a quiet channel wakes up.** A
+  channel with no saved conversation is seeded from stored history, and
+  every message is stored the moment it arrives. So when two messages came
+  in before the next scan, the first one's seed already held the second:
+  it landed twice, once ahead of the message it answered. Seeds now leave
+  out what's still queued to be read in, in the scan path and the @mention
+  path, and queued messages are read in oldest first (one with an
+  attachment can be queued after a newer one). Two narrow races remain: a
+  message still downloading its attachment, or one a scan has picked up
+  but not yet read in, can still land twice if the channel's state is
+  empty at that moment. Recognizing messages by their Discord id closes
+  them; that comes with the next change to what the bot sees of history.
+
+### Changed
+- The "over the document limit" log line is debug-level: it repeated on
+  every request while a large file was in context.
+- The installer's self-check also imports the OpenAI adapter.
+
+### Upgrading
+Nothing to do.
+
 ## [0.15.2] - 2026-10-21
 
 **Status:** Beta. One fix, found while testing 0.15.1.

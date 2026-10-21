@@ -68,6 +68,9 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.15.2:** two bots that answer each other stop on their own: past six
   bot messages in a row, unaddressed bot chatter isn't scanned until a
   person speaks.
+- **0.15.3:** a scan that stays out says `<silent/>` instead of posting
+  "*nothing to add*"; a quiet channel's first messages no longer land twice
+  in its conversation.
 
 ## The active plan
 
