@@ -2311,7 +2311,8 @@ async function showTranscript(jobId) {
   dlg.showModal();
   const { lines } = await apiGet(A(`/workshop/workers/${jobId}`));
   const textOf = (content) => (content || []).map((b) =>
-    b.type === "text" ? b.text : b.type === "tool_use" ? `→ ${b.name} ${JSON.stringify(b.input)}`
+    b.type === "text" ? b.text : b.type === "tool_use"
+      ? `→ ${b.name} ${typeof b.input?.command === "string" && b.name === "bash" ? b.input.command : JSON.stringify(b.input)}`
       : b.type === "tool_result" ? `← ${typeof b.content === "string" ? b.content
         : (b.content || []).map((c) => c.text || `[${c.type}]`).join(" ")}` : `[${b.type}]`).join("\n");
   body.innerHTML = lines.map((l) => `<div class="ws-line ${esc(l.kind)}"><span class="ws-meta">${esc(l.kind)}</span>

@@ -52,6 +52,25 @@ class RuntimeMissing(Exception):
     """The microsandbox package (and so its bundled runtime) isn't installed."""
 
 
+def _allocated_bytes(path: pathlib.Path) -> Optional[int]:
+    """Bytes a (sparse) file really takes on disk, or None."""
+    try:
+        if not path.is_file():
+            return None
+        if os.name == "nt":
+            import ctypes
+            size = ctypes.WinDLL("kernel32", use_last_error=True).GetCompressedFileSizeW
+            size.restype = ctypes.c_ulong
+            high = ctypes.c_ulong(0)
+            low = size(str(path), ctypes.byref(high))
+            if low == 0xFFFFFFFF and ctypes.get_last_error():
+                return None
+            return (high.value << 32) + low
+        return path.stat().st_blocks * 512
+    except OSError:
+        return None
+
+
 def pin_runtime(home: pathlib.Path = DEFAULT_HOME) -> None:
     """Point the SDK at its own bundled msb + libkrunfw and at our MSB_HOME.
     Found from the package's files without importing it (venv or not: never
@@ -388,9 +407,14 @@ class MicrosandboxBackend:
                 return out
 
     async def volume_usage(self) -> List[VolumeInfo]:
+        """A disk volume is a sparse disk.raw: the SDK reports 0 used, so
+        what it takes from the host drive is read from the file itself."""
         from microsandbox import Volume
         suffix = self.volume_name("")
-        return [VolumeInfo(v.name[:-len(suffix)], v.used_bytes, v.capacity_bytes)
+        home = pathlib.Path(os.environ.get("MSB_HOME") or DEFAULT_HOME)
+        return [VolumeInfo(v.name[:-len(suffix)],
+                           _allocated_bytes(home / "volumes" / v.name / "disk.raw") or v.used_bytes,
+                           v.capacity_bytes)
                 for v in await _bounded("volume list", Volume.list(), SDK_CALL_SECONDS)
                 if v.name.endswith(suffix)]
 
