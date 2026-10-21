@@ -1,6 +1,8 @@
 ---
 name: storytelling
 description: "Plan and write fiction with people - premises, characters, worldbuilding, structure, story bibles, drafting and revising prose, for one author or a whole channel. Judging a story without changing it is fiction-criticism."
+metadata:
+  text-only: true
 ---
 
 # Storytelling

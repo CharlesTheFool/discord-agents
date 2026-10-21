@@ -4,6 +4,10 @@ The system prompt lists them (with any default skills' instructions
 preloaded); request_skill returns one's instructions on demand; the
 workshop copies the folders into every sandbox at /skills, where their
 scripts and templates run. Nothing is uploaded anywhere.
+
+Where the workshop is off, only skills marked `metadata: {text-only: true}`
+in their frontmatter are offered: guides that need nothing but reading.
+Unmarked skills are assumed to need the workshop (most carry scripts).
 """
 import logging
 from dataclasses import dataclass
@@ -21,6 +25,7 @@ class Skill:
     description: str
     path: Path
     rel: str          # its folder under skills/ - and so under /skills in the workshop
+    text_only: bool   # usable without the workshop
 
 
 def _split_frontmatter(text: str) -> Tuple[dict, str]:
@@ -51,9 +56,16 @@ class SkillCatalog:
             if home is None:
                 continue
             meta, _ = _split_frontmatter((home / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
+            extra = meta.get("metadata")
+            text_only = isinstance(extra, dict) and extra.get("text-only") is True
             found[folder.name] = Skill(folder.name, str(meta.get("description", "")).strip(), home,
-                                       home.relative_to(self.skills_dir).as_posix())
+                                       home.relative_to(self.skills_dir).as_posix(), text_only)
         return found
+
+    def available(self, workshop: bool) -> Dict[str, Skill]:
+        """The skills a conversation can use: all of them in the workshop,
+        the text-only ones elsewhere."""
+        return {n: s for n, s in self.skills().items() if workshop or s.text_only}
 
     @staticmethod
     def _skill_home(folder: Path) -> Optional[Path]:
@@ -74,21 +86,24 @@ class SkillCatalog:
         _, body = _split_frontmatter((skill.path / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
         return body.strip()
 
-    def prompt(self) -> str:
+    def prompt(self, workshop: bool = True) -> str:
         """The <available_skills> section: stable unless the folder changes,
         so it can sit in the cached system prefix."""
-        skills = self.skills()
+        skills = self.available(workshop)
         if not skills:
             return ""
+        where = ", with their files in /skills/<name>/ in your workshop" if workshop else ""
         lines = ["<available_skills>",
-                 "Guides for kinds of work, with their files in /skills/<name>/ in your "
-                 "workshop. Read one with request_skill when it fits what you're doing."]
+                 f"Guides for kinds of work{where}. Read one with request_skill when it "
+                 "fits what you're doing."]
         lines += [f"  - {s.name}: {s.description}" for s in skills.values()]
         lines.append("</available_skills>")
         for name in self.default_skills:
+            if name not in skills:   # missing, or needs the workshop this conversation lacks
+                if name not in self.skills():
+                    logger.warning(f"default skill {name!r} not found in {self.skills_dir}")
+                continue
             text = self.instructions(name)
             if text:
                 lines += [f'<skill name="{name}">', text, "</skill>"]
-            else:
-                logger.warning(f"default skill {name!r} not found in {self.skills_dir}")
         return "\n".join(lines)

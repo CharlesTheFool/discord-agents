@@ -2,6 +2,7 @@
 
 Skills are local folders (core/skills.py); their files are already in the
 workshop at /skills/<name>/, so loading one is just reading its guide.
+Where the workshop is off, only text-only skills can be read (0.14.1).
 """
 
 SKILL_REQUEST_TOOL = {
@@ -19,11 +20,18 @@ SKILL_REQUEST_TOOL = {
     },
 }
 
+# Where the workshop is off there are no files to point at
+SKILL_READ_TOOL = {**SKILL_REQUEST_TOOL,
+                   "description": "Read the instructions for one of the skills in <available_skills>."}
 
-def run_request_skill(catalog, tool_input: dict) -> str:
+
+def run_request_skill(catalog, tool_input: dict, workshop: bool = True) -> str:
     name = (tool_input.get("skill_name") or "").strip()
-    skill = catalog.skills().get(name) if catalog else None
+    skills = catalog.available(workshop) if catalog else {}
+    skill = skills.get(name)
     if skill is None:
-        known = ", ".join(catalog.skills()) if catalog else ""
+        known = ", ".join(skills)
         return f"There's no skill named {name!r}." + (f" Skills here: {known}." if known else "")
+    if not workshop:
+        return catalog.instructions(name)
     return f"{catalog.instructions(name)}\n\n(Files for this skill: /skills/{skill.rel}/ in your workshop.)"

@@ -993,9 +993,9 @@ class ReactiveEngine:
         if workshop:
             place = WORKSHOP_DM_LINE if is_dm else WORKSHOP_SHELF_LINE if repository else ""
             system_blocks[0]["text"] += "\n\n" + WORKSHOP_PROMPT.format(place=place)
-            skills_prompt = self.skills.prompt()
-            if skills_prompt:
-                system_blocks[0]["text"] += "\n\n" + skills_prompt
+        skills_prompt = self.skills.prompt(workshop=workshop)
+        if skills_prompt:
+            system_blocks[0]["text"] += "\n\n" + skills_prompt
 
         if not self.discord_tool_executor:
             logger.warning("Discord tool executor is None - discord tools NOT added!")
@@ -1014,6 +1014,7 @@ class ReactiveEngine:
             web_citations=self.config.get_web_search_config()["citations_enabled"],
             mcp_tools=mcp_tools,
             workshop=workshop,
+            text_skills=bool(skills_prompt),
             # Documents resolve to Files API ids whenever the manager exists
             files=self.attachment_manager is not None,
         ), spec)
@@ -1191,7 +1192,8 @@ class ReactiveEngine:
                             "replace": block.input.get("replace"),
                         },
                     )
-                result = run_request_skill(self.skills, block.input)
+                result = run_request_skill(self.skills, block.input,
+                                           workshop=any(t.name == "bash" for t in request.tools))
 
                 tool_results.append({
                     "type": "tool_result",

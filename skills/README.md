@@ -36,6 +36,18 @@ system prompt of every conversation where the workshop runs. The body is
 returned only on request, and long material belongs in `references/`, which
 the body can point at by its workshop path (`/skills/my-skill/references/...`).
 
+A skill that is only a guide, needing no scripts and no shell, can say so:
+
+```yaml
+metadata:
+  text-only: true
+```
+
+Text-only skills are offered everywhere, including channels and DMs where
+the workshop is off; everything else is offered only where the workshop
+runs. Unmarked skills count as needing it, since most skills (Anthropic's
+included) carry scripts.
+
 A zip someone sends you needs unpacking into a folder first. If unzipping
 adds a wrapper folder (`skills/my-skill/my-skill/SKILL.md`), that one level
 is tolerated.
@@ -48,8 +60,8 @@ is tolerated.
 | `pptx` | PowerPoint decks with python-pptx |
 | `xlsx` | Spreadsheets with openpyxl and pandas |
 | `pdf` | Reading and reshaping PDFs with pypdf; making them with reportlab |
-| `storytelling` | Planning and writing fiction with people, one author or a whole channel |
-| `fiction-criticism` | Notes on a draft, reviews, and a cold read of the bot's own fiction |
+| `storytelling` | Planning and writing fiction with people, one author or a whole channel (text-only) |
+| `fiction-criticism` | Notes on a draft, reviews, and a cold read of the bot's own fiction (text-only) |
 
 The document guides use only what the workshop image ships, and each ends
 the same way: save into `/workspace`, attach with `send_message`, and copy

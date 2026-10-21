@@ -21,7 +21,7 @@ from tools.editor_tool import EDITOR_DECLARATION, EDITOR_DESCRIPTION, EDITOR_NAM
 from tools.network_access_tool import NETWORK_ACCESS_TOOL
 from tools.repository_tool import get_repository_tool
 from tools.send_message import SEND_MESSAGE_TOOL
-from tools.skills_tool import SKILL_REQUEST_TOOL
+from tools.skills_tool import SKILL_READ_TOOL, SKILL_REQUEST_TOOL
 from tools.web_search import get_web_search_tools
 
 FILES_BETA = "files-api-2025-04-14"
@@ -58,6 +58,7 @@ EDITOR = ToolDef(EDITOR_NAME, "client", EDITOR_DECLARATION, schema=EDITOR_SCHEMA
                  description=EDITOR_DESCRIPTION)
 NETWORK_ACCESS = client_tool(NETWORK_ACCESS_TOOL)
 REQUEST_SKILL = client_tool(SKILL_REQUEST_TOOL)
+READ_SKILL = client_tool(SKILL_READ_TOOL)   # request_skill without the workshop
 
 
 @dataclass
@@ -71,6 +72,7 @@ class ToolContext:
     web_citations: bool = True
     mcp_tools: list = field(default_factory=list)   # declarations from MCPManager
     workshop: bool = False            # this conversation's scope runs a sandbox
+    text_skills: bool = False         # text-only skills exist (offered without the workshop)
     files: bool = False               # documents may ride as Files API ids
 
 
@@ -92,6 +94,8 @@ def assemble_tools(ctx: ToolContext, spec: ModelSpec) -> Tuple[List[ToolDef], li
 
     if ctx.workshop:
         tools += [BASH, EDITOR, NETWORK_ACCESS, REQUEST_SKILL]
+    elif ctx.text_skills:
+        tools.append(READ_SKILL)
 
     betas = []
     if ctx.files:

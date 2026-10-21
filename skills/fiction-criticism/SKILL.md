@@ -1,6 +1,8 @@
 ---
 name: fiction-criticism
 description: "Honest, usable criticism of fiction - notes on someone's draft, reviews of published work, a harsh read on request, a cold check of your own drafts before they go out. Diagnosis, not rewriting (that's storytelling)."
+metadata:
+  text-only: true
 ---
 
 # Fiction Criticism
