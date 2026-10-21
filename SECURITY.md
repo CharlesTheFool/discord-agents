@@ -228,7 +228,9 @@ scope to any public host, still port 443 only.
   Another server's sandbox that obtains it could use the first scope's
   approved hosts. Vaulted scopes are out of reach (their messages never
   surface elsewhere); between ordinary servers, an approval is only as
-  private as that server's channels. Credentials don't rotate yet.
+  private as that server's channels. Every start mints new credentials, so
+  a leaked one lasts until the next restart; a job still running across a
+  restart keeps its old one until that job ends.
 - **Your router's public IPv4.** A name resolving to the network's own
   public IPv4 address passes the check and, through NAT hairpinning, could
   reach a service you forward on port 443. Open-internet scopes only; IPv6

@@ -172,6 +172,10 @@ class Workshop:
         self._template_tried = 0.0                  # monotonic time of the last build attempt
         self._skills_seen: Dict[str, str] = {}      # sandbox -> skills fingerprint it holds
         self._one_shot: Optional[tuple] = None
+        # Credentials retired at this start, kept only for scopes whose jobs
+        # from before the restart still run (their env carries the old one)
+        self._retired: Dict[str, Dict[str, str]] = {}
+        self._carried: Dict[str, set] = {}          # scope -> those jobs' ids
         self.on_background: Optional[Callable[[JobRecord], None]] = None   # the job watcher
 
     # --- where and whether ---------------------------------------------------
@@ -204,9 +208,15 @@ class Workshop:
         if self._one_shot and hmac.compare_digest(f"{user}:{password}", ":".join(self._one_shot)):
             return EgressGrant("provisioning", frozenset(WORKSHOP_PROVISIONING_ALLOWLIST))
         scope_key = self.state.scope_for_user(user)
-        if scope_key is None:
-            return None
-        expected = self.state.data["credentials"][scope_key]["password"]
+        if scope_key is not None:
+            expected = self.state.data["credentials"][scope_key]["password"]
+        else:
+            # until reconcile() names the jobs that carry it, nothing does
+            scope_key = next((k for k, c in self._retired.items()
+                              if c["user"] == user and k in self._carried), None)
+            if scope_key is None:
+                return None
+            expected = self._retired[scope_key]["password"]
         if not hmac.compare_digest(password.encode(), expected.encode()):
             return None
         allow, open_internet = self.allowed(scope_key)
@@ -238,6 +248,7 @@ class Workshop:
                 f"to reach exactly that port - free it and restart") from None
         if self.state.proxy_port != self.proxy_port:
             self.state.proxy_port = self.proxy_port
+        self._retired = self.state.rotate_credentials()
         self._template_task = asyncio.ensure_future(self._ensure_template())
 
     async def close(self) -> None:
@@ -451,11 +462,20 @@ class Workshop:
                 live.append(job)
             else:
                 await self.finish(job, outcome)
+        for job in live:
+            self._carried.setdefault(job.scope_key, set()).add(job.id)
+        self._retired = {k: c for k, c in self._retired.items() if k in self._carried}
         if live:
             logger.info(f"workshop: {len(live)} job(s) still running after restart")
         return live
 
     async def finish(self, job: JobRecord, outcome: JobOutcome, *, notified: bool = False) -> None:
+        carried = self._carried.get(job.scope_key)
+        if carried is not None:
+            carried.discard(job.id)
+            if not carried:   # the last job from before the restart: its credential goes too
+                del self._carried[job.scope_key]
+                self._retired.pop(job.scope_key, None)
         if outcome.timed_out:
             await self.jobs.mark_finished(job.id, FAILED, exit_code=outcome.exit_code,
                                           result="stopped at the workshop's time limit", notified=notified)

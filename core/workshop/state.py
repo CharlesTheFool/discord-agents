@@ -45,6 +45,14 @@ class WorkshopState:
             self.save()
         return cred
 
+    def rotate_credentials(self) -> Dict[str, Dict[str, str]]:
+        """Forget every scope's credential (each start, 0.14.1): the next use
+        mints a fresh one. Returns the retired ones."""
+        retired = self.data["credentials"]
+        self.data["credentials"] = {}
+        self.save()
+        return retired
+
     def scope_for_user(self, user: str) -> Optional[str]:
         for scope_key, cred in self.data["credentials"].items():
             if cred["user"] == user:
