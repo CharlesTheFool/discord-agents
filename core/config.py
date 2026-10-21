@@ -121,6 +121,14 @@ class ProviderConfig:
     api_key_env: str = "ANTHROPIC_API_KEY"
 
 
+# Where each shipped wire API lives unless api.providers says otherwise. The
+# OpenAI base URL is explicit so a stray OPENAI_BASE_URL can't redirect the key
+PROVIDER_DEFAULTS = {
+    "anthropic_messages": ProviderConfig("anthropic_messages", None, "ANTHROPIC_API_KEY"),
+    "openai_responses": ProviderConfig("openai_responses", "https://api.openai.com/v1", "OPENAI_API_KEY"),
+}
+
+
 @dataclass
 class APIConfig:
     """Model API configuration"""
@@ -132,9 +140,23 @@ class APIConfig:
     consolidation_model: str = "claude-sonnet-5"  # weekly memory reconsolidation (Batches API)
     background_model: str = "claude-haiku-4-5"  # episode distillation, watch checks
     worker_model: Optional[str] = None  # delegated workers (0.14); None = the main model
-    provider: Optional[ProviderConfig] = None
+    provider: Optional[ProviderConfig] = None   # the Anthropic block (0.13)
+    providers: Dict[str, ProviderConfig] = field(default_factory=dict)   # wire API -> where (0.15.1)
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
+
+    def role_models(self) -> Dict[str, str]:
+        """Every model the bot calls, by the setting that names it."""
+        return {"api.model": self.model, "api.background_model": self.background_model,
+                "api.consolidation_model": self.consolidation_model,
+                "api.worker_model": self.worker_model or self.model}
+
+    def provider_for(self, wire_api: str) -> ProviderConfig:
+        if wire_api in self.providers:
+            return self.providers[wire_api]
+        if wire_api == "anthropic_messages" and self.provider:
+            return self.provider
+        return PROVIDER_DEFAULTS[wire_api]
 
 
 @dataclass
@@ -428,6 +450,13 @@ class BotConfig:
             base_url=provider_data.get("base_url"),
             api_key_env=provider_data.get("api_key_env", "ANTHROPIC_API_KEY"),
         ) if provider_data else None
+        providers = {}
+        for wire_api, entry in (api_data.get("providers") or {}).items():
+            default = PROVIDER_DEFAULTS.get(wire_api, ProviderConfig(wire_api))
+            entry = entry or {}
+            providers[str(wire_api)] = ProviderConfig(
+                wire_api=str(wire_api), base_url=entry.get("base_url", default.base_url),
+                api_key_env=entry.get("api_key_env", default.api_key_env))
 
         api = APIConfig(
             model=api_data.get("model", "claude-sonnet-5"),
@@ -439,6 +468,7 @@ class BotConfig:
             background_model=api_data.get("background_model", "claude-haiku-4-5"),
             worker_model=api_data.get("worker_model"),
             provider=provider,
+            providers=providers,
             thinking=thinking,
             web_search=web_search,
         )
@@ -505,6 +535,43 @@ class BotConfig:
             workshop=workshop,
         )
 
+    def _model_routing_errors(self) -> List[str]:
+        """Each role model on a wire API this release ships, with its key
+        present; the main model and the batch roles on Anthropic (0.15.1)."""
+        errors = []
+        if self.api.provider and self.api.provider.wire_api != "anthropic_messages":
+            errors.append(
+                f"api.provider.wire_api must be 'anthropic_messages' (other wire APIs go "
+                f"under api.providers), got '{self.api.provider.wire_api}'")
+        for wire_api in self.api.providers:
+            if wire_api not in PROVIDER_DEFAULTS:
+                errors.append(f"api.providers.{wire_api} isn't a wire API this release ships "
+                              f"(anthropic_messages, openai_responses)")
+        roles = self.api.role_models()
+        for role in ("api.model", "api.consolidation_model"):
+            if spec_for(roles[role]).wire_api != "anthropic_messages":
+                errors.append(
+                    f"{role} '{roles[role]}' must be a Claude model: conversations run on "
+                    f"Anthropic's files, web tools and caching, and consolidation on its "
+                    f"Batches API. OpenAI models can take api.background_model and "
+                    f"api.worker_model")
+        background = spec_for(self.api.background_model)
+        if background.wire_api == "openai_responses" and background.min_effort != "none":
+            errors.append(
+                f"api.background_model '{self.api.background_model}' can't turn reasoning "
+                f"off, and watch checks have 300 output tokens - use gpt-6-luna")
+        used = {}
+        for role, model in roles.items():
+            used.setdefault(spec_for(model).wire_api, []).append(role)
+        for wire_api, users in sorted(used.items()):
+            if wire_api not in PROVIDER_DEFAULTS:
+                continue
+            key_env = self.api.provider_for(wire_api).api_key_env
+            if not os.getenv(key_env):
+                errors.append(f"Missing {key_env} in environment" if wire_api == "anthropic_messages"
+                              else f"Missing {key_env} in environment (needed by {', '.join(users)})")
+        return errors
+
     def validate(self) -> List[str]:
         """
         Basic configuration validation for production readiness.
@@ -527,14 +594,7 @@ class BotConfig:
         elif not os.getenv(self.discord.token_env_var):
             errors.append(f"Missing environment variable: {self.discord.token_env_var}")
 
-        provider = self.api.provider or ProviderConfig()
-        if not os.getenv(provider.api_key_env):
-            errors.append(f"Missing {provider.api_key_env} in environment")
-        if provider.wire_api != "anthropic_messages":
-            errors.append(
-                f"api.provider.wire_api must be 'anthropic_messages' in this release, "
-                f"got '{provider.wire_api}'"
-            )
+        errors += self._model_routing_errors()
 
         # Type validation
         if not isinstance(self.discord.servers, list):
