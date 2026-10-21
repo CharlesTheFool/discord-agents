@@ -478,7 +478,8 @@ the [CHANGELOG](CHANGELOG.md) records what each campaign found.
 
 ## License
 
-No license file yet — all rights reserved until one is added.
+MIT — see [LICENSE](LICENSE). The bundled skills under `skills/` are covered
+by it too; third-party skills you add keep their own licenses.
 
 ---
 
