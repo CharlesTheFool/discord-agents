@@ -127,6 +127,11 @@ def with_message_cache_breakpoint(messages: list) -> list:
     return messages
 
 
+# What a document read on request can be refused for: past the PDF page
+# limit, an unreadable PDF, or a prompt it made too long
+DOCUMENT_REFUSAL = re.compile(r"pdf|document|prompt is too long|too large", re.IGNORECASE)
+
+
 def _newest_read_ref(messages: list) -> Optional[str]:
     """The attachment id of the last document in the request that was read
     on request (an attachment_ref marked read), if any."""
@@ -305,10 +310,12 @@ class AnthropicMessagesDriver:
                 raise StaleFileError(file_id) from e
             raise
         except BadRequestError as e:
-            # A large document read on request is the likely cause (its page
-            # count or size); ordinary documents are small enough never to be
-            if read:
-                raise DocumentRefusedError(read, getattr(e, "message", str(e))[:200]) from e
+            # Only a refusal about a document or size, with a document read on
+            # request in the call: then that one is the likely cause (ordinary
+            # documents are small enough never to be)
+            reason = getattr(e, "message", str(e))
+            if read and DOCUMENT_REFUSAL.search(reason):
+                raise DocumentRefusedError(read, reason[:200]) from e
             raise
         return to_response(message)
 

@@ -77,6 +77,7 @@ class JobWatcher:
             current = await self.workshop.jobs.get(job.id)
             if current and current.state == RUNNING:
                 await self.workshop.finish(current, outcome)
+        self.workshop.release(job)   # not on cancel: a shutdown leaves the job running
         await self.deliver(job.id)
 
     async def _tail(self, job: JobRecord) -> str:

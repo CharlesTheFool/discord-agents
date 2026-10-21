@@ -18,6 +18,7 @@ import socket
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
 from core.internal_constants import (
@@ -172,10 +173,10 @@ class Workshop:
         self._template_tried = 0.0                  # monotonic time of the last build attempt
         self._skills_seen: Dict[str, str] = {}      # sandbox -> skills fingerprint it holds
         self._one_shot: Optional[tuple] = None
-        # Credentials retired at this start, kept only for scopes whose jobs
-        # from before the restart still run (their env carries the old one)
-        self._retired: Dict[str, Dict[str, str]] = {}
-        self._carried: Dict[str, set] = {}          # scope -> those jobs' ids
+        # Jobs from before this start, per scope: their env carries a retired
+        # credential, which keeps working only while one of them runs
+        self._carried: Dict[str, set] = {}
+        self._started_at = ""
         self.on_background: Optional[Callable[[JobRecord], None]] = None   # the job watcher
 
     # --- where and whether ---------------------------------------------------
@@ -210,15 +211,12 @@ class Workshop:
         scope_key = self.state.scope_for_user(user)
         if scope_key is not None:
             expected = self.state.data["credentials"][scope_key]["password"]
+            if not hmac.compare_digest(password.encode(), expected.encode()):
+                return None
         else:
-            # until reconcile() names the jobs that carry it, nothing does
-            scope_key = next((k for k, c in self._retired.items()
-                              if c["user"] == user and k in self._carried), None)
+            scope_key = self.state.retired_scope(user, password, self._carried)
             if scope_key is None:
                 return None
-            expected = self._retired[scope_key]["password"]
-        if not hmac.compare_digest(password.encode(), expected.encode()):
-            return None
         allow, open_internet = self.allowed(scope_key)
         return EgressGrant(scope_key, allow, open_internet=open_internet)
 
@@ -248,7 +246,12 @@ class Workshop:
                 f"to reach exactly that port - free it and restart") from None
         if self.state.proxy_port != self.proxy_port:
             self.state.proxy_port = self.proxy_port
-        self._retired = self.state.rotate_credentials()
+        self.state.rotate_credentials()
+        self._started_at = datetime.now(timezone.utc).isoformat()   # the jobs table's format
+        for job in await self.jobs.running():   # all from before this start
+            if job.sandbox_job_id:
+                self._carried.setdefault(job.scope_key, set()).add(job.id)
+        self.state.keep_retired(self._carried)
         self._template_task = asyncio.ensure_future(self._ensure_template())
 
     async def close(self) -> None:
@@ -462,20 +465,27 @@ class Workshop:
                 live.append(job)
             else:
                 await self.finish(job, outcome)
+        self._carried = {}
         for job in live:
-            self._carried.setdefault(job.scope_key, set()).add(job.id)
-        self._retired = {k: c for k, c in self._retired.items() if k in self._carried}
+            if job.started_at < self._started_at:   # not one this process started
+                self._carried.setdefault(job.scope_key, set()).add(job.id)
+        self.state.keep_retired(self._carried)
         if live:
             logger.info(f"workshop: {len(live)} job(s) still running after restart")
         return live
 
-    async def finish(self, job: JobRecord, outcome: JobOutcome, *, notified: bool = False) -> None:
+    def release(self, job: JobRecord) -> None:
+        """A job ended (finished, failed or interrupted): if it carried a
+        retired credential and was its scope's last such job, the credential
+        goes with it."""
         carried = self._carried.get(job.scope_key)
         if carried is not None:
             carried.discard(job.id)
-            if not carried:   # the last job from before the restart: its credential goes too
+            if not carried:
                 del self._carried[job.scope_key]
-                self._retired.pop(job.scope_key, None)
+                self.state.keep_retired(self._carried)
+
+    async def finish(self, job: JobRecord, outcome: JobOutcome, *, notified: bool = False) -> None:
         if outcome.timed_out:
             await self.jobs.mark_finished(job.id, FAILED, exit_code=outcome.exit_code,
                                           result="stopped at the workshop's time limit", notified=notified)

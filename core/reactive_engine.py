@@ -687,10 +687,10 @@ class ReactiveEngine:
         file_block = None
         file_data = result["file_data"]
         metadata = result["metadata"]
-        workshop = self._workshop_on(message)
-        read = (file_data.get("method") == "inbox" and not workshop and self.attachment_manager
+        read = (file_data.get("method") == "inbox" and self.attachment_manager is not None
                 and self.attachment_manager.should_use_document_block(
-                    metadata["filename"], metadata.get("size_bytes") or 0, read=True))
+                    metadata["filename"], metadata.get("size_bytes") or 0, read=True)
+                and not self._workshop_on(message))
 
         if file_data.get("method") == "base64":
             content_blocks.append({
@@ -709,12 +709,20 @@ class ReactiveEngine:
             if conversation_state:
                 conversation_state.add_message("user", [file_block], [metadata["attachment_id"]])
                 logger.info(f"Added fetched attachment to conversation state: {metadata['filename']}")
-            if workshop:
+            if not read and self._workshop_on(message):
                 content_blocks[0]["text"] += " " + await self._copy_to_inbox(
                     metadata, message=message, server_id=server_id, channel_id=channel_id)
         elif file_data.get("method") == "inbox":
-            content_blocks[0]["text"] += "\n" + await self._copy_to_inbox(
-                metadata, message=message, server_id=server_id, channel_id=channel_id)
+            if (UnifiedAttachmentManager.should_use_document_block(metadata["filename"], 0)
+                    and not self._workshop_on(message)):
+                # a document past even the larger limit, with nothing to open it in
+                content_blocks[0]["text"] += (
+                    f"\nIt's too large to read here (documents up to "
+                    f"{format_size(UnifiedAttachmentManager.READ_DOCUMENT_MAX_BYTES)} can be), and "
+                    f"the workshop, which could open it, is off here.")
+            else:
+                content_blocks[0]["text"] += "\n" + await self._copy_to_inbox(
+                    metadata, message=message, server_id=server_id, channel_id=channel_id)
 
         tool_result = {"type": "tool_result", "tool_use_id": block_id, "content": content_blocks}
         return tool_result, file_block
@@ -1358,6 +1366,7 @@ class ReactiveEngine:
         result = ToolLoopResult(model=request.model)
         recovered_file_ids = set()  # stale file_ids already recovered this turn
         refused_documents = set()   # documents swapped for a note this turn
+        unsaved_refusals = {}       # ...not yet in state: only after a call succeeds without them
         loop_iteration = 0
         attachment_nudges = 0  # phantom-attachment guard, max 2 bounces per turn
         repeat_sig = None  # repeat-call guard: identical consecutive tool calls
@@ -1390,19 +1399,24 @@ class ReactiveEngine:
                 raise
             except DocumentRefusedError as e:
                 # A document read on request was past what the provider takes:
-                # a note replaces it, in state too (or every later turn in the
-                # channel fails on it), and the call is retried once
+                # a note replaces it and the call is retried once
                 if e.attachment_id in refused_documents:
                     raise
-                refused_documents.add(e.attachment_id)
                 logger.warning(f"Document {e.attachment_id} refused ({e.reason}); replaced with a note")
+                refused_documents.add(e.attachment_id)
                 note = {"type": "text", "text": f"\n[A document read here ({e.attachment_id}) couldn't be "
                                                 f"opened: {e.reason}]"}
                 request.messages = without_ref(request.messages, e.attachment_id, note)
-                if conversation_state:
-                    conversation_state.messages = without_ref(conversation_state.messages, e.attachment_id, note)
-                    await self.conversation_state_manager.save(conversation_state)
+                unsaved_refusals[e.attachment_id] = note
                 continue
+
+            # ...and once a call without it succeeds, state too, or every later
+            # turn in the channel would fail on it
+            if unsaved_refusals and conversation_state:
+                for attachment_id, note in unsaved_refusals.items():
+                    conversation_state.messages = without_ref(conversation_state.messages, attachment_id, note)
+                await self.conversation_state_manager.save(conversation_state)
+            unsaved_refusals = {}
 
             result.usage = response.usage
             result.total_usage = result.total_usage + response.usage

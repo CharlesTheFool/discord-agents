@@ -40,15 +40,27 @@ commitments, details are not. Full history with upgrade notes lives in
   approvals DMed to the operator; a start gate that test-boots a VM before
   login. Server-side code execution and the Skills API are gone, and
   attachments persist by the framework's own id.
+- **0.14.1:** polish. Automated turns stay quiet when nothing needs saying;
+  text-only skills and documents up to 4 MB where the workshop is off;
+  scope proxy credentials rotate on every start; an MIT license.
 
 ## The active plan
 
 Each release below changes one thing, so a regression can be attributed.
 0.13.0 shipped alone for that reason: had concurrency changes ridden along,
-a cache regression would have had two suspects. 0.14 is split the same
-way: the workshop first, then what runs in it, then where else it can run.
+a cache regression would have had two suspects. The workshop came first,
+then what runs in it, then where else it can run.
 
-### 0.14.1: projects and workers
+### 0.14.2: the message cap stops breaking the cache
+
+Once a channel's history reaches its message cap, every turn drops the
+oldest message, which shifts everything after the system prompt, so the
+conversation part of the prompt cache misses on every turn. Re-writing the
+cache was about 72% of production's scan spend. Over the cap, the history
+drops to a quarter below it instead, so its head holds for several turns. It
+ships alone, so the measured change in cost has one cause.
+
+### 0.15.0: projects and workers
 
 **Projects.** A project is a memory object: a note at `projects/<slug>.md`
 in the scope's own tree, with `status`, `next_check` and `home_channel`
@@ -70,34 +82,29 @@ stop at 40 tool-loop iterations or 60 minutes with a partial report.
 **Supervisor and app.** A per-bot workshop panel: scopes, sandbox status,
 disk use, jobs, allowlists, pending approvals, reset and wipe.
 
-**Carried over from the 0.14.0 review.** Skills that are only text (the
-fiction guides) offered where the workshop is off, with document skills
-marked as needing it; per-start rotation of scope proxy credentials; larger
-documents readable without the workshop.
-
-### 0.14.2: Host mode
-
-A third scope setting beside Container and Off: commands run on the
-operator's own PC, allowed in the operator's DM and in servers or channels
-the operator marks trusted, each behind its own restricted Windows account.
-File permissions keep it out of the install, the data root and the
-operator's profile; an outbound firewall rule forces its traffic through the
-same proxy; its environment carries no secrets; the dashboard shows a banner
-listing exactly what the account can reach. A verification gate on Windows
-11 Home comes first; if per-account egress blocking cannot be enforced
-there, Host falls back to the operator's DM only.
-
-### 0.14.3: the second provider
+### 0.15.1: the second provider
 
 A native OpenAI Responses adapter, deliberately the wire shape most unlike
 Anthropic Messages, as the proof that the model layer's seams hold.
 Stateless requests, reasoning items replayed with their encrypted content,
-`prompt_cache_key` set to the channel id, effort mapped to
-`reasoning.effort`, function calls and outputs mapped to Responses items.
-It ships on a background role first; it is done when a worker and an
-episode distillation run end to end on OpenAI. Claude remains the model the
-framework is built and tested on. Chat-completions-shaped providers and
-Google are later.
+prompt caching mapped to OpenAI's own, effort mapped to `reasoning.effort`,
+function calls and outputs mapped to Responses items. It ships on the
+background roles first (episode distillation, watch checks), then workers.
+Claude remains the model the framework is built and tested on.
+Chat-completions-shaped providers and Google are later.
+
+### 0.16.0: Host mode
+
+A third scope setting beside Container and Off: commands run on the
+operator's own PC, in the operator's DM and in servers or channels the
+operator marks trusted, each scope behind its own restricted Windows
+account. The first probe on Windows 11 Home showed file permissions and a
+per-account firewall rule hold, but that an account launched onto the
+operator's desktop can read the clipboard, see windows and send
+keystrokes. So the design moves the runner off the desktop entirely: one
+registered at Host setup (the one admin prompt) and running in the
+background session, where the operator's desktop and clipboard don't
+exist. A second probe proves that before anything is built.
 
 ### 1.0
 

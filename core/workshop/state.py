@@ -3,6 +3,7 @@ writer). One JSON file: the pinned proxy port, each scope's proxy
 credential, approved hosts, the template snapshot, pending approvals.
 The dashboard never writes it; its edits arrive as request files (0.14.1).
 """
+import hmac
 import json
 import os
 import pathlib
@@ -16,7 +17,7 @@ class WorkshopState:
         self.data: Dict[str, Any] = {}
         if path.exists():
             self.data = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("credentials", "approved_hosts", "pending_approvals"):
+        for key in ("credentials", "retired_credentials", "approved_hosts", "pending_approvals"):
             self.data.setdefault(key, {})
 
     def save(self) -> None:
@@ -45,13 +46,30 @@ class WorkshopState:
             self.save()
         return cred
 
-    def rotate_credentials(self) -> Dict[str, Dict[str, str]]:
-        """Forget every scope's credential (each start, 0.14.1): the next use
-        mints a fresh one. Returns the retired ones."""
-        retired = self.data["credentials"]
+    def rotate_credentials(self) -> None:
+        """Retire every scope's credential (each start, 0.14.1): the next use
+        mints a fresh one. Retired ones stay on file per scope, across any
+        number of restarts, while a job started under them may still run;
+        the workshop prunes them (keep_retired)."""
+        for scope_key, cred in self.data["credentials"].items():
+            self.data["retired_credentials"].setdefault(scope_key, []).append(cred)
         self.data["credentials"] = {}
         self.save()
-        return retired
+
+    def retired_scope(self, user: str, password: str, scopes) -> Optional[str]:
+        """The scope (among scopes) a retired credential belongs to, if it matches."""
+        for scope_key in scopes:
+            for cred in self.data["retired_credentials"].get(scope_key, []):
+                if cred["user"] == user and hmac.compare_digest(password.encode(), cred["password"].encode()):
+                    return scope_key
+        return None
+
+    def keep_retired(self, scopes) -> None:
+        """Drop every retired credential outside scopes."""
+        kept = {k: v for k, v in self.data["retired_credentials"].items() if k in scopes}
+        if kept != self.data["retired_credentials"]:
+            self.data["retired_credentials"] = kept
+            self.save()
 
     def scope_for_user(self, user: str) -> Optional[str]:
         for scope_key, cred in self.data["credentials"].items():

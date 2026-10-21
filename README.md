@@ -461,15 +461,16 @@ The full policy, including how to report a vulnerability, is in
 
 ## Status
 
-0.14.0 is the workshop: the bot's own sandboxed machine per scope, with
+0.14 is the workshop: the bot's own sandboxed machine per scope, with
 background jobs that report back and a network that is closed unless an
 operator opens it. It follows 0.13.0 and 0.13.1, where the model layer
 landed alone so the request bytes could be compared with nothing else
-changing. Next are projects and workers (0.14.1), then a Host mode for
-trusted single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
+changing. Next are a prompt-cache fix (0.14.2), projects and workers
+(0.15.0), a second model provider (0.15.1), then a Host mode for trusted
+single-operator setups. [ROADMAP.md](ROADMAP.md) has the plan.
 
 The codebase is about fifty core modules plus the supervisor package, with
-about 1,100 unit tests and an integration suite that boots real VMs. Every
+about 1,200 unit tests and an integration suite that boots real VMs. Every
 release cycle also runs live scenario campaigns on a real Discord server,
 because the wire-level bugs that matter most do not reproduce under mocks;
 the [CHANGELOG](CHANGELOG.md) records what each campaign found.
