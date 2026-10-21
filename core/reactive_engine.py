@@ -46,7 +46,7 @@ from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, WORKSHOP_DM_LINE, WORKSHOP_PROMPT,
-    NOTE_TURN_LINE, NOTE_TURN_SILENT,
+    NOTE_TURN_LINE, SILENT_REPLY,
     WORKSHOP_SHELF_LINE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
 )
 from .model.driver import DocumentRefusedError, ModelRequest, StaleFileError, Usage, total_input_tokens
@@ -67,6 +67,18 @@ MAX_TOOL_LOOP_ITERATIONS = 10
 # Work in the workshop is steps (install, write, run, fix, run, send): its
 # turns get more iterations; the turn wall clock still bounds them
 WORKSHOP_TOOL_LOOP_ITERATIONS = 25
+
+# A turn that may stay quiet says so with SILENT_REPLY. Models reaching for
+# it also write <silence/>, <silent> or </silent>: the whole reply being one
+# such tag is silence; the tag inside other text is just text
+SILENT_FORMS = re.compile(r"</?\s*silen(?:t|ce)\s*/?\s*>", re.IGNORECASE)
+
+
+def _oldest_first(pending: tuple) -> int:
+    """Sort key for claimed (channel_id, message_id) entries. The queue is in
+    arrival order, and a message with an attachment arrives after its
+    download, behind newer ones; ingestion appends, so it goes by id."""
+    return int(pending[1])
 
 
 def memory_intent(kind: str, text: str, display_name: str) -> str:
@@ -441,7 +453,8 @@ class ReactiveEngine:
         channel_id: str,
         conversation_state,
         limit: int = None,
-        exclude_message_ids: Optional[List[int]] = None
+        exclude_message_ids: Optional[List[int]] = None,
+        before_message_id: Optional[int] = None,
     ) -> None:
         """
         Initialize conversation state from database with full attachment data.
@@ -449,18 +462,24 @@ class ReactiveEngine:
         Used by both urgent and periodic paths to ensure consistent state after restart.
         Loads recent messages with attachments, building proper content blocks.
 
-        exclude_message_ids filters messages the caller is about to append
-        itself (on_message stores to the DB before the engine runs, so without
-        the filter the triggering message would land in state twice).
+        on_message stores every message to the DB before the engine runs, so
+        the seed leaves out what will be appended anyway: exclude_message_ids
+        (the caller's own), anything from before_message_id on (ingestion
+        appends those in order) and anything still in the queue. Seeded too,
+        they would land twice, the newer ones ahead of their turn. A message
+        not queued yet (its attachment still downloading) or claimed by a
+        running pass isn't visible here.
         """
         if limit is None:
             limit = self.config.api.context_messages
 
         logger.info("Conversation state empty, initializing from recent DB messages")
+        queued = [m for c, m in self.pending_messages if c == str(channel_id)]
         recent_messages = await self.message_memory.get_recent(
             channel_id,
             limit=limit,
-            exclude_message_ids=exclude_message_ids
+            exclude_message_ids=[*(exclude_message_ids or []), *queued],
+            before_message_id=before_message_id,
         )
 
         # Add recent messages to state WITH attachments
@@ -1635,9 +1654,10 @@ class ReactiveEngine:
                 if any(getattr(b, "type", None) == "server_tool_use" for b in response.content):
                     result.ended_on_send = False
                 if result.ended_on_send and result.response_text.strip():
-                    logger.info(f"Dropped trailing text after send_message{log_suffix}: "
-                                f"{result.response_text[:120]!r}")
-                    result.dropped_text_chars = len(result.response_text)
+                    if not SILENT_FORMS.fullmatch(result.response_text.strip()):
+                        logger.info(f"Dropped trailing text after send_message{log_suffix}: "
+                                    f"{result.response_text[:120]!r}")
+                        result.dropped_text_chars = len(result.response_text)
                     result.response_text = ""
 
                 # Tools ran but the model went quiet: reprompt once for a
@@ -2301,7 +2321,7 @@ class ReactiveEngine:
         the next tick, so nothing lands between the turn's persisted tool
         pairs and its reply; ingestion holds the lock itself while it writes.
         """
-        messages_to_check = self.pending_messages.copy()
+        messages_to_check = sorted(self.pending_messages, key=_oldest_first)
         self.pending_messages.clear()
         logger.debug(f"Processing {len(messages_to_check)} pending messages")
 
@@ -2331,8 +2351,9 @@ class ReactiveEngine:
     async def _ingest_channel_backlog(self, channel_id: str, before_message_id: int) -> None:
         """Claim and ingest this channel's pending messages older than
         before_message_id. Call with the channel's lock held."""
-        mine = [p for p in self.pending_messages
-                if p[0] == channel_id and int(p[1]) < int(before_message_id)]
+        mine = sorted((p for p in self.pending_messages
+                       if p[0] == channel_id and int(p[1]) < int(before_message_id)),
+                      key=_oldest_first)
         if not mine:
             return
         self.pending_messages = [p for p in self.pending_messages if p not in mine]
@@ -2391,13 +2412,11 @@ class ReactiveEngine:
         try:
             conversation_state = await self.conversation_state_manager.get_or_create(channel_id)
 
-            # If state is empty, initialize with recent DB messages (excluding
-            # the message we are about to append ourselves)
+            # If state is empty, initialize with the DB messages before this
+            # one (it and anything newer get appended by their ingestion)
             if len(conversation_state.messages) == 0:
                 await self._initialize_conversation_from_db(
-                    channel_id, conversation_state,
-                    exclude_message_ids=[message_id]
-                )
+                    channel_id, conversation_state, before_message_id=message_id)
 
             processed_attachments = await self._process_message_attachments(message)
             user_content, attachment_ids = await self._build_user_content(message, processed_attachments)
@@ -2633,12 +2652,13 @@ class ReactiveEngine:
                 result = await self._run_tool_loop(
                     request, message, conversation_state, log_suffix=" (periodic)",
                 )
-                if note_driven and result.response_text.strip() == NOTE_TURN_SILENT:
+                chose_silence = bool(SILENT_FORMS.fullmatch(result.response_text.strip()))
+                if chose_silence:
                     result.response_text = ""
 
                 # Empty text and no tool sends = Claude decided to stay silent
                 if not result.response_text.strip() and not result.did_send:
-                    if result.tools_were_used:
+                    if result.tools_were_used and not chose_silence:
                         logger.warning(f"Claude used tools but returned no text response in channel {channel_id}")
                     else:
                         logger.info(f"Claude decided not to respond in channel {channel_id}")
@@ -2772,11 +2792,11 @@ Your personality and base prompt guide whether to participate. Consider relevanc
 
 **RESPONSE FORMAT:**
 - If you decide to respond: Output ONLY your message to the channel (no meta-commentary, no explanation of your decision)
-- If you decide NOT to respond: Output ABSOLUTELY NOTHING (not even an explanation - complete silence)
+- If you decide NOT to respond: reply with exactly {SILENT_REPLY} and nothing else
 - When your response answers ONE specific message in a batch of several, prefer the send_message tool with reply_to_message_id so it lands anchored to that message
 - send_message can be called more than once in a turn (messages arrive in order) - e.g. an anchored reply to one person, then a separate message for the others. If you've sent everything that way, output nothing afterward
 
-DO NOT explain your reasoning for responding or not responding. DO NOT output meta-commentary about the conversation. Either respond naturally or output nothing.
+DO NOT explain your reasoning for responding or not responding. DO NOT output meta-commentary about the conversation. Either respond naturally or reply with exactly {SILENT_REPLY}.
 """
 
         # Single cached block; volatile values (timestamp, momentum) ride the
@@ -2820,7 +2840,7 @@ DO NOT explain your reasoning for responding or not responding. DO NOT output me
 
             # Claim this channel's pending entries (no await between the two
             # list operations - atomic on the event loop)
-            mine = [p for p in self.pending_messages if p[0] == channel_id]
+            mine = sorted((p for p in self.pending_messages if p[0] == channel_id), key=_oldest_first)
             if not mine:
                 return  # periodic loop already handled them
             self.pending_messages = [p for p in self.pending_messages if p[0] != channel_id]

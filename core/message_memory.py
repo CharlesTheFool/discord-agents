@@ -547,41 +547,30 @@ class MessageMemory:
             logger.debug(f"System message already exists: {message_id}")
 
     async def get_recent(
-        self, channel_id: str, limit: int = 20, exclude_message_ids: List[int] = None
+        self, channel_id: str, limit: int = 20, exclude_message_ids: List[int] = None,
+        before_message_id: Optional[int] = None,
     ) -> List[StoredMessage]:
         """
         Get recent messages from channel, ordered chronologically.
 
-        Optionally exclude specific message IDs (e.g., to filter in-flight messages).
+        Optionally exclude specific message IDs (e.g., to filter in-flight
+        messages), or everything from before_message_id on.
         """
         if not self._db:
             raise RuntimeError("MessageMemory not initialized. Call initialize() first.")
 
-        # Build query with optional exclusion filter
-        if exclude_message_ids and len(exclude_message_ids) > 0:
-            excluded_ids_str = [str(mid) for mid in exclude_message_ids]
-            placeholders = ",".join("?" * len(excluded_ids_str))
-
-            cursor = await self._db.execute(
-                f"""
-                SELECT * FROM messages
-                WHERE channel_id = ?
-                AND message_id NOT IN ({placeholders})
-                ORDER BY timestamp DESC
-                LIMIT ?
-                """,
-                (channel_id, *excluded_ids_str, limit),
-            )
-        else:
-            cursor = await self._db.execute(
-                """
-                SELECT * FROM messages
-                WHERE channel_id = ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-                """,
-                (channel_id, limit),
-            )
+        where, params = ["channel_id = ?"], [channel_id]
+        if exclude_message_ids:
+            where.append(f"message_id NOT IN ({','.join('?' * len(exclude_message_ids))})")
+            params += [str(mid) for mid in exclude_message_ids]
+        if before_message_id is not None:
+            # Snowflakes order by time; stored as text, so compare as numbers
+            where.append("CAST(message_id AS INTEGER) < ?")
+            params.append(int(before_message_id))
+        cursor = await self._db.execute(
+            f"SELECT * FROM messages WHERE {' AND '.join(where)} ORDER BY timestamp DESC LIMIT ?",
+            (*params, limit),
+        )
 
         rows = await cursor.fetchall()
         messages = [self._row_to_message(row) for row in rows]

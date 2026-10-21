@@ -425,13 +425,17 @@ WORKER_BUDGET_NOTE = (
     "That's the end of your budget ({why}). Don't call any more tools: reply now with your "
     "report - what you did, what you found, where any files are, and what's left.")
 
-# A note-driven turn (a finished job, an expired approval) answers a note,
-# not a person, and models explain their silence to it instead of keeping
-# it. Measured 2026-10-20 on a captured request, 8 runs per wording: no line,
-# 8/8 posted an explanation; "write nothing" wordings 2/8 to 7/8; this line
-# 0/8, while a report the bot had promised still went out 8/8. The sentinel
-# is what makes it hold: models emit a token far more reliably than nothing.
-NOTE_TURN_SILENT = "<silent/>"
+# How a turn that may stay quiet says so. Asked to write nothing, models
+# write about writing nothing instead, and that gets posted. Measured on
+# captured requests, 8 runs per cell: a note-driven turn (a finished job, an
+# expired approval) posted an explanation 8/8 with no line, 0/8 with
+# NOTE_TURN_LINE, while a promised report still went out 8/8 (2026-10-20); a
+# scan of a person's message meant for someone else posted "*silence*" or
+# "*not addressed to me*" 16/16 under "output nothing" and 0/16 with this
+# sentinel, counting its near-miss `<silence/>` (2026-10-21, 0.15.3), while a
+# direct question still got its answer 8/8. Models emit a token far more
+# reliably than nothing.
+SILENT_REPLY = "<silent/>"
 
 # Two bots that each answer the other never stop on their own (seen live
 # 2026-10-21: SLH-Alpha and SLH-01 traded "*silence*" once a minute until
@@ -447,7 +451,7 @@ NOTE_TURN_LINE = (
     "This turn started because of the note above, not because anyone spoke, and anything "
     "you write is posted to the channel. If someone is waiting on what the note says "
     "(you said you'd report back, or it answers their request), tell them. If it needs "
-    f"nothing said, reply with exactly {NOTE_TURN_SILENT} and nothing else.")
+    f"nothing said, reply with exactly {SILENT_REPLY} and nothing else.")
 
 
 # =============================================================================
