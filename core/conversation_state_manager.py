@@ -330,13 +330,16 @@ class ConversationStateManager:
         await self._db.execute(
             """
             INSERT OR REPLACE INTO conversation_states
-            (channel_id, bot_id, state_json, message_count, last_updated)
-            VALUES (?, ?, ?, ?, ?)
+            (channel_id, bot_id, state_json, token_count, message_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 state.channel_id,
                 self.bot_id,
                 state_json,
+                # the session watermark: what api.context_tokens is measured
+                # against (the dashboard's context gauge reads it)
+                state.session_input_tokens,
                 len(state.messages),
                 datetime.utcnow()
             )
