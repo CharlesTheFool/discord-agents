@@ -7,10 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.3] - 2026-10-20
+
+**Status:** Beta. A fix found by the end-of-0.14 verification sweep.
+
+### Fixed
+- **The workshop is the only sandbox again.** The web search and fetch
+  tools were at their 20260209 versions, whose dynamic filtering brings
+  Anthropic's server-side code execution along. So 0.14.0 had removed
+  code execution from the request while the model could still call it,
+  and given the choice it sometimes did: asked to edit a file with its
+  editor, the bot wrote it in Anthropic's sandbox instead of its own
+  workshop, where nothing can attach it. The web tools are now the
+  20250305 / 20250910 versions. Checked with one request per version set
+  and nothing else changed: with the 20260209 versions the model ran
+  `bash_code_execution`; with these it has no code tool. Web search keeps
+  working; results are no longer pre-filtered by code, so a fetched page is
+  now capped at 25,000 tokens.
+
+### Security
+- SECURITY.md now names a residual the sweep's review found: `web_fetch`
+  runs on Anthropic's servers, outside the workshop's proxy, and can fetch
+  a URL that appeared in the bot's own tool output. Web search is off by
+  default; restricting fetches to URLs from people is planned.
+- The conversations log names both paths of a memory rename instead of
+  "unknown".
+
+### Upgrading
+Nothing to do. Every request with web search on re-writes its prompt
+cache once (the tool definitions changed).
+
 ## [0.14.2] - 2026-10-20
 
-**Status:** Beta, and the last of 0.14. One change, so its effect on cost
-has one cause.
+**Status:** Beta. One change, so its effect on cost has one cause.
 
 ### Changed
 - **The message cap stops breaking the prompt cache.** Once a channel's

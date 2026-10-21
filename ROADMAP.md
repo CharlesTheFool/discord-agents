@@ -47,6 +47,9 @@ commitments, details are not. Full history with upgrade notes lives in
   channel used to drop one message per turn, shifting everything after the
   system prompt; it now trims to a quarter below the cap, so the cache
   holds for several turns.
+- **0.14.3:** the workshop is the only sandbox again. The web tools'
+  newest versions brought Anthropic's code execution along; they're pinned
+  to the versions without it.
 
 ## The active plan
 
