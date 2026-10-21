@@ -34,5 +34,11 @@ def get_web_search_tools(citations_enabled: bool = True) -> list:
             "citations": {"enabled": citations_enabled},
             "max_content_tokens": WEB_FETCH_MAX_CONTENT_TOKENS,
             "max_uses": WEB_SEARCH_MAX_USES,
+            # Fetches run on Anthropic's servers, outside the workshop's proxy.
+            # By default a URL in any of our tool results counts as one the
+            # conversation brought up, so `bash -c "echo https://x/?<data>"`
+            # made anything the bot can read fetchable (0.15.0). Only URLs
+            # from messages and from search results now.
+            "url_sources": {"client_tool_results": {"type": "none"}},
         }
     ]

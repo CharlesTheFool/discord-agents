@@ -241,10 +241,14 @@ scope to any public host, still port 443 only.
 - **Web fetch is a second way out, and it isn't the workshop's.** Where web
   search is on (`api.web_search.enabled`, off by default), `web_fetch` runs
   on Anthropic's servers, outside the proxy and its allowlist. It fetches
-  only URLs that appeared in the conversation, but that includes the bot's
-  own tool results, so a URL the bot printed with `bash` is fetchable, query
-  string and all. Leave web search off where that matters; restricting
-  fetches to URLs from people and search results is planned.
+  only URLs that appeared in the conversation, and since 0.15.0 the bot's
+  own tool results don't count (`url_sources`): a URL it prints with `bash`
+  or reads back from a file or a message search isn't fetchable. What still
+  counts is anything in a user turn, and some user turns are the bot's own
+  words relayed: a background job's completion note carries the last lines
+  of its output, and the per-request context lists recent messages,
+  the bot's included. A URL laundered through either is fetchable a turn
+  later, query string and all. Leave web search off where that matters.
 - **The hypervisor is the boundary.** The VM monitor runs as the operator's
   user. A VM escape would land with that user's privileges, which is one
   more reason to run the app under an account that isn't an administrator.
