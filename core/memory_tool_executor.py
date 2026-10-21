@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import shutil
 
-from .vaults import _WRITE_COMMANDS, VaultEnforcer, normalize_memory_path
+from .vaults import _WRITE_COMMANDS, VaultEnforcer, memory_path_problem, normalize_memory_path
 from .workshop.projects import with_home
 from .workshop.scopes import tree_of
 
@@ -84,6 +84,10 @@ class MemoryToolExecutor:
             for key in ("path", "new_path") if tool_input.get(key)}}
         command = tool_input.get("command")
         path = tool_input.get("path", "")
+        for key in ("path", "new_path"):
+            problem = memory_path_problem(tool_input.get(key) or "")
+            if problem:
+                return f"Error: Invalid path '{tool_input[key]}' ({problem})"
 
         if command != "rename":
             if not self._validate_path(path):
@@ -114,6 +118,9 @@ class MemoryToolExecutor:
                 if reason:
                     logger.warning(f"Project write denied ({command} {vp}): {reason}")
                     return f"Error: Access denied - {reason}."
+            if command == "rename" and self._moves_project_notes(*vault_paths, tree):
+                return ("Error: Access denied - that would move project notes out of their "
+                        "projects folder; move the notes themselves.")
 
         try:
             if command == "view":
@@ -153,7 +160,7 @@ class MemoryToolExecutor:
         a context outside every vault write any open server's tree, and a
         note planted in server B's projects/ would get turns in B."""
         prefix = f"/memories/{self.bot_id}/"
-        rel = path[len(prefix):] if path.startswith(prefix) else ""
+        rel = path[len(prefix):].casefold() if path.startswith(prefix) else ""
         if "projects" not in rel.split("/"):
             return None
         if tree and (rel == f"{tree}/projects" or rel.startswith(f"{tree}/projects/")):
@@ -162,10 +169,22 @@ class MemoryToolExecutor:
             return "project notes can't be written from here"
         return f"project notes for this conversation go in {prefix}{tree}/projects/, nowhere else"
 
+    def _moves_project_notes(self, source: str, dest: str, tree: Optional[str]) -> bool:
+        """A rename judged by its two strings misses what a folder carries: a
+        projects/ folder inside it, or a source inside projects/ whose new
+        name isn't. Either could land a note under another scope's tree."""
+        own = f"/memories/{self.bot_id}/{tree}/projects"
+        inside = lambda p: p.casefold() == own or p.casefold().startswith(own + "/")
+        if inside(source) and not inside(dest):
+            return True
+        folder = self._path_to_filesystem(source)
+        return folder.is_dir() and any(
+            d.is_dir() and d.name.casefold() == "projects" for d in folder.rglob("*"))
+
     def _stamped(self, result: str, path: str, tree: Optional[str], channel_id) -> str:
         """A note just made at {tree}/projects/<slug>.md gets its home channel
         (where the project began): the check-in loop has no other way to know it."""
-        folder, _, name = path.rpartition("/")
+        folder, _, name = path.casefold().rpartition("/")
         if not (tree and channel_id and result.startswith("Successfully") and name.endswith(".md")
                 and folder == f"/memories/{self.bot_id}/{tree}/projects"):
             return result

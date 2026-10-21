@@ -26,6 +26,27 @@ def normalize_memory_path(path: str) -> str:
     return posixpath.normpath(path.replace("\\", "/"))
 
 
+def memory_path_problem(path: str) -> Optional[str]:
+    """Why a (normalized) memory path can't be judged by its spelling, or
+    None. Windows resolves more spellings than the one written: an 8.3 short
+    name (`142494~1.MD` for a vaulted channel's note), an alternate data
+    stream (`x.md:s`), a trailing dot or space it drops. The gates compare
+    names, so a path that could name a different file is refused."""
+    for seg in path.split("/"):
+        if seg in (".", ".."):
+            continue
+        if "~" in seg or ":" in seg or seg.endswith((".", " ")):
+            return f"{seg!r} isn't a plain file or folder name"
+    return None
+
+
+def path_parts(path: str) -> List[str]:
+    """A memory path's segments for the gates' comparisons, case-folded:
+    the filesystems the app ships on ignore case, so `Servers/` reaches
+    `servers/` (0.15.0; before, it skipped every vault and DM rule)."""
+    return path.casefold().split("/")
+
+
 class VaultEnforcer:
     """Pure vault logic; callers thread current_server_id/current_channel_id."""
 
@@ -118,7 +139,7 @@ class VaultEnforcer:
         """DM privacy rules (v0.9): every DM is an implicit vault scoped to
         its conversation. Returns a verdict, or None when DM rules have no
         opinion (server vault rules still apply)."""
-        parts = path.split("/")
+        parts = path_parts(path)
         is_dm_path = len(parts) >= 5 and parts[3] == "global" and parts[4] == "dms"
         in_dm = server_id in (None, "DM")
 
@@ -165,7 +186,7 @@ class VaultEnforcer:
         if not self.vaults:
             return True, None
 
-        parts = path.split("/")
+        parts = path_parts(path)
         # /memories/{bot}/servers/{sid}/... -> ['', 'memories', bot, 'servers', sid, ...]
         if len(parts) >= 5 and parts[3] == "servers":
             sid = parts[4]
