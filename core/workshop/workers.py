@@ -239,7 +239,7 @@ class Workers:
             transcript.write("assistant", content=response.persistable, stop=response.stop_reason,
                              usage=vars(response.usage))
             request.messages.append({"role": "assistant", "content": response.content})
-            if response.stop_reason == "pause_turn":   # a long server-tool turn, resumed as is
+            if response.stop_reason == "pause":   # a long server-tool turn, resumed as is
                 continue
             if response.stop_reason != "tool_use":
                 return _text(response) or "It finished without writing a report."

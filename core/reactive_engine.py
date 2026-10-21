@@ -1701,6 +1701,19 @@ class ReactiveEngine:
                     result.response_text = fallback_text
                 break
 
+            elif response.stop_reason == "pause" and loop_iteration < cap:
+                # A long server-tool turn (searches, fetches) paused: send its
+                # content back as is and it carries on. It must end the
+                # request, so the tail it was generated after becomes a real
+                # message before it, where the model saw it
+                logger.info(f"Server tools paused the turn{log_suffix} - resuming")
+                if request.volatile_tail:
+                    request.messages.append({"role": "user", "content": [
+                        {"type": "text", "text": request.volatile_tail}]})
+                    request.volatile_tail = ""
+                request.messages.append({"role": "assistant", "content": response.content})
+                continue
+
             else:
                 logger.warning(f"Unexpected stop_reason{log_suffix}: {response.stop_detail}")
                 if fallback_text and not result.did_send:
