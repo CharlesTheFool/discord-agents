@@ -172,7 +172,11 @@ class ConversationState:
 
     def enforce_message_cap(self) -> int:
         """
-        Remove oldest Discord messages while over the message cap.
+        Once over the message cap, remove the oldest Discord messages down to
+        a quarter below it (0.14.2). Dropping one per turn shifted every
+        message after the system prompt, so a full channel missed the
+        conversation part of the prompt cache on every turn; the slack keeps
+        the head, and the cached prefix with it, for several turns.
 
         Only Discord messages count toward the cap; tool_use/tool_result
         messages ride along until episodic sessions replace this guard.
@@ -180,23 +184,22 @@ class ConversationState:
         Returns:
             Number of messages removed
         """
+        def is_discord(msg):
+            return msg.get("message_type", "discord_user").startswith("discord_")
+
         removed_count = 0
-
-        while True:
-            discord_indices = [
-                i for i, msg in enumerate(self.messages)
-                if msg.get("message_type", "discord_user").startswith("discord_")
-            ]
-            if len(discord_indices) <= self.max_messages:
-                break
-
-            removed_message = self.messages.pop(discord_indices[0])
-            removed_count += 1
-            self.messages_removed += 1
-            logger.debug(
-                f"Removed oldest Discord message due to message cap "
-                f"(role={removed_message['role']}, message_type={removed_message.get('message_type', 'unknown')})"
-            )
+        count = sum(1 for msg in self.messages if is_discord(msg))
+        if count > self.max_messages:
+            target = self.max_messages - max(1, self.max_messages // 4)
+            while count > target:
+                removed_message = self.messages.pop(next(i for i, m in enumerate(self.messages) if is_discord(m)))
+                count -= 1
+                removed_count += 1
+                self.messages_removed += 1
+                logger.debug(
+                    f"Removed oldest Discord message due to message cap "
+                    f"(role={removed_message['role']}, message_type={removed_message.get('message_type', 'unknown')})"
+                )
 
         # Popping the head can leave tool messages or an assistant turn first
         removed_count += self.trim_leading_non_user()
