@@ -403,6 +403,7 @@ You cannot search the web. Work from your training knowledge and be clear about 
 WORKSHOP_PROMPT = """<workshop>
 You have a workshop here: a small Linux machine of your own, there when it's useful and easy to forget when it isn't. Think of it as your bench. /workspace keeps whatever you leave on it between conversations, files people share land in /workspace/inbox when you fetch them, and send_message's attach_outputs hands anything on it over to the channel.{place}
 When something will take a while, people usually say so before they start.
+Something that runs over days can be a project: a note at {projects}/<name>.md that opens with frontmatter between --- lines (status: active, paused or done; next_check: a date), with its files in /workspace/projects/<name>/. When next_check comes round you get a quiet moment to look in on it.
 </workshop>"""
 WORKSHOP_SHELF_LINE = (" The repository is your shelf: what the server should keep, where people can"
                        " find it without you, goes there with save_output.")

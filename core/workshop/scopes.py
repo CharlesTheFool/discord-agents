@@ -27,6 +27,28 @@ class Scope:
         dev checkout and the installed app on one machine share it."""
         return _NAME_UNSAFE.sub("-", f"{install_id}-{bot_id}-{self.kind}-{self.id}".lower())
 
+    def memory_tree(self, server_id=None, thread_parent=None) -> str:
+        """The scope's memory tree, relative to the bot's memory root: where its
+        project notes live (0.15.0). thread_parent is the vaulted place's own
+        parent when that place is a thread."""
+        if self.kind == "server":
+            return f"servers/{self.id}"
+        if self.kind == "vault":
+            if thread_parent:
+                return f"servers/{server_id}/channels/{thread_parent}/threads/{self.id}"
+            return f"servers/{server_id}/channels/{self.id}"
+        if self.kind == "dm":
+            return f"global/dms/{self.id}"
+        return f"global/dms/_unresolved/{self.id}"
+
+
+def tree_of(scope: Scope, server_id, channel_id, parent_id=None) -> str:
+    """memory_tree for a conversation: a vault scope is the conversation's own
+    channel (then parent_id is its thread parent) or that channel's vaulted
+    parent (no parent of its own)."""
+    own = scope.kind == "vault" and scope.id == str(channel_id)
+    return scope.memory_tree(server_id, parent_id if own else None)
+
 
 def setting_for(scope: Optional[Scope], config, *, server_id=None,
                 channel_id=None, parent_id=None) -> str:

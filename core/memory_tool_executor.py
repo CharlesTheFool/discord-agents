@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import shutil
 
-from .vaults import VaultEnforcer, normalize_memory_path
+from .vaults import _WRITE_COMMANDS, VaultEnforcer, normalize_memory_path
+from .workshop.projects import with_home
+from .workshop.scopes import tree_of
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,9 @@ class MemoryToolExecutor:
         tool_input: Dict[str, Any],
         current_server_id: Optional[str] = None,
         current_channel_id: Optional[str] = None,
-        write_grant: Optional[str] = None
+        write_grant: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        is_thread: bool = False,
     ) -> str:
         """
         Execute memory tool command, returning result string for Claude.
@@ -54,6 +58,8 @@ class MemoryToolExecutor:
             current_channel_id: Current channel context for isolation
             write_grant: one-shot /memory consent (v0.9) - that user's own
                 global profile is writable from their DM for this turn
+            parent_id, is_thread: the live channel's thread parent, when the
+                caller holds it (project notes resolve the conversation's scope)
         """
         # The trained tool (memory_20250818) names rename's source old_path
         # and insert's text insert_text; this executor long read path and
@@ -95,11 +101,21 @@ class MemoryToolExecutor:
                     logger.warning(f"Vault denial ({command} {vp}): {reason}")
                     return f"Error: Access denied - {reason}."
 
+        tree = None
+        if self.vaults and command in _WRITE_COMMANDS:
+            tree = self._own_tree(current_server_id, current_channel_id, parent_id, is_thread)
+            for vp in vault_paths:
+                reason = self._project_write_refused(vp, tree)
+                if reason:
+                    logger.warning(f"Project write denied ({command} {vp}): {reason}")
+                    return f"Error: Access denied - {reason}."
+
         try:
             if command == "view":
                 return self._view(tool_input)
             elif command == "create":
-                return self._create(tool_input)
+                return self._stamped(self._create(tool_input), tool_input["path"],
+                                     tree, current_channel_id)
             elif command == "str_replace":
                 return self._str_replace(tool_input)
             elif command == "insert":
@@ -107,13 +123,53 @@ class MemoryToolExecutor:
             elif command == "delete":
                 return self._delete(tool_input)
             elif command == "rename":
-                return self._rename(tool_input)
+                return self._stamped(self._rename(tool_input), tool_input.get("new_path", ""),
+                                     tree, current_channel_id)
             else:
                 return f"Error: Unknown command '{command}'"
 
         except Exception as e:
             logger.error(f"Error executing memory command '{command}': {e}", exc_info=True)
             return f"Error: {str(e)}"
+
+    # --- projects (0.15.0) -----------------------------------------------------
+
+    def _own_tree(self, server_id, channel_id, parent_id, is_thread) -> Optional[str]:
+        """This conversation's memory tree, or None (a thread whose parent is
+        unknown has no scope, so it may write no project note at all)."""
+        if parent_id is None and channel_id and self.vaults.thread_parent_resolver:
+            parent_id = self.vaults.thread_parent_resolver(str(channel_id))
+        scope = self.vaults.resolve_scope(server_id, channel_id, parent_id=parent_id,
+                                          is_thread=is_thread)
+        return tree_of(scope, server_id, channel_id, parent_id) if scope else None
+
+    def _project_write_refused(self, path: str, tree: Optional[str]) -> Optional[str]:
+        """Project notes are written only from their own scope: vault rules let
+        a context outside every vault write any open server's tree, and a
+        note planted in server B's projects/ would get turns in B."""
+        prefix = f"/memories/{self.bot_id}/"
+        rel = path[len(prefix):] if path.startswith(prefix) else ""
+        if "projects" not in rel.split("/"):
+            return None
+        if tree and (rel == f"{tree}/projects" or rel.startswith(f"{tree}/projects/")):
+            return None
+        if tree is None:
+            return "project notes can't be written from here"
+        return f"project notes for this conversation go in {prefix}{tree}/projects/, nowhere else"
+
+    def _stamped(self, result: str, path: str, tree: Optional[str], channel_id) -> str:
+        """A note just made at {tree}/projects/<slug>.md gets its home channel
+        (where the project began): the check-in loop has no other way to know it."""
+        folder, _, name = path.rpartition("/")
+        if not (tree and channel_id and result.startswith("Successfully") and name.endswith(".md")
+                and folder == f"/memories/{self.bot_id}/{tree}/projects"):
+            return result
+        fs_path = self._path_to_filesystem(path)
+        text = with_home(fs_path.read_text(encoding="utf-8"), str(channel_id))
+        if text is None:
+            return result
+        fs_path.write_text(text, encoding="utf-8")
+        return f"{result} (home_channel set to this channel: {channel_id})"
 
     def _validate_path(self, path: str) -> bool:
         """Validate path is within /memories/{bot_id}/ boundary"""

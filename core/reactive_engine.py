@@ -55,6 +55,8 @@ from tools.bash_tool import run_bash
 from tools.editor_tool import EDITOR_NAME, run_editor
 from tools.network_access_tool import run_request_network_access
 from tools.skills_tool import run_request_skill
+from .workshop.projects import ProjectBook, manifest as projects_manifest
+from .workshop.scopes import tree_of
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +213,7 @@ class ReactiveEngine:
         self.workshop = None
         self.job_watcher = None
         self.approvals = None      # network approvals, wired in on_ready (needs the client)
+        self.projects = None       # project notes (0.15.0), read where the workshop runs
 
         # Initialize v0.5.0 managers
         # MCP Manager
@@ -345,9 +348,36 @@ class ReactiveEngine:
                 ContextNoteWriter(self.conversation_state_manager, self.channel_locks),
                 wake=self.run_note_turn, config=self.config, events=self.message_memory)
             self.workshop.on_background = self.job_watcher.follow
+            self.projects = ProjectBook(self.memory_tool_executor.base_path, self.config.bot_id,
+                                        self.vaults, self._channel_place)
             # its own task: reconciling jobs (and their tails) talks to the
             # runtime, which must never hold up the rest of on_ready
             self._track_task(asyncio.ensure_future(self._start_watcher()))
+
+    def _channel_place(self, channel_id: str):
+        """(server id or None for a DM, thread parent, is_thread) of a channel
+        this bot can see right now, or None: how a project's home channel is
+        checked against the scope holding its note."""
+        if self.vaults.dm_partner_resolver and self.vaults.dm_partner_resolver(str(channel_id)):
+            return None, None, False
+        channel = self.discord_client.get_channel(int(channel_id)) if self.discord_client else None
+        if channel is None or isinstance(channel, discord.DMChannel):
+            return (None, None, False) if channel is not None else None
+        if isinstance(channel, discord.Thread):
+            return str(channel.guild.id), str(channel.parent_id), True
+        return str(channel.guild.id), None, False
+
+    def _projects_place(self, message):
+        """(scope, memory tree) of this conversation where its workshop runs."""
+        if not self._workshop_on(message):
+            return None
+        channel = message.channel
+        server_id = str(message.guild.id) if message.guild else None
+        parent_id = getattr(channel, "parent_id", None)
+        parent_id = str(parent_id) if parent_id else None
+        scope = self.workshop.scope(server_id, str(channel.id), parent_id=parent_id,
+                                    is_thread=isinstance(channel, discord.Thread))
+        return scope, tree_of(scope, server_id, str(channel.id), parent_id)
 
     async def _start_watcher(self) -> None:
         try:
@@ -917,6 +947,17 @@ class ReactiveEngine:
             except Exception as e:
                 logger.error(f"Failed to build workshop awareness line: {e}")
 
+        if getattr(self, "projects", None) is not None and message is not None:
+            try:
+                place = self._projects_place(message)
+                if place:
+                    listed = projects_manifest(self.projects.in_scope(*place),
+                                               f"/memories/{self.config.bot_id}/{place[1]}")
+                    if listed:
+                        parts.append(listed)
+            except Exception as e:
+                logger.error(f"Failed to build projects manifest: {e}")
+
         # Recent message ids (v0.12.0): send_message reply_to targets. The
         # model can't anchor a reply to a message it can't name; ids ride
         # here because they're per-request noise everywhere else.
@@ -1013,7 +1054,8 @@ class ReactiveEngine:
         repository = self.repository_manager is not None and not is_dm
         if workshop:
             place = WORKSHOP_DM_LINE if is_dm else WORKSHOP_SHELF_LINE if repository else ""
-            system_blocks[0]["text"] += "\n\n" + WORKSHOP_PROMPT.format(place=place)
+            projects = f"/memories/{self.config.bot_id}/{self._projects_place(message)[1]}/projects"
+            system_blocks[0]["text"] += "\n\n" + WORKSHOP_PROMPT.format(place=place, projects=projects)
         skills_prompt = self.skills.prompt(workshop=workshop)
         if skills_prompt:
             system_blocks[0]["text"] += "\n\n" + skills_prompt
@@ -1193,6 +1235,8 @@ class ReactiveEngine:
                     current_server_id=server_id,
                     current_channel_id=channel_id,
                     write_grant=memory_write_grant,
+                    parent_id=str(parent_id) if parent_id else None,
+                    is_thread=is_thread,
                 )
                 self.conversation_logger.log_memory_tool(command, path, result)
                 note("memory", command, path)
