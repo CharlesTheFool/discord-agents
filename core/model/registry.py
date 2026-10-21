@@ -51,7 +51,30 @@ def client_tool(declaration: dict) -> ToolDef:
     return ToolDef(declaration["name"], "client", declaration)
 
 
-MEMORY = ToolDef("memory", "client", {"type": "memory_20250818", "name": "memory"})
+# Anthropic gets its typed memory tool; other providers this schema, named as
+# the typed tool's commands are (core/memory_tool_executor.py reads these)
+MEMORY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "command": {"type": "string",
+                    "enum": ["view", "create", "str_replace", "insert", "delete", "rename"]},
+        "path": {"type": "string", "description": "A path under /memories (every command but rename)"},
+        "view_range": {"type": "array", "items": {"type": "integer"},
+                       "description": "[view] first and last line to show, 1-based"},
+        "file_text": {"type": "string", "description": "[create] the whole file"},
+        "old_str": {"type": "string", "description": "[str_replace] text that appears once"},
+        "new_str": {"type": "string", "description": "[str_replace] what replaces it"},
+        "insert_line": {"type": "integer", "description": "[insert] the line to insert before, 1-based"},
+        "insert_text": {"type": "string", "description": "[insert] the text"},
+        "old_path": {"type": "string", "description": "[rename] the current path"},
+        "new_path": {"type": "string", "description": "[rename] the new path"},
+    },
+    "required": ["command"],
+}
+MEMORY_DESCRIPTION = ("Your memory: markdown notes under /memories that stay with you across "
+                      "conversations. View a folder or a file, or create, edit, rename and delete notes.")
+MEMORY = ToolDef("memory", "client", {"type": "memory_20250818", "name": "memory"},
+                 schema=MEMORY_SCHEMA, description=MEMORY_DESCRIPTION)
 # The workshop (0.14): ours to run, on every driver; the editor rides
 # Anthropic's typed text editor where the model has it
 BASH = client_tool(BASH_TOOL)
