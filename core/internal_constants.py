@@ -437,6 +437,16 @@ WORKER_BUDGET_NOTE = (
 # reliably than nothing.
 SILENT_REPLY = "<silent/>"
 
+# The <recent_messages> map on the request tail is the only place the model
+# learns who said what: conversation turns are the bare message text. It
+# covers at least this many messages, and as many as the conversation can
+# hold (api.context_messages). Measured 2026-10-22 on a captured scan, 8 runs
+# per arm: asked who said something 23 messages back, a 15-line map got it
+# right 1/8 (7/8 confidently named the wrong person), a map covering the
+# whole conversation 8/8. "Name: " on every turn also got 8/8, but then
+# answered a follow-up meant for another bot 8/8, against 0/8 (0.15.4)
+RECENT_MAP_MIN = 15
+
 # Two bots that each answer the other never stop on their own (seen live
 # 2026-10-21: SLH-Alpha and SLH-01 traded "*silence*" once a minute until
 # one was stopped). Past this many bot messages in a row in a channel,

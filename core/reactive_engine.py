@@ -46,7 +46,7 @@ from .conversation_state_manager import ConversationStateManager
 from .channel_locks import ChannelLocks
 from .internal_constants import (
     TOOL_STUB_KEEP_TURNS, PRIME_CONTEXT_TEMPLATE, WORKSHOP_DM_LINE, WORKSHOP_PROMPT,
-    NOTE_TURN_LINE, SILENT_REPLY,
+    NOTE_TURN_LINE, SILENT_REPLY, RECENT_MAP_MIN,
     WORKSHOP_SHELF_LINE, WORKSHOP_TURN_WALL_CLOCK_SECONDS, format_size,
 )
 from .model.driver import DocumentRefusedError, ModelRequest, StaleFileError, Usage, total_input_tokens
@@ -468,7 +468,7 @@ class ReactiveEngine:
         appends those in order) and anything still in the queue. Seeded too,
         they would land twice, the newer ones ahead of their turn. A message
         not queued yet (its attachment still downloading) or claimed by a
-        running pass isn't visible here.
+        running pass isn't visible here: its append updates the seeded copy.
         """
         if limit is None:
             limit = self.config.api.context_messages
@@ -480,6 +480,7 @@ class ReactiveEngine:
             limit=limit,
             exclude_message_ids=[*(exclude_message_ids or []), *queued],
             before_message_id=before_message_id,
+            collapse_markers=True,
         )
 
         # Add recent messages to state WITH attachments
@@ -556,7 +557,8 @@ class ReactiveEngine:
             conversation_state.add_message(
                 role,
                 content,
-                attachment_ids=attachment_ids if attachment_ids else None
+                attachment_ids=attachment_ids if attachment_ids else None,
+                discord_id=db_msg.message_id,
             )
 
         # The oldest seeded message can be the bot's own - the API requires a
@@ -1003,11 +1005,14 @@ class ReactiveEngine:
 
         # Recent message ids (v0.12.0): send_message reply_to targets. The
         # model can't anchor a reply to a message it can't name; ids ride
-        # here because they're per-request noise everywhere else.
+        # here because they're per-request noise everywhere else. It's also
+        # who said what, so it covers the whole conversation (0.15.4)
         if message is not None and getattr(self, "message_memory", None):
             try:
                 recent = await self.message_memory.get_recent(
-                    str(message.channel.id), limit=15)
+                    str(message.channel.id),
+                    limit=max(RECENT_MAP_MIN, self.config.api.context_messages),
+                    real_only=True)
                 client = getattr(self, "discord_client", None)
                 own_id = str(client.user.id) if (client and client.user) else None
                 lines = []
@@ -1950,7 +1955,8 @@ class ReactiveEngine:
                 if conversation_state:
                     try:
                         user_content, attachment_ids = await self._build_user_content(message, processed_attachments)
-                        conversation_state.add_message("user", user_content, attachment_ids)
+                        conversation_state.add_message("user", user_content, attachment_ids,
+                                                       discord_id=message.id)
                         conversation_state.enforce_message_cap()
                     except Exception as e:
                         logger.error(f"Failed to add user message to conversation state: {e}", exc_info=True)
@@ -2427,9 +2433,12 @@ class ReactiveEngine:
                 logger.debug(f"Skipping contentless message {message_id} (system/sticker-only)")
                 return None
 
-            # Add message to conversation state
-            conversation_state.add_message("user", user_content, attachment_ids)
-            logger.info(f"Added message {message_id} to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
+            # Add message to conversation state (a seed holding it gets this copy)
+            if conversation_state.add_message("user", user_content, attachment_ids,
+                                              discord_id=message_id):
+                logger.info(f"Added message {message_id} to conversation state (attachments: {len(attachment_ids) if attachment_ids else 0})")
+            else:
+                logger.info(f"Message {message_id} was seeded - updated in place")
 
             # Save state immediately (Bug #7 fix for persistence)
             await self.conversation_state_manager.save(conversation_state)

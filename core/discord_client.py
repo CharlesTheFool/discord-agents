@@ -323,14 +323,17 @@ class DiscordClient(discord.Client):
 
         # Check for crash and insert lifecycle events
         from pathlib import Path
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         flag_file = Path(f"persistence/{self.config.bot_id}_running.flag")
 
         if flag_file.exists():
             # Previous session crashed (flag wasn't removed)
             try:
-                offline_time = datetime.fromtimestamp(flag_file.stat().st_mtime)
+                # Naive UTC like every other lifecycle marker: local time sorted
+                # it after the next "came online" east of UTC
+                offline_time = datetime.fromtimestamp(
+                    flag_file.stat().st_mtime, timezone.utc).replace(tzinfo=None)
                 logger.warning(f"Detected crash: Bot went offline at {offline_time}")
 
                 # Insert crash/offline tag for each channel in each server
