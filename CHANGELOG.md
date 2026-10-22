@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.4] - 2026-10-22
+
+**Status:** Beta. What the bot sees of a channel's history.
+
+### Fixed
+- **The bot knows who said what further back.** Each turn of a
+  conversation reaches the model as the bare message text; who wrote it
+  comes from a list of recent messages on the request, which held the last
+  15. A busy channel's conversation holds 20 to 30 messages, and asked who
+  said something 23 messages back, the bot named the wrong person,
+  confidently, 7 times out of 8. The list now covers the whole
+  conversation: 8 of 8 right. Putting "Name: " on every turn fixed it too,
+  but then the bot answered a follow-up meant for another bot 8 times out
+  of 8, against never, so the turns stay as they are. The longer list costs
+  about 45 uncached tokens for each message past 15 (about 700 per request
+  with 30 messages of context).
+- **A quiet channel's history is its messages, not its restarts.** Every
+  start and shutdown marks every channel, so a channel nobody had used in a
+  while was seeded with 20 "[YOU CAME ONLINE]" lines and nothing else (the
+  production bot joked that it "came back like nine times"). Seeds keep
+  only the newest mark of each run, the recent-messages list shows real
+  messages only, and a crash mark is stamped in UTC like the others (in
+  local time it sorted after the next start, east of UTC).
+- **No message lands twice in a conversation.** The two races 0.15.3 left
+  open (a message still downloading its attachment, or one a scan had
+  picked up, while a quiet channel's conversation was being seeded) are
+  closed: a conversation remembers which Discord messages it holds, and
+  the copy built from the live message (its files, its reply quote)
+  replaces a seeded one where it stands. That memory is never saved, so
+  rolling back stays safe.
+
+### Upgrading
+Nothing to do. A bot with a large `api.context_messages` pays for the
+longer list on every request (about 45 tokens per message past 15).
+
 ## [0.15.3] - 2026-10-21
 
 **Status:** Beta. Two fixes from the end-of-batch sweep.

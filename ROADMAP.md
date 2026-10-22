@@ -71,6 +71,9 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.15.3:** a scan that stays out says `<silent/>` instead of posting
   "*nothing to add*"; a quiet channel's first messages no longer land twice
   in its conversation.
+- **0.15.4:** who said what reaches back through the whole conversation;
+  restarts no longer crowd a quiet channel's history; no message lands
+  twice.
 
 ## The active plan
 
