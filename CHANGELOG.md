@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.6] - 2026-11-02
+
+**Status:** Beta. What a reconnect missed.
+
+### Fixed
+- **A reconnect catches up on everything it missed.** After Discord signs
+  the bot in again, the bot fetches each channel's messages newer than the
+  last one it stored. But new messages start arriving a couple of seconds
+  before the bot is told it's ready, and one landing in that window became
+  the last one stored: the catch-up started after it and skipped what was
+  said in that channel while the bot was away, until the nightly re-index.
+  The catch-up now starts from where each channel's history stood when the
+  connection dropped (at startup, before the first connection).
+- **A startup that fails stops the bot.** Since 0.15.5 startup runs once,
+  so one that broke halfway would leave the bot connected but deaf: no
+  scans, no hourly loop. It now shuts the bot down, and the app restarts
+  it.
+- **Channels renamed during an outage** show their new names on the
+  dashboard at the reconnect, not at their next message.
+
+### Upgrading
+Nothing to do.
+
 ## [0.15.5] - 2026-11-01
 
 **Status:** Beta. A reconnect is not a restart.

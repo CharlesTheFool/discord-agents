@@ -77,6 +77,8 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.15.5:** a reconnect is not a restart. Discord signing the bot in again
   no longer starts a second set of background loops or writes false crash
   marks into every channel.
+- **0.15.6:** a reconnect's catch-up covers the whole outage; a startup that
+  fails stops the bot so the app restarts it.
 
 ## The active plan
 
