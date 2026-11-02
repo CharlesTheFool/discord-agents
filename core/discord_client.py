@@ -222,7 +222,9 @@ class DiscordClient(discord.Client):
         intents.guilds = True
         intents.members = True
 
-        super().__init__(intents=intents)
+        # The presence rides every IDENTIFY: change_presence() would only reach
+        # the current gateway session, and a re-identify would drop it
+        super().__init__(intents=intents, activity=discord.Game(name=config.discord.status))
 
         self.config = config
         self.reactive_engine = reactive_engine
@@ -235,6 +237,7 @@ class DiscordClient(discord.Client):
         # The event loop holds only weak refs to tasks - fire-and-forget
         # create_task calls can be garbage-collected mid-run
         self._background_tasks = set()
+        self._booted = False          # on_ready's boot work has run (once per process)
 
         # Slash commands (v0.9): /memory, DM-only, registered globally
         self.tree = discord.app_commands.CommandTree(self)
@@ -313,13 +316,24 @@ class DiscordClient(discord.Client):
         return task
 
     async def on_ready(self):
-        """Bot connected to Discord and ready"""
+        """Connected to Discord. discord.py calls this again whenever a resume
+        fails and it re-identifies, so the boot work runs once per process
+        (a second pass started a second scan loop, agentic loop and daily
+        re-backfill, and read this process's own running flag as a crash);
+        a reconnect only runs the incremental catch-up backfill."""
         logger.info(f"Bot connected: {self.user.name} (ID: {self.user.id})")
         logger.info(f"Logged into {len(self.guilds)} servers")
 
         # Log server details
         for guild in self.guilds:
             logger.info(f"  - {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
+
+        if self._booted:
+            logger.info("Reconnected with a new gateway session; catching up on missed messages")
+            if self.config.discord.backfill_enabled:
+                self._catch_up()
+            return
+        self._booted = True
 
         # Check for crash and insert lifecycle events
         from pathlib import Path
@@ -387,10 +401,6 @@ class DiscordClient(discord.Client):
         flag_file.parent.mkdir(parents=True, exist_ok=True)
         flag_file.write_text(str(online_time.timestamp()))
         logger.info(f"Running flag created: {flag_file}")
-
-        # Set activity status
-        activity = discord.Game(name=self.config.discord.status)
-        await self.change_presence(activity=activity)
 
         # Give reactive engine access to Discord client for periodic checks
         self.reactive_engine.discord_client = self
@@ -471,10 +481,7 @@ class DiscordClient(discord.Client):
         # Backfill historical messages if enabled (always in background -
         # blocking the gateway on startup is never right)
         if self.config.discord.backfill_enabled:
-            self._track_task(self.backfill_message_history(
-                days_back=self.config.discord.backfill_days,
-                incremental=True,  # boot resumes where the last session stopped
-            ))
+            self._catch_up()
 
             # Initialize memory structure with skeleton files (v0.5.0)
             try:
@@ -491,6 +498,12 @@ class DiscordClient(discord.Client):
             logger.info("Daily re-backfill task started (will run at 3 AM UTC)")
 
         logger.info("Bot is ready!")
+
+    def _catch_up(self) -> None:
+        """An incremental backfill: each channel resumes from its newest
+        stored message (at boot and after every re-identify)."""
+        self._track_task(self.backfill_message_history(
+            days_back=self.config.discord.backfill_days, incremental=True))
 
     async def _bot_run(self, channel_id: str) -> int:
         """How many of the channel's newest stored messages, in a row, are
