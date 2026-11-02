@@ -74,6 +74,9 @@ commitments, details are not. Full history with upgrade notes lives in
 - **0.15.4:** who said what reaches back through the whole conversation;
   restarts no longer crowd a quiet channel's history; no message lands
   twice.
+- **0.15.5:** a reconnect is not a restart. Discord signing the bot in again
+  no longer starts a second set of background loops or writes false crash
+  marks into every channel.
 
 ## The active plan
 
@@ -81,20 +84,7 @@ Each release below changes one thing, so a regression can be attributed.
 0.13.0 shipped alone for that reason: had concurrency changes ridden along,
 a cache regression would have had two suspects. The workshop came first,
 then what runs in it (0.15.0) and a second provider (0.15.1), both
-shipped, then where else it can run.
-
-### 0.16.0: Host mode
-
-A third scope setting beside Container and Off: commands run on the
-operator's own PC, in the operator's DM and in servers or channels the
-operator marks trusted, each scope behind its own restricted Windows
-account. The first probe on Windows 11 Home showed file permissions and a
-per-account firewall rule hold, but that an account launched onto the
-operator's desktop can read the clipboard, see windows and send
-keystrokes. So the design moves the runner off the desktop entirely: one
-registered at Host setup (the one admin prompt) and running in the
-background session, where the operator's desktop and clipboard don't
-exist. A second probe proves that before anything is built.
+shipped.
 
 ### 1.0
 
@@ -105,6 +95,14 @@ the desktop app belong to the final application release.
 
 ## Later
 
+- **Host mode (parked).** A third scope setting: commands on the operator's
+  own Windows PC, each scope under its own restricted account, for work a
+  Linux VM can't do. Two probes settled the isolation question: file
+  permissions and a per-account firewall rule hold on Windows 11 Home, and
+  session 0 keeps the account away from the operator's clipboard, windows
+  and keyboard, which a process on the operator's desktop can reach
+  ([what the probes showed](docs/host-mode-probes.md)). The piece that runs
+  a scope's work in session 0 isn't built.
 - **Authenticated GitHub and npm access.** A bot-owned identity (a GitHub
   App or a fine-grained token limited to chosen repositories), stored on the
   host and injected by the proxy only for the scopes the operator granted,

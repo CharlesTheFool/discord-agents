@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.5] - 2026-11-01
+
+**Status:** Beta. A reconnect is not a restart.
+
+### Fixed
+- **A reconnect no longer starts the bot over.** When Discord can't resume
+  a dropped connection, discord.py signs in again and reports the bot ready
+  a second time, and every such report ran the whole startup: another scan
+  loop, another hourly agentic loop and another nightly re-backfill, each
+  running beside the ones before. After two reconnects in ten days the
+  production bot ran three of each, so its agentic checks ran three times
+  an hour and every channel was re-indexed three times a night. Startup now
+  runs once per process; a reconnect only fetches each channel's messages
+  newer than the last one stored.
+- **No false crash marks.** The repeated startup also found the bot's own
+  running flag, took it for a crash, and wrote "[YOU WENT OFFLINE - CRASH]"
+  into every channel, stamped with the time of the previous start: 76
+  channels, two marks each, on every reconnect. A real crash is still
+  marked.
+- **The bot's status survives a reconnect.** It was sent once, on the first
+  connection, and a new sign-in dropped it; it now rides every sign-in.
+
+### Upgrading
+Nothing to do.
+
 ## [0.15.4] - 2026-10-22
 
 **Status:** Beta. What the bot sees of a channel's history.
