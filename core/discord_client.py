@@ -238,6 +238,9 @@ class DiscordClient(discord.Client):
         # create_task calls can be garbage-collected mid-run
         self._background_tasks = set()
         self._booted = False          # on_ready's boot work has run (once per process)
+        # channel_id -> newest stored message time, taken before the gateway
+        # could deliver anything new: where the next catch-up starts
+        self._resume_floor = None
 
         # Slash commands (v0.9): /memory, DM-only, registered globally
         self.tree = discord.app_commands.CommandTree(self)
@@ -247,6 +250,8 @@ class DiscordClient(discord.Client):
     async def setup_hook(self):
         """Register slash commands before the gateway connects (discord.py
         calls this once after login). /memory is DM-only by contexts."""
+        self._resume_floor = await self.message_memory.newest_message_times()
+
         memory_group = discord.app_commands.Group(
             name="memory",
             description="What this bot remembers about you",
@@ -317,10 +322,10 @@ class DiscordClient(discord.Client):
 
     async def on_ready(self):
         """Connected to Discord. discord.py calls this again whenever a resume
-        fails and it re-identifies, so the boot work runs once per process
-        (a second pass started a second scan loop, agentic loop and daily
+        fails and it re-identifies, so the boot runs once per process (a
+        second pass started a second scan loop, agentic loop and daily
         re-backfill, and read this process's own running flag as a crash);
-        a reconnect only runs the incremental catch-up backfill."""
+        a reconnect only catches up on missed messages and channel names."""
         logger.info(f"Bot connected: {self.user.name} (ID: {self.user.id})")
         logger.info(f"Logged into {len(self.guilds)} servers")
 
@@ -328,13 +333,38 @@ class DiscordClient(discord.Client):
         for guild in self.guilds:
             logger.info(f"  - {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
 
+        # Taken before any await: a session that resumes from here on clears
+        # the next floor, never this one
+        floor, self._resume_floor = self._resume_floor, None
         if self._booted:
-            logger.info("Reconnected with a new gateway session; catching up on missed messages")
+            logger.info("Reconnected with a new gateway session")
             if self.config.discord.backfill_enabled:
-                self._catch_up()
+                self._catch_up(floor)
+            await self._sweep_channel_names()
             return
         self._booted = True
+        try:
+            await self._boot(floor)
+        except Exception:
+            # Half-booted (no scan or agentic loop) would look alive and answer
+            # nothing; closing ends the process and the supervisor restarts it
+            logger.critical("Boot failed; closing so the bot restarts", exc_info=True)
+            await self.close()
 
+    async def on_disconnect(self):
+        """The gateway went quiet. Note where each channel's stored history
+        ends, once per outage, in case the session can't resume. Read at
+        on_ready instead, it would include messages discord.py dispatched
+        between READY and on_ready, and the catch-up would skip the gap."""
+        if self._resume_floor is None:
+            self._resume_floor = await self.message_memory.newest_message_times()
+
+    async def on_resumed(self):
+        """The session resumed and Discord replays what was missed."""
+        self._resume_floor = None
+
+    async def _boot(self, floor: Optional[dict]):
+        """Everything that runs once per process, on the first on_ready."""
         # Check for crash and insert lifecycle events
         from pathlib import Path
         from datetime import datetime, timezone
@@ -382,20 +412,7 @@ class DiscordClient(discord.Client):
                 except Exception as e:
                     logger.debug(f"Error inserting online event to channel {channel.id}: {e}")
 
-        # Channel-name cache sweep (v0.9): the dashboard reads names from
-        # artifacts only, and the per-message upsert covers just channels with
-        # traffic - seed every visible channel from the gateway cache instead.
-        # Threads stay out (they resolve via the threads table).
-        try:
-            for guild in self.guilds:
-                await self.message_memory.upsert_channel_name(
-                    str(guild.id), guild.name, kind="server")
-                for channel in [*guild.text_channels, *guild.voice_channels]:
-                    await self.message_memory.upsert_channel_name(
-                        str(channel.id), channel.name,
-                        kind="channel", guild_id=str(guild.id))
-        except Exception as e:
-            logger.debug(f"Channel-name sweep failed: {e}")
+        await self._sweep_channel_names()
 
         # Write running flag with current timestamp
         flag_file.parent.mkdir(parents=True, exist_ok=True)
@@ -430,9 +447,9 @@ class DiscordClient(discord.Client):
                 lambda gid: self.get_guild(int(gid)).name
                 if gid.isdigit() and self.get_guild(int(gid)) else None)
 
-        # Workshop approvals (0.14): once, after the engine's job watcher exists
+        # Workshop approvals (0.14): after the engine's job watcher exists
         engine = self.reactive_engine
-        if engine.workshop is not None and engine.job_watcher is not None and engine.approvals is None:
+        if engine.workshop is not None and engine.job_watcher is not None:
             from core.workshop.approvals import ApprovalButton, Approvals
             from core.workshop.notes import ContextNoteWriter
             engine.approvals = Approvals(
@@ -481,7 +498,7 @@ class DiscordClient(discord.Client):
         # Backfill historical messages if enabled (always in background -
         # blocking the gateway on startup is never right)
         if self.config.discord.backfill_enabled:
-            self._catch_up()
+            self._catch_up(floor)
 
             # Initialize memory structure with skeleton files (v0.5.0)
             try:
@@ -499,11 +516,27 @@ class DiscordClient(discord.Client):
 
         logger.info("Bot is ready!")
 
-    def _catch_up(self) -> None:
-        """An incremental backfill: each channel resumes from its newest
-        stored message (at boot and after every re-identify)."""
+    def _catch_up(self, floor: Optional[dict]) -> None:
+        """The backfill at boot and after every re-identify: each channel
+        fetches what's newer than its floor; without a floor, the whole window."""
         self._track_task(self.backfill_message_history(
-            days_back=self.config.discord.backfill_days, incremental=True))
+            days_back=self.config.discord.backfill_days, resume=floor))
+
+    async def _sweep_channel_names(self) -> None:
+        """Seed every visible channel's name from the gateway cache (v0.9): the
+        dashboard reads names from artifacts only, and the per-message upsert
+        covers just channels with traffic. Threads stay out (they resolve via
+        the threads table). Again on a reconnect: renames during the gap."""
+        try:
+            for guild in self.guilds:
+                await self.message_memory.upsert_channel_name(
+                    str(guild.id), guild.name, kind="server")
+                for channel in [*guild.text_channels, *guild.voice_channels]:
+                    await self.message_memory.upsert_channel_name(
+                        str(channel.id), channel.name,
+                        kind="channel", guild_id=str(guild.id))
+        except Exception as e:
+            logger.debug(f"Channel-name sweep failed: {e}")
 
     async def _bot_run(self, channel_id: str) -> int:
         """How many of the channel's newest stored messages, in a row, are
@@ -875,7 +908,7 @@ class DiscordClient(discord.Client):
         logger.info(f"Removed from server: {guild.name} (ID: {guild.id})")
 
     async def backfill_message_history(self, days_back: int = 30,
-                                       incremental: bool = False):
+                                       resume: Optional[dict] = None):
         """
         Fetch and index historical messages from accessible channels.
 
@@ -885,10 +918,10 @@ class DiscordClient(discord.Client):
         Args:
             days_back: Number of days of history to fetch; 0 = unlimited
                        (all accessible history)
-            incremental: resume each channel from its newest stored message
-                         instead of re-fetching the whole window. Boot uses
-                         this; the daily re-backfill stays full because its
-                         job is catching edits to already-stored messages.
+            resume: channel_id -> newest stored message time; each listed
+                    channel fetches only what's newer (the catch-up). None
+                    re-fetches the whole window: the daily re-backfill,
+                    whose job is catching edits to stored messages.
         """
         from datetime import datetime, timedelta, timezone
 
@@ -899,7 +932,7 @@ class DiscordClient(discord.Client):
             logger.info(f"Starting message history backfill ({days_back} days)...")
             cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
 
-        resume = await self.message_memory.newest_message_times() if incremental else {}
+        resume = resume or {}
 
         total_messages = 0
         total_channels = 0

@@ -93,10 +93,6 @@ def memory_intent(kind: str, text: str, display_name: str) -> str:
     )
 
 
-class _AlreadyBuilt(Exception):
-    """async_initialize ran before (on_ready again after a re-identify)."""
-
-
 class _SyntheticDMMessage:
     """Message-shaped carrier for /memory commands (no discord.Message exists
     for a slash interaction). Carries exactly the attributes the context
@@ -231,7 +227,7 @@ class ReactiveEngine:
         # starts in async_initialize, once conversation state exists
         self.workshop = None
         self.job_watcher = None
-        self.approvals = None      # network approvals, wired in on_ready (needs the client)
+        self.approvals = None      # network approvals, wired at boot (needs the client)
         self.projects = None       # project notes (0.15.0), read where the workshop runs
         self.workers = None        # delegated workers (0.15.0), with the job watcher
         # Daily caps on unprompted turns, shared with the agentic engine
@@ -287,13 +283,8 @@ class ReactiveEngine:
         Async initialization for managers that require I/O.
         Should be called after bot is ready.
         """
-        # Initialize Conversation State Manager (v0.5.0 - dual-cap context management).
-        # Once: on_ready runs again after a re-identify, and the note writers
-        # (job watcher, check-ins, approvals) keep the manager they were built
-        # with - a second one would save over the first's newer states
+        # Initialize Conversation State Manager (v0.5.0 - dual-cap context management)
         try:
-            if self.conversation_state_manager is not None:
-                raise _AlreadyBuilt
             db_path = Path("persistence") / f"{self.config.bot_id}_conversation_states.db"
             self.conversation_state_manager = ConversationStateManager(
                 db_path=db_path,
@@ -305,8 +296,6 @@ class ReactiveEngine:
                 f"ConversationStateManager initialized "
                 f"(max_messages={self.config.api.context_messages})"
             )
-        except _AlreadyBuilt:
-            pass
         except Exception as e:
             logger.error(f"Failed to initialize ConversationStateManager: {e}", exc_info=True)
             self.conversation_state_manager = None  # Disable on failure
@@ -367,9 +356,7 @@ class ReactiveEngine:
                 self.attachment_manager = None  # Disable on failure
                 self.repository_manager = None
 
-        # once: on_ready runs again after a reconnect, and a second watcher
-        # would follow the same jobs twice
-        if self.workshop is not None and self.conversation_state_manager and self.job_watcher is None:
+        if self.workshop is not None and self.conversation_state_manager:
             from core.workshop.notes import ContextNoteWriter
             from core.workshop.watcher import JobWatcher
             self.job_watcher = JobWatcher(
