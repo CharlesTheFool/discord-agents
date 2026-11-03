@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.7] - 2026-11-02
+
+**Status:** Beta. A stop is a clean stop.
+
+### Fixed
+- **"Restart now" on an app update no longer leaves your bots running
+  without the app.** Accepting the update quit the app without asking the
+  supervisor to stop the bots first; Windows took the supervisor down with
+  the app, and the bots kept running with nothing managing them: no
+  dashboard, no updates, until the app's next launch took them back. The
+  app now stops the bots before it restarts.
+- **Closing the app no longer reads as a crash.** On Windows the app's stop
+  ended each bot outright, so the bot never recorded going offline, and its
+  next start wrote "[YOU WENT OFFLINE - CRASH]" into every channel it can
+  see. Bots now shut down cleanly when the app stops them. And if the
+  supervisor ever dies without asking, its bots notice and shut down too,
+  instead of running on unmanaged.
+
+### Upgrading
+The dialog that offers this update still runs the old app's code, so click
+**Later**, then close the app and open it again (closing installs the
+update). Your bots' next start may note one last crash.
+
 ## [0.15.6] - 2026-11-02
 
 **Status:** Beta. What a reconnect missed.

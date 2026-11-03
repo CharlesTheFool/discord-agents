@@ -79,6 +79,9 @@ commitments, details are not. Full history with upgrade notes lives in
   marks into every channel.
 - **0.15.6:** a reconnect's catch-up covers the whole outage; a startup that
   fails stops the bot so the app restarts it.
+- **0.15.7:** a stop is a clean stop. "Restart now" on an app update stops
+  the bots first instead of leaving them running without the app, and a bot
+  the app stops no longer reads as crashed at its next start.
 
 ## The active plan
 
