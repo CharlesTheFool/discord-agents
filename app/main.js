@@ -160,9 +160,10 @@ async function ensureDaemon() {
   return false;
 }
 
-// Closing the window means closing the app: bots stop cleanly (their desired
-// state is kept, so they come back on next launch). Only a daemon WE spawned
-// is stopped - one the operator runs from a terminal is left alone.
+// Closing the window means closing the app, and an update or a Windows
+// restart quits it too: bots stop cleanly (their desired state is kept, so
+// they come back on next launch). Only a daemon WE spawned is stopped - one
+// the operator runs from a terminal is left alone.
 async function requestShutdown() {
   const token = await fetchDaemonToken();
   return new Promise((resolve) => {
@@ -175,12 +176,12 @@ async function requestShutdown() {
   });
 }
 
-async function shutdownDaemon() {
+async function shutdownDaemon(reason) {
   if (!daemon) return; // attached to an operator-run daemon - leave it be
-  log("window closed - asking the daemon to stop its bots and exit");
+  log(`${reason} - asking the daemon to stop its bots and exit`);
   const accepted = await requestShutdown();
   if (accepted) {
-    for (let i = 0; i < 30; i++) {           // up to 15s for clean bot stops
+    for (let i = 0; i < 40; i++) {           // up to 20 s: the daemon gives a bot 15 s, then kills it
       await new Promise((r) => setTimeout(r, 500));
       if (!(await daemonUp())) { log("daemon stopped cleanly"); daemon = null; return; }
     }
@@ -206,7 +207,12 @@ function setupShellAutoUpdate(win) {
   autoUpdater.on("update-available", (info) => log(`launcher update available: ${info.version}`));
   autoUpdater.on("update-not-available", () => log("launcher up to date"));
   autoUpdater.on("error", (err) => log(`launcher update error: ${err == null ? "unknown" : err.message || err}`));
+  // One dialog at a time (the 6-hourly re-check announces the same download
+  // again), and none once a restart is under way
+  let offering = false;
   autoUpdater.on("update-downloaded", async (info) => {
+    if (offering) return;
+    offering = true;
     const { response } = await dialog.showMessageBox(win, {
       type: "info",
       buttons: ["Restart now", "Later"],
@@ -216,7 +222,13 @@ function setupShellAutoUpdate(win) {
       message: `Version ${info.version} is ready.`,
       detail: "Restart to finish updating. Your bots, config, and memories are untouched.",
     });
-    if (response === 0) autoUpdater.quitAndInstall();
+    if (response !== 0) { offering = false; return; }
+    // quitAndInstall quits through app.quit(), which skips window-all-closed:
+    // stop the bots first, or the daemon dies with the app and they run on
+    // with nothing managing them. Hidden meanwhile, so nothing starts a bot.
+    win.hide();
+    await shutdownDaemon("installing a launcher update");
+    autoUpdater.quitAndInstall();
   });
 
   autoUpdater.checkForUpdates().catch((e) => log(`launcher update check failed: ${e.message}`));
@@ -294,7 +306,7 @@ async function offerVirtualization(win, cfg) {
     message: "Virtualization is on. Restart Windows to finish.",
   });
   if (when === 0) {
-    await shutdownDaemon();
+    await shutdownDaemon("restarting Windows");
     execFile("shutdown.exe", ["/r", "/t", "0"], { windowsHide: true });
   }
 }
@@ -337,6 +349,6 @@ async function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", async () => {
-  await shutdownDaemon();
+  await shutdownDaemon("window closed");
   app.quit();
 });
