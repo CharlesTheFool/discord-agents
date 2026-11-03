@@ -38,9 +38,11 @@ class BotManager:
     Manages bot lifecycle: initialization, component setup, graceful shutdown.
     """
 
-    def __init__(self, bot_id: str, crash_test: bool = False):
+    def __init__(self, bot_id: str, crash_test: bool = False, supervised: bool = False):
         self.bot_id = bot_id
         self.crash_test = crash_test
+        self.supervised = supervised
+        self.shutting_down = False
         self.config: BotConfig = None
         self.client: DiscordClient = None
         self.message_memory: MessageMemory = None
@@ -243,6 +245,9 @@ class BotManager:
         logger = logging.getLogger(__name__)
 
         try:
+            if self.supervised:   # from the start: the workshop's test boot can take minutes
+                self._stop_when_stdin_closes(asyncio.current_task())
+
             discord_token = await self.initialize()
 
             # Schedule crash test if enabled
@@ -267,7 +272,32 @@ class BotManager:
         except Exception as e:
             logger.error(f"Fatal error: {e}", exc_info=True)
         finally:
+            self.shutting_down = True
             await self.shutdown()
+
+    def _stop_when_stdin_closes(self, task: asyncio.Task):
+        """A supervised bot's stdin belongs to the supervisor, which closes it
+        to stop the bot; a supervisor that dies closes it too. Either way the
+        bot shuts down as on Ctrl+C: the main task is cancelled, run() cleans up."""
+        loop = task.get_loop()
+
+        def stop():
+            if not self.shutting_down:   # already on its way out (Ctrl+C, a failed boot): let it finish
+                task.cancel()
+
+        def wait_for_eof():
+            sys.stdin.buffer.read()   # nothing is ever written: this returns at end of input
+            logging.getLogger(__name__).info("Supervisor closed stdin")
+            loop.call_soon_threadsafe(stop)
+
+        threading.Thread(target=wait_for_eof, name="supervisor-stdin", daemon=True).start()
+
+    def _clear_running_flag(self):
+        """No flag at the next start means this run ended cleanly."""
+        flag_file = Path(f"persistence/{self.bot_id}_running.flag")
+        if flag_file.exists():
+            flag_file.unlink()
+            logging.getLogger(__name__).info("Running flag removed (clean shutdown)")
 
     async def shutdown(self):
         """Graceful shutdown: cleanup engines, close connections, cancel tasks"""
@@ -294,12 +324,7 @@ class BotManager:
 
                 logger.info("Offline lifecycle events inserted")
 
-            # Remove running flag (indicates clean shutdown)
-            from pathlib import Path
-            flag_file = Path(f"persistence/{self.bot_id}_running.flag")
-            if flag_file.exists():
-                flag_file.unlink()
-                logger.info("Running flag removed (clean shutdown)")
+            self._clear_running_flag()
 
             # Shutdown engines (cancel background tasks)
             if hasattr(self, 'client') and self.client and hasattr(self.client, 'reactive_engine'):
@@ -325,6 +350,7 @@ class BotManager:
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+            self._clear_running_flag()   # again: a boot still running at the stop may have written it since
 
             logger.info("Shutdown complete")
 
@@ -475,8 +501,10 @@ def main():
 
         # Check for --crash-test flag
         crash_test = "--crash-test" in sys.argv
+        # Started by the supervisor daemon (supervisor/process_manager.py)
+        supervised = "--supervised" in sys.argv
 
-        manager = BotManager(bot_id, crash_test=crash_test)
+        manager = BotManager(bot_id, crash_test=crash_test, supervised=supervised)
 
         code = 0
         try:

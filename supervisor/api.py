@@ -244,8 +244,8 @@ def build_app(root: SupervisorRoot, pm: ProcessManager,
         bot_id = bot_or_404(request)
         status = await pm.stop(bot_id)
         # Only the operator's Stop ends the workshop: restart, the integrations
-        # auto-restart and daemon shutdown share pm.stop and leave the bot's
-        # sandboxes (and their jobs) running (spec 5.5)
+        # auto-restart and daemon shutdown stop the process alone and leave
+        # the bot's sandboxes (and their jobs) running (spec 5.5)
         await stop_sandboxes(root, bot_id)
         return json_response(status)
 

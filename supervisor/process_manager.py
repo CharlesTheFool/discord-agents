@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 CRASH_RETRY_CAP_PER_HOUR = 5
 BACKOFF_BASE_SECONDS = 60  # 1, 2, 4, 8, 16 minutes
 BLOCKED_RETRY_SECONDS = 600
+STOP_TIMEOUT_SECONDS = 15
 
 
 def _spawns(command_line: str, script: Path, bot_id: str) -> bool:
@@ -117,9 +118,11 @@ class ProcessManager:
         # Absolute script path: with a code_root/data_root split the script
         # lives in the install while cwd stays the data root. In the git
         # model both are the same directory - identical to the old behavior.
+        # The bot's stdin is ours: closing it stops the bot (see stop), and
+        # so does this daemon dying.
         return await asyncio.create_subprocess_exec(
-            sys.executable, str(self.root.bot_manager_script()), "spawn", bot_id,
-            cwd=str(self.root.root),
+            sys.executable, str(self.root.bot_manager_script()), "spawn", bot_id, "--supervised",
+            cwd=str(self.root.root), stdin=asyncio.subprocess.PIPE,
         )
 
     def _owned_pids(self) -> List[int]:
@@ -194,18 +197,25 @@ class ProcessManager:
         if bot_id in self._desired:
             self._desired.remove(bot_id)
             self._save_desired()
+        await self._end(bot_id)
+        return self.status(bot_id)
+
+    async def _end(self, bot_id: str) -> None:
+        """Stop the bot's process; what should run is the caller's business."""
         proc = self._procs.get(bot_id)
         if proc is not None and proc.returncode is None:
-            proc.terminate()
+            # The bot shuts down when its stdin closes: offline markers, its
+            # running flag removed. Terminating it instead reads as a crash at
+            # its next start (on Windows terminate() is a hard kill)
+            proc.stdin.close()
             try:
-                await asyncio.wait_for(proc.wait(), timeout=15)
+                await asyncio.wait_for(proc.wait(), timeout=STOP_TIMEOUT_SECONDS)
             except asyncio.TimeoutError:
-                logger.warning(f"{bot_id} ignored SIGTERM - killing")
+                logger.warning(f"{bot_id} didn't stop within {STOP_TIMEOUT_SECONDS} s - killing")
                 proc.kill()
                 await proc.wait()
         self._procs.pop(bot_id, None)
         logger.info(f"Stopped {bot_id}")
-        return self.status(bot_id)
 
     async def restart(self, bot_id: str) -> dict:
         await self.stop(bot_id)
@@ -286,10 +296,7 @@ class ProcessManager:
             await asyncio.sleep(interval)
 
     async def shutdown(self) -> None:
-        """Stop every managed process WITHOUT clearing desired state - the
-        bots come back when the supervisor does."""
-        desired_snapshot = list(self._desired)
-        for bot_id in list(self._procs):
-            await self.stop(bot_id)
-        self._desired = desired_snapshot
-        self._save_desired()
+        """Stop every managed process WITHOUT touching desired state - the
+        bots come back when the supervisor does. All at once: the app gives
+        the daemon about one STOP_TIMEOUT_SECONDS before it kills it."""
+        await asyncio.gather(*(self._end(bot_id) for bot_id in list(self._procs)))
