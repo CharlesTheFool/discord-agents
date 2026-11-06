@@ -1,6 +1,6 @@
 # Discord Agents
 
-**Version:** 0.14.0 (Pre-release Beta)
+**Version:** 0.15.7 (Beta)
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Discord.py](https://img.shields.io/badge/discord.py-2.7-blue.svg)](https://discordpy.readthedocs.io/)
